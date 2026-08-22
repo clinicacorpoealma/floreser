@@ -22,6 +22,30 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.4.0",
+      codinome: "VERTENTE",
+      data: "22/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "Etapa “Em aberto”, para quem compareceu à consulta e ainda não deu resposta. Ela conta como comparecimento no funil e esfria de Quente até Muito frio.",
+          "Cada faixa do funil virou botão: tocar nela abre a lista de quem está sendo contado ali, com a data em que aquela etapa aconteceu e a etapa atual da pessoa. Tocando no nome, abre a ficha.",
+          "Origem do lead no cadastro — Instagram, Rádio, Vale-presente, Indicação, Google e Outros — e um gráfico de origem no funil, com contagem e porcentagem sobre os leads captados no período."
+        ],
+        "Alterado": [
+          "Cada marco do funil passa a ser carimbado uma vez só, na data em que aconteceu, e nunca é reescrito: marcar como agendada carimba a conversa e o agendamento no mesmo dia, e o comparecimento semanas depois não duplica o agendamento.",
+          "Só “Em aberto”, “Venda” e “Venda reprovada” carimbam comparecimento. “Não responde”, “Nurturing”, “Falta” e “Recusado” não mexem no funil.",
+          "A importação de planilha reconhece a coluna de origem e converte sozinha as etapas antigas."
+        ],
+        "Removido": [
+          "Etapa “Agendando”, que deixou de ser necessária: quem estava nela volta para “Conversando”.",
+          "Etapa “Com orçamento”, que era a mesma coisa que “Em aberto”: quem estava nela passa para “Em aberto”, com a cadência mais larga."
+        ],
+        "Técnico": [
+          "A planilha ganhou a coluna de origem no fim da aba de leads, acrescentada sem renomear a aba nem mexer nos cadastros que já existem."
+        ]
+      }
+    },
+    {
       versao: "2.3.0",
       codinome: "COLHEITA",
       data: "22/08/2026",

@@ -105,20 +105,35 @@
 
     /* ---- Etapas do funil ----
        cadencias: quais cadências a etapa aceita, na ordem de esfriamento
-       nivel: até onde o lead chegou no funil (alimenta os indicadores)
+       nivel: até onde o lead chegou no funil. Cada marco é carimbado UMA
+              vez, na data em que aconteceu, e nunca é reescrito — por isso
+              agendar carimba conversa e agendamento no mesmo dia, e o
+              comparecimento semanas depois não duplica o agendamento.
+              null quer dizer que a etapa não carimba nada novo: o que já
+              foi carimbado continua valendo.
        arquivo: sai do dia a dia, mas continua salvo                      */
     const ETAPAS = [
-      { id: "nao_responde", nome: "Não responde", cadencias: ["quente", "morno", "frio", "muito_frio"], nivel: 0 },
+      { id: "nao_responde", nome: "Não responde", cadencias: ["quente", "morno", "frio", "muito_frio"], nivel: null },
       { id: "conversando", nome: "Conversando", cadencias: ["quente"], nivel: 1 },
-      { id: "nurturing", nome: "Nurturing", cadencias: ["frio", "muito_frio"], nivel: 1 },
-      { id: "agendando", nome: "Agendando", cadencias: ["quente"], nivel: 1 },
+      { id: "nurturing", nome: "Nurturing", cadencias: ["frio", "muito_frio"], nivel: null },
       { id: "agendado", nome: "Agendado", cadencias: [], nivel: 2 },
-      { id: "falta", nome: "Falta", cadencias: ["quente"], nivel: 2 },
-      { id: "com_orcamento", nome: "Com orçamento", cadencias: ["quente", "morno"], nivel: 3 },
+      { id: "falta", nome: "Falta", cadencias: ["quente"], nivel: null },
+      { id: "em_aberto", nome: "Em aberto", cadencias: ["quente", "morno", "frio", "muito_frio"], nivel: 3 },
       { id: "venda", nome: "Venda", cadencias: [], nivel: 4, arquivo: true },
       { id: "venda_reprovada", nome: "Venda reprovada", cadencias: [], nivel: 3, arquivo: true, encerra: true },
-      { id: "recusado", nome: "Recusado", cadencias: [], nivel: 1, arquivo: true, encerra: true },
+      { id: "recusado", nome: "Recusado", cadencias: [], nivel: null, arquivo: true, encerra: true },
     ];
+
+    /* ---- De onde a cliente veio ---- */
+    const ORIGENS = [
+      { id: "instagram", nome: "Instagram" },
+      { id: "radio", nome: "Rádio" },
+      { id: "vale_presente", nome: "Vale-presente" },
+      { id: "indicacao", nome: "Indicação" },
+      { id: "google", nome: "Google" },
+      { id: "outros", nome: "Outros" },
+    ];
+    const origemPor = (id) => ORIGENS.find((o) => o.id === id);
 
     const MARCOS = ["criadoEm", "dtConversa", "dtAgendamento", "dtComparecimento", "dtVenda"];
 
@@ -227,6 +242,7 @@
       const [editando, setEditando] = useState(null);
       const [aberto, setAberto] = useState(null);
       const [importando, setImportando] = useState(false);
+      const [faixaAberta, setFaixaAberta] = useState(null);
 
       useEffect(() => {
         (async () => {
@@ -248,6 +264,10 @@
       /* converte cadastros do formato antigo */
       function migrar(l) {
         if (l.etapa === "reprovado") return { ...l, etapa: "recusado" };
+        /* Agendando saiu: quem estava lá volta para Conversando */
+        if (l.etapa === "agendando") return { ...l, etapa: "conversando", cadencia: "quente" };
+        /* Com orçamento e Em aberto viraram a mesma coisa */
+        if (l.etapa === "com_orcamento") return { ...l, etapa: "em_aberto" };
         if (l.etapa) return l;
         const antigo = { c1: "quente", c2: "morno", c3: "frio" };
         return {
@@ -348,14 +368,28 @@
           if (ate && d >= ate) return false;
           return true;
         };
-        const contar = (campo) => leads.filter((l) => dentro(l[campo])).length;
-        const vendas = leads.filter((l) => dentro(l.dtVenda));
+        /* cada faixa guarda os leads, não só a conta: é o que permite
+           abrir a lista de quem está sendo contado ali */
+        const faixas = [
+          { rotulo: "Leads captados", campo: "criadoEm" },
+          { rotulo: "Conversas", campo: "dtConversa" },
+          { rotulo: "Agendamentos", campo: "dtAgendamento" },
+          { rotulo: "Comparecimentos", campo: "dtComparecimento" },
+          { rotulo: "Vendas", campo: "dtVenda" },
+        ].map((f) => ({ ...f, leads: leads.filter((l) => dentro(l[f.campo])) }));
+
+        const captados = faixas[0].leads;
+        const vendas = faixas[4].leads;
+
+        const origens = ORIGENS
+          .map((o) => ({ ...o, qtd: captados.filter((l) => l.origem === o.id).length }))
+          .concat([{ id: "", nome: "Não informado", qtd: captados.filter((l) => !l.origem).length }])
+          .filter((o) => o.qtd > 0);
+
         return {
-          captados: contar("criadoEm"),
-          conversas: contar("dtConversa"),
-          agendamentos: contar("dtAgendamento"),
-          comparecimentos: contar("dtComparecimento"),
-          vendas: vendas.length,
+          faixas,
+          origens,
+          totalCaptados: captados.length,
           porConsulta: vendas.filter((l) => !l.exCliente).length,
           porRecompra: vendas.filter((l) => l.exCliente).length,
         };
@@ -409,6 +443,9 @@
           box-shadow: 0 1px 2px rgba(45,45,45,.04), 0 8px 22px rgba(59,110,106,.07);
         }
         .pilula { transition: background .18s ease, color .18s ease; }
+        @media (hover: hover) {
+          .faixa:not([disabled]):hover { filter: brightness(1.12); }
+        }
         .acao { transition: background .18s ease, border-color .18s ease, box-shadow .2s ease; }
 
         @media (hover: hover) {
@@ -508,12 +545,20 @@
                   Cada etapa conta os leads que passaram por ela {rotuloPeriodo}, mesmo os que já avançaram depois.
                 </p>
 
-                <GraficoFunil funil={funil} mostrarPercentual={periodo === "tudo"} />
+                <GraficoFunil faixas={funil.faixas} mostrarPercentual={periodo === "tudo"} aoAbrirFaixa={setFaixaAberta} />
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
                   <Indicador rotulo="Vendas por consulta" valor={funil.porConsulta} nota="Cliente nova" />
                   <Indicador rotulo="Vendas por recompra" valor={funil.porRecompra} nota="Ex-cliente" />
                 </div>
+
+                <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 21, fontWeight: 600, margin: "26px 0 4px" }}>
+                  Origem dos leads
+                </h3>
+                <p style={{ fontSize: 12.5, color: CORES.suave, margin: "0 0 12px" }}>
+                  De onde vieram os {funil.totalCaptados} lead{funil.totalCaptados !== 1 ? "s" : ""} captado{funil.totalCaptados !== 1 ? "s" : ""} {rotuloPeriodo}.
+                </p>
+                <GraficoOrigem origens={funil.origens} total={funil.totalCaptados} />
 
                 <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 21, fontWeight: 600, margin: "26px 0 10px" }}>
                   Onde estão os leads agora
@@ -655,6 +700,15 @@
             )}
           </main>
 
+          {faixaAberta && (
+            <Modal aoFechar={() => setFaixaAberta(null)}>
+              <ListaDaFaixa
+                faixa={{ ...faixaAberta, leads: funil.faixas.find((f) => f.campo === faixaAberta.campo)?.leads || [] }}
+                aoAbrirLead={(l) => { setFaixaAberta(null); setAberto(l); }}
+              />
+            </Modal>
+          )}
+
           {aberto && !editando && (
             <Modal aoFechar={() => setAberto(null)}>
               <DetalheLead
@@ -684,43 +738,112 @@
       );
     }
 
-    /* ==== Gráfico de funil ==== */
-    function GraficoFunil({ funil, mostrarPercentual }) {
-      const etapas = [
-        { rotulo: "Leads captados", valor: funil.captados },
-        { rotulo: "Conversas", valor: funil.conversas },
-        { rotulo: "Agendamentos", valor: funil.agendamentos },
-        { rotulo: "Comparecimentos", valor: funil.comparecimentos },
-        { rotulo: "Vendas", valor: funil.vendas },
-      ];
-      const maximo = Math.max(...etapas.map((e) => e.valor), 1);
+    /* ==== Gráfico de funil — cada faixa abre a lista de quem está nela ==== */
+    function GraficoFunil({ faixas, mostrarPercentual, aoAbrirFaixa }) {
+      const maximo = Math.max(...faixas.map((f) => f.leads.length), 1);
       const tons = ["#1E3A3A", "#2E5654", "#3B6E6A", "#6E8C6A", "#8C7550"];
 
       return (
         <div className="painel-claro" style={{ background: CORES.branco, borderRadius: 12, border: `1px solid ${CORES.borda}`, padding: "18px 16px" }}>
-          {etapas.map((e, i) => {
-            const largura = Math.max((e.valor / maximo) * 100, e.valor > 0 ? 16 : 8);
-            const anterior = i > 0 ? etapas[i - 1].valor : null;
-            const conv = anterior ? Math.round((e.valor / anterior) * 100) : null;
+          {faixas.map((f, i) => {
+            const valor = f.leads.length;
+            const largura = Math.max((valor / maximo) * 100, valor > 0 ? 16 : 8);
+            const anterior = i > 0 ? faixas[i - 1].leads.length : null;
+            const conv = anterior ? Math.round((valor / anterior) * 100) : null;
             return (
-              <div key={e.rotulo} style={{ marginBottom: i === etapas.length - 1 ? 0 : 10 }}>
+              <div key={f.rotulo} style={{ marginBottom: i === faixas.length - 1 ? 0 : 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600 }}>{e.rotulo}</span>
+                  <span style={{ fontWeight: 600 }}>{f.rotulo}</span>
                   {mostrarPercentual && conv !== null && anterior > 0 && (
                     <span style={{ color: CORES.suave }}>{conv}% da etapa anterior</span>
                   )}
                 </div>
                 <div style={{ display: "flex", justifyContent: "center" }}>
-                  <div style={{
-                    width: `${largura}%`, background: tons[i], color: CORES.branco, borderRadius: 6,
-                    padding: "9px 12px", textAlign: "center", fontWeight: 700, fontSize: 16, minWidth: 54, transition: "width 0.3s"
-                  }}>
-                    {e.valor}
-                  </div>
+                  <button className="faixa" onClick={() => valor > 0 && aoAbrirFaixa(f)}
+                    disabled={valor === 0}
+                    title={valor > 0 ? "Ver quem está nesta faixa" : ""}
+                    style={{
+                      width: `${largura}%`, background: tons[i], color: CORES.branco, borderRadius: 6, border: "none",
+                      padding: "9px 12px", textAlign: "center", fontWeight: 700, fontSize: 16, minWidth: 54,
+                      transition: "width 0.3s, filter .18s ease", cursor: valor > 0 ? "pointer" : "default"
+                    }}>
+                    {valor}
+                  </button>
                 </div>
               </div>
             );
           })}
+          <div style={{ textAlign: "center", fontSize: 11.5, color: "#B4AFA4", marginTop: 12 }}>
+            Toque em uma faixa para ver quem está nela
+          </div>
+        </div>
+      );
+    }
+
+    /* ==== Gráfico de origem ==== */
+    function GraficoOrigem({ origens, total }) {
+      if (!origens.length) {
+        return (
+          <div className="painel-claro" style={{
+            background: CORES.branco, borderRadius: 12, border: `1px solid ${CORES.borda}`,
+            padding: "20px 16px", textAlign: "center", fontSize: 13, color: CORES.suave
+          }}>
+            Nenhum lead captado neste período.
+          </div>
+        );
+      }
+      const maximo = Math.max(...origens.map((o) => o.qtd), 1);
+      const tons = {
+        instagram: "#8C6A7D", radio: "#6E8C6A", vale_presente: "#8C7550",
+        indicacao: "#3B6E6A", google: "#2E5654", outros: "#9A948A", "": "#C9C2B2"
+      };
+
+      return (
+        <div className="painel-claro" style={{ background: CORES.branco, borderRadius: 12, border: `1px solid ${CORES.borda}`, padding: "16px" }}>
+          {origens.map((o, i) => (
+            <div key={o.id || "sem"} style={{ marginBottom: i === origens.length - 1 ? 0 : 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, color: o.id ? CORES.floresta : CORES.suave }}>{o.nome}</span>
+                <span style={{ color: CORES.suave }}>
+                  {o.qtd} · {total ? Math.round((o.qtd / total) * 100) : 0}%
+                </span>
+              </div>
+              <div style={{ background: CORES.areia, borderRadius: 5, height: 10, overflow: "hidden" }}>
+                <div style={{ width: `${(o.qtd / maximo) * 100}%`, background: tons[o.id] || CORES.verde, height: "100%", transition: "width 0.3s" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    /* ==== Quem está sendo contado numa faixa do funil ==== */
+    function ListaDaFaixa({ faixa, aoAbrirLead }) {
+      return (
+        <div>
+          <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 24, fontWeight: 600, margin: "0 0 2px" }}>{faixa.rotulo}</h3>
+          <p style={{ fontSize: 12.5, color: CORES.suave, margin: "0 0 14px" }}>
+            {faixa.leads.length} lead{faixa.leads.length !== 1 ? "s" : ""} no período escolhido, com a data em que essa etapa aconteceu.
+          </p>
+          {faixa.leads
+            .slice()
+            .sort((a, b) => String(a[faixa.campo]).localeCompare(String(b[faixa.campo])))
+            .map((l) => (
+              <button key={l.id} className="cartao-lead" onClick={() => aoAbrirLead(l)}
+                style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, width: "100%",
+                  background: CORES.branco, border: `1px solid ${CORES.borda}`, borderRadius: 10, padding: "10px 13px",
+                  marginBottom: 7, textAlign: "left"
+                }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontWeight: 600, fontSize: 14, color: CORES.floresta }}>{l.nome}</span>
+                  <span style={{ fontSize: 11.5, color: CORES.suave }}>
+                    {etapaPor(l.etapa).nome}{l.exCliente ? " · ex-cliente" : ""}
+                  </span>
+                </span>
+                <span style={{ fontSize: 12.5, color: CORES.verde, whiteSpace: "nowrap" }}>{formatarData(l[faixa.campo])}</span>
+              </button>
+            ))}
         </div>
       );
     }
@@ -819,6 +942,7 @@
           <dl style={{ margin: "0 0 18px", fontSize: 14, lineHeight: 1.7 }}>
             <Linha rotulo="WhatsApp" valor={lead.whatsapp || "—"} />
             <Linha rotulo="Interesse" valor={lead.interesse || "—"} />
+            <Linha rotulo="Origem" valor={origemPor(lead.origem)?.nome || "—"} />
             <Linha rotulo="Último contato" valor={formatarData(lead.ultimoContato)} />
             <Linha rotulo="Situação" valor={lead.sit?.texto || "—"} />
             <Linha rotulo="Captada em" valor={formatarData(lead.criadoEm)} />
@@ -880,6 +1004,7 @@
         nome: lead?.nome || "",
         whatsapp: lead?.whatsapp || "",
         interesse: lead?.interesse || "",
+        origem: lead?.origem || "",
         observacoes: lead?.observacoes || "",
         etapa: lead?.etapa || "nao_responde",
         cadencia: lead?.cadencia || "quente",
@@ -922,6 +1047,12 @@
           </label>
           <label style={rot}>Interesse
             <input style={campo} value={d.interesse} onChange={(e) => setD({ ...d, interesse: e.target.value })} placeholder="Ex.: Ultraformer, limpeza de pele…" />
+          </label>
+          <label style={rot}>Origem
+            <select style={campo} value={d.origem} onChange={(e) => setD({ ...d, origem: e.target.value })}>
+              <option value="">— não informado —</option>
+              {ORIGENS.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+            </select>
           </label>
           <label style={rot}>Etapa do funil
             <select style={campo} value={d.etapa}
@@ -999,9 +1130,11 @@
       if (t.includes("não resp") || t.includes("nao resp")) return "nao_responde";
       if (t.includes("nurtur") || t.includes("nutri")) return "nurturing";
       if (t.includes("convers")) return "conversando";
-      if (t.includes("agendand")) return "agendando";
+      /* "Agendando" era uma etapa que saiu: quem vier assim da planilha entra
+         como Conversando, igual ao que acontece com os cadastros antigos */
+      if (t.includes("agendand")) return "conversando";
       if (t.includes("agendad")) return "agendado";
-      if (t.includes("orçam") || t.includes("orcam")) return "com_orcamento";
+      if (t.includes("aberto") || t.includes("orçam") || t.includes("orcam")) return "em_aberto";
       if (t.includes("falt")) return "falta";
       if (t.includes("reprov")) return "venda_reprovada";
       if (t.includes("recus") || t.includes("perdid") || t.includes("descart")) return "recusado";
@@ -1009,10 +1142,23 @@
       return null;
     }
 
+    function acharOrigem(texto) {
+      const t = String(texto || "").trim().toLowerCase();
+      if (!t) return "";
+      const achada = ORIGENS.find((o) => o.nome.toLowerCase() === t || o.id === t);
+      if (achada) return achada.id;
+      if (t.includes("insta")) return "instagram";
+      if (t.includes("rádio") || t.includes("radio")) return "radio";
+      if (t.includes("vale") || t.includes("presente")) return "vale_presente";
+      if (t.includes("indica")) return "indicacao";
+      if (t.includes("google") || t.includes("busca")) return "google";
+      return "outros";
+    }
+
     function ImportarPlanilha({ aoImportar, aoCancelar }) {
       const [linhas, setLinhas] = useState(null);
       const [colunas, setColunas] = useState([]);
-      const [mapa, setMapa] = useState({ nome: "", whatsapp: "", interesse: "", observacoes: "", etapa: "", exCliente: "", ultimoContato: "" });
+      const [mapa, setMapa] = useState({ nome: "", whatsapp: "", interesse: "", origem: "", observacoes: "", etapa: "", exCliente: "", ultimoContato: "" });
       const [etapaPadrao, setEtapaPadrao] = useState("nao_responde");
       const [erroArq, setErroArq] = useState(null);
 
@@ -1033,6 +1179,7 @@
             nome: achar("nome", "cliente", "lead"),
             whatsapp: achar("whats", "telefone", "celular", "fone"),
             interesse: achar("interesse", "tratamento", "procedimento"),
+            origem: achar("origem", "fonte", "veio"),
             observacoes: achar("obs", "nota", "coment"),
             etapa: achar("etapa", "situa", "status", "categoria"),
             exCliente: achar("ex-cliente", "ex cliente", "recompra"),
@@ -1059,6 +1206,7 @@
             nome,
             whatsapp: mapa.whatsapp ? String(r[mapa.whatsapp] ?? "").trim() : "",
             interesse: mapa.interesse ? String(r[mapa.interesse] ?? "").trim() : "",
+            origem: mapa.origem ? acharOrigem(r[mapa.origem]) : "",
             observacoes: mapa.observacoes ? String(r[mapa.observacoes] ?? "").trim() : "",
             etapa: etapaId,
             cadencia: cadenciaValida(etapaId, "quente"),
