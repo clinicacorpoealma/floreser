@@ -1,25 +1,30 @@
 # Site interno — FloreSer · Corpo e Alma
 
-Site estático servido pelo GitHub Pages, sem build. Três páginas soltas na raiz,
+Site estático servido pelo GitHub Pages, sem build. Quatro páginas soltas na raiz,
 cada uma abrindo direto no navegador.
 
 | Arquivo | Papel |
 |---|---|
-| `index.html` | portal: dois quadrados (CRM e Agendamentos), versão e histórico |
+| `index.html` | portal: três quadrados (CRM, Agendamentos e Entradas), versão e histórico |
 | `crm.html` | CRM comercial (React + Babel via CDN), funil e cadências |
 | `agenda.html` | agenda das pacientes (JS puro, fontes e SheetJS embutidos) |
+| `entradas.html` | entradas por dia, formas de pagamento, filtros e exportação (JS puro) |
 | `version.js` | **fonte única** de versão, codinome e changelog |
-| `logs.js` | registro técnico compartilhado pelas três páginas |
+| `logs.js` | registro técnico compartilhado pelas páginas |
 | `painel.js` | painel de manutenção do portal (entrada discreta + senha no servidor) |
 | `logo.png` / `favicon.png` | marca |
 
-Os dois sistemas guardam dados numa planilha do Google através de um Apps Script
+Os três sistemas guardam dados numa planilha do Google através de um Apps Script
 publicado como app da Web. O código do Apps Script **não vive neste repositório** —
 ele contém as senhas e fica só no computador da Vania e no editor do Apps Script.
 
 No painel de manutenção vale uma exceção à tipografia: valores técnicos, IDs e
 linhas de log usam fonte monoespaçada, porque coluna alinhada se lê melhor. O
 resto do site continua só com Cormorant e Montserrat.
+
+Cada módulo tem a sua própria senha, conferida no Apps Script, e o seu próprio
+portão de entrada — os três seguem o mesmo desenho: fundo teal profundo, cartão
+creme de 400 px, marca acima do nome do módulo, campo com cadeado e olho.
 
 Identidade visual: teal `#3B6E6A`, teal claro `#5A9490`, sage `#C9D3CA`, creme
 `#F5F0EB`, taupe `#A39384`, carvão `#2D2D2D`. Títulos em Cormorant Garamond,
@@ -63,7 +68,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA.
 
 ### Changelog
 

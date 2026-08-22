@@ -22,6 +22,42 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.3.0",
+      codinome: "COLHEITA",
+      data: "22/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "Módulo Entradas: registro do que entra, com nome, valor, data, o que é, forma de pagamento e observação — com senha própria, como o CRM e a agenda.",
+          "Uma entrada pode ser dividida em várias formas de pagamento, cada uma com o seu valor e parcelamento, e o valor total passa a ser a soma das partes.",
+          "Os dias aparecem em quadradinhos com o total de cada um; clicar abre as entradas daquele dia. Também dá para ver tudo em lista.",
+          "Sugestão de nomes já registrados enquanto você digita, sem se importar com maiúsculas ou acentos, e sugestão dos tratamentos no campo “o que é”.",
+          "Filtros por dia, semana e mês, por forma de pagamento e por nome ou serviço.",
+          "Exportação da tabela de uma data a outra, em planilha que abre direto no Excel, com uma coluna por forma de pagamento e linha de total.",
+          "Terceiro quadro na tela inicial, levando às Entradas."
+        ],
+        "Técnico": [
+          "As entradas ficam na mesma planilha do Google que já guarda o CRM e a agenda, em duas abas novas, e por isso abrem iguais no computador e no celular.",
+          "O valor é guardado em reais na planilha, para continuar legível para quem abrir a planilha direto.",
+          "Se a internet cair, a alteração fica no aparelho e sobe sozinha quando a conexão voltar."
+        ]
+      }
+    },
+    {
+      versao: "2.2.1",
+      codinome: "PRUMO",
+      data: "22/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "No painel de manutenção, a faixa das abas era espremida pelo conteúdo da aba aberta: os botões ficavam cortados e uma barra de rolagem aparecia por cima deles.",
+          "O painel encolhia e crescia a cada troca de aba, e as abas mudavam de lugar embaixo do dedo. Agora a janela mantém o mesmo tamanho e só o conteúdo rola."
+        ],
+        "Melhorado": [
+          "No celular as quatro abas do painel cabem na tela sem precisar arrastar a faixa para o lado.",
+          "A aba escolhida pelo teclado passou a mostrar um realce visível."
+        ]
+      }
+    },
+    {
       versao: "2.2.0",
       codinome: "LIMIAR",
       data: "21/08/2026",

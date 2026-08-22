@@ -152,9 +152,9 @@
 
     .acessos {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 24px;
-      max-width: 560px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 20px;
+      max-width: 840px;
       width: 100%;
       margin: 0 auto;
     }
@@ -654,7 +654,10 @@
 
     .painel {
       width: min(1040px, calc(100% - 24px));
-      max-height: min(90vh, 860px);
+      /* altura fixa de propósito: com max-height a janela encolhia e crescia
+         conforme o conteúdo de cada aba, e a faixa de abas mudava de lugar
+         embaixo do dedo a cada troca */
+      height: min(90vh, 860px);
     }
 
     /* o display fica preso ao estado aberto: uma regra de autor com display
@@ -666,17 +669,24 @@
     }
 
     .painel .janela-topo {
+      flex: 0 0 auto;
       padding-bottom: 0;
       border-bottom: none;
       flex-wrap: wrap;
     }
 
+    /* flex: 0 0 auto é o que impede a faixa de ser espremida pelo conteúdo da
+       aba aberta — sem isso os botões perdiam altura, ficavam cortados e a
+       barra de rolagem aparecia por cima deles. overflow-y fica explícito
+       porque overflow-x sozinho faria o outro eixo virar auto também. */
     .abas {
+      flex: 0 0 auto;
       display: flex;
       gap: 2px;
       padding: 14px 26px 0;
       border-bottom: 1px solid var(--linha);
       overflow-x: auto;
+      overflow-y: hidden;
     }
 
     .abas button {
@@ -702,6 +712,13 @@
     .abas button.on {
       color: var(--teal);
       border-bottom-color: var(--teal);
+    }
+
+    /* realce por dentro: a faixa não deixa passar nada para fora */
+    .abas button:focus-visible {
+      outline: 2px solid var(--teal);
+      outline-offset: -4px;
+      border-radius: 6px;
     }
 
     .painel .janela-corpo {
@@ -996,13 +1013,21 @@
       }
 
       .acessos {
-        gap: 14px;
+        grid-template-columns: 1fr;
+        gap: 12px;
         max-width: none;
       }
 
+      /* três quadrados empilhados não caberiam na tela; viram cartões baixos,
+         com o nome e o rodapé lado a lado */
       .quadro {
-        padding: 18px 16px;
+        aspect-ratio: auto;
+        padding: 16px 18px;
         border-radius: 12px;
+      }
+
+      .quadro .nome {
+        margin-top: 12px;
       }
 
       .quadro .nome {
@@ -1071,6 +1096,18 @@
       }
     }
 
+    /* no celular as quatro abas cabem sem arrastar a faixa para o lado */
+    @media (max-width: 560px) {
+      .abas {
+        padding: 12px 14px 0;
+      }
+
+      .abas button {
+        padding: 10px 9px;
+        letter-spacing: .1em;
+      }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *,
       *::before,
@@ -1126,6 +1163,18 @@
           <span class="nome">Agendamentos</span>
           <span class="desc">Retornos, ciclos e máquinas temporárias</span>
           <span class="meta">Pacientes &middot; Prazos<i>&rsaquo;</i></span>
+        </a>
+
+        <a class="quadro" href="entradas.html" data-modulo="Entradas" aria-label="Abrir as Entradas">
+          <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.1"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="8" width="26" height="16" rx="3" />
+            <circle cx="16" cy="16" r="3.6" />
+            <path d="M7.6 12.4v7.2M24.4 12.4v7.2" />
+          </svg>
+          <span class="nome">Entradas</span>
+          <span class="desc">O que entra, por dia e forma de pagamento</span>
+          <span class="meta">Valores &middot; Relatórios<i>&rsaquo;</i></span>
         </a>
       </nav>
 
@@ -1288,11 +1337,19 @@
         "<div><h3>Agenda</h3><p>Gerenciamento das pacientes, ciclos por área, condições, retornos, " +
         "máquinas temporárias e acompanhamento dos atendimentos.</p></div></div>" +
 
+        '<div class="modulo">' +
+        '<svg width="20" height="20" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" ' +
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<rect x="3" y="8" width="26" height="16" rx="3"/><circle cx="16" cy="16" r="3.6"/>' +
+        '<path d="M7.6 12.4v7.2M24.4 12.4v7.2"/></svg>' +
+        "<div><h3>Entradas</h3><p>Registro do que entra por dia, com forma de pagamento, " +
+        "parcelamento, filtros por período e exportação da planilha.</p></div></div>" +
+
         '<div class="ficha"><h4>Sistema</h4><dl>' +
         "<dt>Versão</dt><dd>v" + esc(atual.versao) + "</dd>" +
         "<dt>Codinome</dt><dd>" + esc(atual.codinome) + "</dd>" +
         "<dt>Publicada em</dt><dd>" + esc(atual.data) + "</dd>" +
-        "<dt>Módulos</dt><dd>CRM &middot; Agenda</dd>" +
+        "<dt>Módulos</dt><dd>CRM &middot; Agenda &middot; Entradas</dd>" +
         "</dl></div>" +
 
         '<p class="assinatura">Tecnologia pensada para simplificar o cuidado, a organização e o ' +
@@ -1308,9 +1365,9 @@
       Array.prototype.forEach.call(document.querySelectorAll(".quadro"), function (a) {
         a.addEventListener("click", function () {
           var modulo = a.getAttribute("data-modulo");
-          registrar(modulo === "CRM" ? "CRM_ACESSO" : "AGENDA_ACESSO", {
-            mensagem: "Saiu do portal para " + modulo,
-          });
+          var evento = modulo === "CRM" ? "CRM_ACESSO"
+            : modulo === "Entradas" ? "ENTRADAS_ACESSO" : "AGENDA_ACESSO";
+          registrar(evento, { mensagem: "Saiu do portal para " + modulo });
           if (window.FloreSerLogs) window.FloreSerLogs.enviar();
         });
       });
