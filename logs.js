@@ -66,11 +66,28 @@
     return tentar(function () { return global.FLORESER.rotulo; }, "");
   }
 
+  /* Os módulos moram em pastas (/crm/, /agenda/, /entradas/), então o nome
+     da página vem do último pedaço do caminho. A raiz do site — que pode
+     estar dentro da pasta do repositório — é sempre o portal. Os endereços
+     antigos, terminados em .html, continuam sendo reconhecidos pelo nome do
+     arquivo enquanto os atalhos existirem. */
+  var ROTAS = ["crm", "agenda", "entradas"];
+
   function pagina() {
     var caminho = tentar(function () { return global.location.pathname; }, "");
-    var arquivo = String(caminho).split("/").pop();
-    return arquivo || "index.html";
+    var partes = String(caminho).split("/").filter(function (p) { return p; });
+    var ultima = partes.length ? partes[partes.length - 1] : "";
+    if (ROTAS.indexOf(ultima) >= 0) return ultima;
+    if (ultima.slice(-5) === ".html") return ultima;
+    return "index.html";
   }
+
+  /* logs.js e version.js ficam na raiz do site; as páginas, um nível abaixo.
+     O endereço da raiz sai do próprio <script>, então vale de qualquer nível. */
+  var RAIZ = tentar(function () {
+    var atual = document.currentScript && document.currentScript.src;
+    return atual ? String(atual).replace(/[^/]*$/, "") : "";
+  }, "");
 
   /* ---------- identificação pseudônima ---------- */
 
@@ -308,7 +325,9 @@
 
   var aberturas = {
     "index.html": ["INDEX_ABERTO", "Portal aberto"],
+    "crm": ["CRM_ABERTO", "CRM aberto"],
     "crm.html": ["CRM_ABERTO", "CRM aberto"],
+    "agenda": ["AGENDA_ABERTO", "Agenda aberta"],
     "agenda.html": ["AGENDA_ABERTO", "Agenda aberta"],
   };
 
@@ -353,7 +372,7 @@
     if (!aqui) return;
 
     tentar(function () {
-      fetch("version.js?b=" + Date.now(), { cache: "no-store" })
+      fetch(RAIZ + "version.js?b=" + Date.now(), { cache: "no-store" })
         .then(function (r) { return r.text(); })
         .then(function (txt) {
           var m = String(txt).match(/versao:\s*"([\d.]+)"/);

@@ -22,6 +22,20 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.7.1",
+      codinome: "ATALHO",
+      data: "22/08/2026",
+      mudancas: {
+        "Alterado": [
+          "Os endereços das telas ficaram mais curtos e sem `.html`: o CRM é `/crm/`, a agenda `/agenda/` e as entradas `/entradas/`. A página inicial continua na raiz."
+        ],
+        "Técnico": [
+          "Cada módulo passou a morar numa pasta própria, e os arquivos compartilhados (marca, versão, registro e tema) continuam na raiz, chamados de um nível acima.",
+          "Os endereços antigos terminados em `.html` continuam funcionando: quem tiver o link salvo é levado para o novo, com o que vier depois do endereço preservado."
+        ]
+      }
+    },
+    {
       versao: "2.7.0",
       codinome: "SENTINELA",
       data: "22/08/2026",

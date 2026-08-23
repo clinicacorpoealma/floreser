@@ -1,19 +1,26 @@
 # Site interno — FloreSer · Corpo e Alma
 
-Site estático servido pelo GitHub Pages, sem build. Quatro páginas soltas na raiz,
-cada uma abrindo direto no navegador.
+Site estático servido pelo GitHub Pages, sem build. O portal fica na raiz e
+cada módulo mora numa pasta, para o endereço não mostrar `.html`:
+`/`, `/crm/`, `/agenda/`, `/entradas/`.
 
 | Arquivo | Papel |
 |---|---|
 | `index.html` | portal: três quadrados (CRM, Agendamentos e Entradas), versão e histórico |
-| `crm.html` | CRM comercial (React + Babel via CDN), funil e cadências |
-| `agenda.html` | agenda das pacientes (JS puro, fontes e SheetJS embutidos) |
-| `entradas.html` | entradas por dia, formas de pagamento, filtros e exportação (JS puro) |
+| `crm/index.html` | CRM comercial (React + Babel via CDN), funil e cadências |
+| `agenda/index.html` | agenda das pacientes (JS puro, fontes e SheetJS embutidos) |
+| `entradas/index.html` | entradas por dia, formas de pagamento, filtros e exportação (JS puro) |
+| `crm.html` `agenda.html` `entradas.html` | atalhos de uma linha para os endereços antigos |
 | `version.js` | **fonte única** de versão, codinome e changelog |
 | `logs.js` | registro técnico compartilhado pelas páginas |
 | `tema.js` | tema claro/escuro/automático: paleta, seletor e preferência local |
 | `painel.js` | painel de manutenção do portal (entrada discreta + senha no servidor) |
 | `logo.png` / `favicon.png` | marca |
+
+Os arquivos compartilhados ficam **sempre na raiz**. Como as páginas dos módulos
+estão um nível abaixo, elas os chamam com `../` — `../logo.png`, `../tema.js`.
+Página nova dentro de pasta segue a mesma regra, e a volta para o portal é
+`href="../"`, nunca `index.html`.
 
 Os três sistemas guardam dados numa planilha do Google através de um Apps Script
 publicado como app da Web. O código do Apps Script **não vive neste repositório** —
@@ -69,7 +76,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO.
 
 ### Changelog
 
