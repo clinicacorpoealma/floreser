@@ -22,6 +22,26 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.5.0",
+      codinome: "ORVALHO",
+      data: "22/08/2026",
+      mudancas: {
+        "Visual": [
+          "As Entradas passaram por um acabamento geral: mais respiro entre as seções, cantos mais macios, sombras leves em duas camadas e a lótus da marca em marca-d’água ao fundo, como no portal.",
+          "O total do período virou o número principal do resumo, maior que os outros três, para a leitura começar por ele.",
+          "O dia de hoje no calendário ganhou um pingo discreto, além do fundo, e os quadradinhos sobem de leve ao passar o mouse."
+        ],
+        "Adicionado": [
+          "Rodapé com a marca, a versão publicada e a volta para a tela inicial.",
+          "Entrada suave da tela depois da senha, com as seções aparecendo em sequência — respeitando quem prefere menos movimento."
+        ],
+        "Melhorado": [
+          "Textos de apoio, rótulos e legendas ficaram mais escuros e agora têm contraste de leitura de verdade, inclusive sobre o creme.",
+          "Alvos maiores no celular nas setas de período, nos filtros e no rodapé, e valores alinhados em coluna com numeração tabular."
+        ]
+      }
+    },
+    {
       versao: "2.4.0",
       codinome: "VERTENTE",
       data: "22/08/2026",
