@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" href="../favicon.png">
 <script src="../version.js"></script>
 <script src="../logs.js"></script>
+<script src="../auth.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin
     src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -133,6 +134,9 @@
     var CHAVE_TOKEN = "floreser.crm.sessao";
     var SESSAO = { token: "", rev: 0 };
 
+    /* de onde veio a sessão: a senha do módulo ou um usuário individual */
+    var ORIGEM_SESSAO = { tipo: "senhaModulo" };
+
     function guardarToken(x) { try { sessionStorage.setItem(CHAVE_TOKEN, x); } catch (e) { } }
     function tokenGuardado() { try { return sessionStorage.getItem(CHAVE_TOKEN) || ""; } catch (e) { return ""; } }
     function esquecerToken() { try { sessionStorage.removeItem(CHAVE_TOKEN); } catch (e) { } }
@@ -179,7 +183,11 @@
             );
             location.reload();
           }
-          if (r.erro === "sessao") esquecerToken();
+          if (r.erro === "sessao" || r.erro === "expirada" || r.erro === "inativo") esquecerToken();
+          if (r.erro === "sem_acesso") {
+            alert("Seu acesso ao CRM foi retirado. A página será recarregada.");
+            location.reload();
+          }
           throw new Error(r.erro || "falha ao salvar");
         }
         SESSAO.rev = r.rev;
@@ -352,6 +360,8 @@
     }
 
     function CRMFloreSer() {
+      const caixaQuem = React.useRef(null);
+
       const [carregando, setCarregando] = useState(true);
       const [erro, setErro] = useState(null);
       const [leads, setLeads] = useState([]);
@@ -365,6 +375,15 @@
       const [aberto, setAberto] = useState(null);
       const [importando, setImportando] = useState(false);
       const [faixaAberta, setFaixaAberta] = useState(null);
+
+      /* a marca "Amanda ▾" é montada fora do React, pelo auth.js, para os três
+         módulos usarem exatamente o mesmo componente */
+      useEffect(() => {
+        if (ORIGEM_SESSAO.tipo !== "usuario" || !caixaQuem.current) return;
+        if (caixaQuem.current.childElementCount) return;
+        window.FloreSerAuth.montarIdentidade(caixaQuem.current, function () { location.reload(); });
+        /* depende de "carregando": o cabeçalho só existe depois da tela de espera */
+      }, [carregando]);
 
       useEffect(() => {
         (async () => {
@@ -596,7 +615,9 @@
                 <a href="../" style={{ marginLeft: "auto", fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--crm-topo-rotulo)", textDecoration: "none" }}>
                   ‹ Início
                 </a>
+                <span ref={caixaQuem} style={{ display: "inline-flex" }}></span>
                 <button onClick={sairDoCRM} title="Encerrar a sessão neste aparelho"
+                  hidden={ORIGEM_SESSAO.tipo === "usuario"}
                   style={{ border: "none", background: "none", fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--crm-topo-rotulo)", padding: 0, cursor: "pointer" }}>
                   Sair
                 </button>
@@ -1420,6 +1441,40 @@
       const [estado, setEstado] = useState("form"); // form | verificando | ok
       const [erro, setErro] = useState("");
       const [mostrar, setMostrar] = useState(false);
+      const [modo, setModo] = useState("senha");   // senha | usuario
+      const [login, setLogin] = useState("");
+      const [senhaUsuario, setSenhaUsuario] = useState("");
+
+      /* Entrada por usuário individual. A permissão de verdade é conferida
+         pelo Apps Script em toda chamada; aqui só evitamos abrir a tela de
+         quem já sabemos que não tem acesso. */
+      async function entrarComUsuario() {
+        if (!login.trim() || !senhaUsuario) return;
+        setEstado("verificando");
+        setErro("");
+        try {
+          const r = await window.FloreSerAuth.entrar(login.trim(), senhaUsuario);
+          if (!r || !r.ok) {
+            setErro(window.FloreSerAuth.recado(r));
+            setSenhaUsuario("");
+            setEstado("form");
+            return;
+          }
+          if (!r.usuario.permissoes.crm) {
+            setErro("Você não possui acesso a este módulo.");
+            await window.FloreSerAuth.sair();
+            setSenhaUsuario("");
+            setEstado("form");
+            return;
+          }
+          SESSAO.token = r.token;
+          ORIGEM_SESSAO = { tipo: "usuario" };
+          setEstado("ok");
+        } catch (e) {
+          setErro("Sem conexão com o servidor. Confira sua internet.");
+          setEstado("form");
+        }
+      }
 
       /* Troca a senha por um token de sessão. A senha não fica guardada aqui
          nem é reenviada depois: daqui para a frente só o token viaja. */
@@ -1450,12 +1505,31 @@
         }
       }
 
-      /* volta com o token guardado; se ele já não valer, o portão fica de pé */
+      /* Ao abrir: primeiro a sessão de usuário guardada neste navegador, que
+         vale para os três módulos; depois a sessão da senha desta aba. */
       useEffect(() => {
-        const guardado = tokenGuardado();
-        if (!guardado) return;
         let vivo = true;
         (async () => {
+          if (window.FloreSerAuth && window.FloreSerAuth.token()) {
+            try {
+              const r = await window.FloreSerAuth.retomar("crm");
+              if (!vivo) return;
+              if (r && r.ok) {
+                SESSAO.token = window.FloreSerAuth.token();
+                ORIGEM_SESSAO = { tipo: "usuario" };
+                setEstado("ok");
+                return;
+              }
+              if (r && r.erro === "sem_acesso") {
+                setErro("Você não possui acesso a este módulo. Entre com a senha ou com outro usuário.");
+              } else if (r && r.erro === "expirada") {
+                setErro("Sua sessão expirou por inatividade. Entre novamente para continuar.");
+              }
+            } catch (e) { /* segue para a senha do módulo */ }
+          }
+
+          const guardado = tokenGuardado();
+          if (!guardado) return;
           SESSAO.token = guardado;
           try {
             const r = await chamarAPI({ acao: "ler", token: guardado });
@@ -1566,6 +1640,17 @@
             }
             @keyframes pt-gira { to { transform: rotate(360deg); } }
 
+            .pt-alternar {
+              width: 100%; margin-top: 12px; padding: 9px; border: none; background: none;
+              font-family: inherit; font-size: 11px; font-weight: 500; letter-spacing: .14em;
+              text-transform: uppercase; color: var(--crm-taupe); cursor: pointer;
+              border-radius: 8px; transition: color .18s ease, background .18s ease;
+            }
+            .pt-alternar:hover { color: var(--crm-verde); background: var(--crm-etiqueta-cad-bg); }
+            .pt-alternar:focus-visible { outline: 2px solid var(--crm-foco); outline-offset: 1px; }
+            .pt-campo + .pt-campo { margin-top: 10px; }
+            .pt-campo.simples input { padding-left: 14px; }
+
             .pt-volta {
               font-size: 9.5px; font-weight: 300; letter-spacing: .22em; text-transform: uppercase;
               color: rgba(255,255,255,.72); text-decoration: none; padding: 8px 12px;
@@ -1592,7 +1677,7 @@
             <p className="pt-tag">Clínica Corpo e Alma</p>
             <div className="pt-risco"></div>
 
-            <div className="pt-campo">
+            <div className="pt-campo" style={{ display: modo === "senha" ? "flex" : "none" }}>
               <label className="pt-so-leitor" htmlFor="pt-senha">Senha de acesso</label>
               <svg className="pt-cadeado" width="15" height="15" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
@@ -1633,6 +1718,26 @@
               </button>
             </div>
 
+            {modo === "usuario" && (
+              <>
+                <div className="pt-campo simples">
+                  <label className="pt-so-leitor" htmlFor="pt-login">Usuário</label>
+                  <input id="pt-login" type="text" value={login} autoCapitalize="none"
+                    spellCheck="false" autoComplete="username" placeholder="Usuário"
+                    disabled={carregando} autoFocus
+                    onChange={(e) => setLogin(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") entrarComUsuario(); }} />
+                </div>
+                <div className="pt-campo simples">
+                  <label className="pt-so-leitor" htmlFor="pt-usenha">Senha</label>
+                  <input id="pt-usenha" type="password" value={senhaUsuario}
+                    autoComplete="current-password" placeholder="Senha" disabled={carregando}
+                    onChange={(e) => setSenhaUsuario(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") entrarComUsuario(); }} />
+                </div>
+              </>
+            )}
+
             {erro && (
               <div className="pt-erro" role="alert">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1644,13 +1749,35 @@
               </div>
             )}
 
-            <button
-              className={carregando ? "pt-entrar carregando" : "pt-entrar"}
-              onClick={entrar}
-              disabled={carregando || !senha.trim()}
-            >
-              {carregando ? "Conectando…" : "Entrar"}
-            </button>
+            {modo === "senha" ? (
+              <>
+                <button
+                  className={carregando ? "pt-entrar carregando" : "pt-entrar"}
+                  onClick={entrar}
+                  disabled={carregando || !senha.trim()}
+                >
+                  {carregando ? "Conectando…" : "Entrar"}
+                </button>
+                <button type="button" className="pt-alternar"
+                  onClick={() => { setErro(""); setModo("usuario"); }}>
+                  Entrar com usuário
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className={carregando ? "pt-entrar carregando" : "pt-entrar"}
+                  onClick={entrarComUsuario}
+                  disabled={carregando || !login.trim() || !senhaUsuario}
+                >
+                  {carregando ? "Entrando…" : "Entrar"}
+                </button>
+                <button type="button" className="pt-alternar"
+                  onClick={() => { setErro(""); setModo("senha"); }}>
+                  ‹ Voltar para acesso por senha
+                </button>
+              </>
+            )}
           </div>
 
           <a className="pt-volta" href="../">‹ Início</a>

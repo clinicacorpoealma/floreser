@@ -238,6 +238,13 @@
   var relogio = null;
   var base = { logs: [], sessoes: [], resumo: {} };
   var aba = "visao";
+
+  /* Usuários: a lista vem do servidor a cada operação, então a tela nunca
+     mostra permissão que o servidor não confirmou. */
+  var usuarios = [];
+  var buscaUsuario = "";
+  var formUsuario = null;   // null | "novo" | {id:...} | {senha:id}
+  var recadoUsuario = "";
   var ordemDesc = true;
   var limite = POR_PAGINA;
   var selecionado = null;
@@ -266,6 +273,7 @@
       '<button data-aba="visao" class="on">Visão geral</button>' +
       '<button data-aba="logs">Logs</button>' +
       '<button data-aba="acessos">Acessos</button>' +
+      '<button data-aba="usuarios">Usu\u00e1rios</button>' +
       '<button data-aba="sistema">Sistema</button>' +
       "</div>" +
       '<div class="janela-corpo" id="painel-corpo" tabindex="0"></div>';
@@ -287,6 +295,7 @@
 
   function trocarAba(qual) {
     aba = qual;
+    if (qual === "usuarios" && !usuarios.length) carregarUsuarios();
     Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-aba]"), function (b) {
       b.className = b.getAttribute("data-aba") === qual ? "on" : "";
     });
@@ -326,11 +335,13 @@
     if (aba === "visao") html += visaoGeral();
     else if (aba === "logs") html += telaLogs();
     else if (aba === "acessos") html += telaAcessos();
+    else if (aba === "usuarios") html += telaUsuarios();
     else html += telaSistema();
 
     corpo.innerHTML = html;
     corpo.scrollTop = 0;
     ligarEventos();
+    if (aba === "usuarios") ligarEventosUsuarios();
   }
 
   /* ---------------------------------------------------- visão geral */
@@ -511,6 +522,244 @@
     html += '<div class="titulo-secao">Sessões registradas (' + outras.length + ")</div>";
     if (!outras.length) return html + '<div class="vazio">Nenhuma outra sessão registrada ainda.</div>';
     return html + outras.slice(0, 40).map(function (s) { return blocoSessao(s); }).join("");
+  }
+
+  /* ---------------------------------------------------- usuários */
+
+  function carregarUsuarios(depois) {
+    chamar({ acao: "usuarios_listar", token: credencial() }).then(function (r) {
+      if (r && r.erro === "sessao") { credencial(null); fechar(dlgPainel); pedirSenha(); return; }
+      usuarios = (r && r.ok && r.usuarios) ? r.usuarios : [];
+      if (typeof depois === "function") depois();
+      desenhar();
+    }).catch(function () {
+      recadoUsuario = "N\u00e3o foi poss\u00edvel falar com o servidor.";
+      desenhar();
+    });
+  }
+
+  function operarUsuario(corpo) {
+    corpo.token = credencial();
+    chamar(corpo).then(function (r) {
+      if (r && r.erro === "sessao") { credencial(null); fechar(dlgPainel); pedirSenha(); return; }
+      if (r && r.ok) {
+        usuarios = r.usuarios || usuarios;
+        formUsuario = null;
+        recadoUsuario = "";
+      } else {
+        recadoUsuario = (r && r.mensagem) || "N\u00e3o foi poss\u00edvel concluir.";
+      }
+      desenhar();
+    }).catch(function () {
+      recadoUsuario = "Sem conex\u00e3o com o servidor.";
+      desenhar();
+    });
+  }
+
+  function selosDoUsuario(u) {
+    var p = u.permissoes || {};
+    var quais = [];
+    if (p.crm) quais.push("CRM");
+    if (p.agenda) quais.push("Agenda");
+    if (p.entradas) quais.push("Entradas");
+    if (!quais.length) quais.push("sem m\u00f3dulos");
+    return quais.join(" &middot; ");
+  }
+
+  function caixa(nome, rotulo, marcado) {
+    return '<label class="marcar"><input type="checkbox" data-campo="' + nome + '"' +
+      (marcado ? " checked" : "") + "> " + rotulo + "</label>";
+  }
+
+  function formularioUsuario() {
+    var novo = formUsuario === "novo";
+    var u = novo ? { permissoes: {} } : (formUsuario || {});
+    var p = u.permissoes || {};
+    return '<div class="form-usuario">' +
+      '<div class="titulo-secao">' + (novo ? "Novo usu\u00e1rio" : "Editar usu\u00e1rio") + "</div>" +
+      '<label class="rot">Nome<input id="u-nome" type="text" value="' + esc(u.nome || "") + '"></label>' +
+      '<label class="rot">Usu\u00e1rio<input id="u-login" type="text" autocapitalize="none" ' +
+      'spellcheck="false" value="' + esc(u.usuario || "") + '"></label>' +
+      (novo
+        ? '<label class="rot">Senha<input id="u-senha" type="password" autocomplete="new-password"></label>' +
+          '<label class="rot">Confirmar senha<input id="u-senha2" type="password" autocomplete="new-password"></label>'
+        : "") +
+      '<div class="titulo-secao">Permiss\u00f5es</div>' +
+      '<div class="marcadores">' +
+      caixa("crm", "CRM", !!p.crm) +
+      caixa("agenda", "Agenda", !!p.agenda) +
+      caixa("entradas", "Entradas", !!p.entradas) +
+      caixa("admin", "Administrador (abre todos)", !!u.admin) +
+      "</div>" +
+      (recadoUsuario ? '<div class="aviso-form">' + esc(recadoUsuario) + "</div>" : "") +
+      '<div class="acoes-form">' +
+      '<button class="btn-fino" id="u-salvar">' + (novo ? "Criar usu\u00e1rio" : "Salvar") + "</button>" +
+      '<button class="btn-fino" id="u-cancelar">Cancelar</button>' +
+      "</div></div>";
+  }
+
+  function formularioSenha() {
+    var u = formUsuario.senha;
+    return '<div class="form-usuario">' +
+      '<div class="titulo-secao">Redefinir senha de ' + esc(u.nome) + "</div>" +
+      '<label class="rot">Nova senha<input id="u-senha" type="password" autocomplete="new-password"></label>' +
+      '<label class="rot">Confirmar nova senha<input id="u-senha2" type="password" autocomplete="new-password"></label>' +
+      '<p class="nota-privacidade">A senha anterior deixa de funcionar na hora, e as sess\u00f5es ' +
+      "abertas dessa pessoa s\u00e3o encerradas.</p>" +
+      (recadoUsuario ? '<div class="aviso-form">' + esc(recadoUsuario) + "</div>" : "") +
+      '<div class="acoes-form">' +
+      '<button class="btn-fino" id="u-salvar-senha">Redefinir</button>' +
+      '<button class="btn-fino" id="u-cancelar">Cancelar</button>' +
+      "</div></div>";
+  }
+
+  function telaUsuarios() {
+    if (formUsuario && formUsuario.senha) return formularioSenha();
+    if (formUsuario) return formularioUsuario();
+
+    var alvo = buscaUsuario.toLowerCase();
+    var lista = usuarios.filter(function (u) {
+      if (!alvo) return true;
+      return (u.nome + " " + u.usuario).toLowerCase().indexOf(alvo) >= 0;
+    });
+
+    var html = '<div class="ferramentas">' +
+      '<input type="search" id="u-busca" placeholder="Buscar usu\u00e1rio\u2026" value="' +
+      esc(buscaUsuario) + '">' +
+      '<button class="btn-fino" id="u-novo">+ Novo usu\u00e1rio</button>' +
+      '<button class="btn-fino" id="u-atualizar">Atualizar</button>' +
+      "</div>" +
+      '<p class="nota-privacidade">Os usu\u00e1rios entram pelos m\u00f3dulos, no bot\u00e3o ' +
+      "\u201cEntrar com usu\u00e1rio\u201d. A senha compartilhada de cada m\u00f3dulo continua " +
+      "valendo do mesmo jeito. Senhas nunca s\u00e3o mostradas aqui \u2014 nem para mim.</p>";
+
+    if (recadoUsuario) html += '<div class="aviso-form">' + esc(recadoUsuario) + "</div>";
+
+    if (!lista.length) {
+      return html + '<div class="vazio">' +
+        (usuarios.length ? "Nenhum usu\u00e1rio com esse nome."
+          : "Nenhum usu\u00e1rio cadastrado ainda. Crie o primeiro no bot\u00e3o acima.") +
+        "</div>";
+    }
+
+    return html + lista.map(function (u) {
+      return '<div class="cartao-usuario' + (u.ativo ? "" : " inativo") + '">' +
+        '<div class="topo-usuario">' +
+        "<div><h4>" + esc(u.nome) + "</h4>" +
+        '<div class="arroba">@' + esc(u.usuario) + (u.admin ? " &middot; administrador" : "") + "</div></div>" +
+        '<span class="selo-status">' + (u.ativo ? "Ativo" : "Inativo") + "</span>" +
+        "</div>" +
+        '<div class="modulos-usuario">' + selosDoUsuario(u) + "</div>" +
+        '<div class="ultimo-login">\u00daltimo login: ' +
+        (u.ultimoLogin ? dataHora(u.ultimoLogin) : "nunca entrou") + "</div>" +
+        '<div class="acoes-usuario">' +
+        '<button class="btn-fino" data-editar="' + esc(u.id) + '">Editar</button>' +
+        '<button class="btn-fino" data-senha="' + esc(u.id) + '">Redefinir senha</button>' +
+        '<button class="btn-fino' + (u.ativo ? " perigo" : "") + '" data-status="' + esc(u.id) +
+        '" data-ativo="' + (u.ativo ? "0" : "1") + '">' +
+        (u.ativo ? "Desativar" : "Reativar") + "</button>" +
+        "</div></div>";
+    }).join("");
+  }
+
+  function acharUsuario(id) {
+    var achados = usuarios.filter(function (u) { return u.id === id; });
+    return achados.length ? achados[0] : null;
+  }
+
+  function lerFormulario() {
+    var corpo = {
+      nome: (document.getElementById("u-nome") || {}).value || "",
+      usuario: (document.getElementById("u-login") || {}).value || "",
+    };
+    Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-campo]"), function (c) {
+      corpo[c.getAttribute("data-campo")] = c.checked;
+    });
+    return corpo;
+  }
+
+  function senhasConferem() {
+    var a = (document.getElementById("u-senha") || {}).value || "";
+    var b = (document.getElementById("u-senha2") || {}).value || "";
+    if (a.length < 6) { recadoUsuario = "A senha precisa de pelo menos 6 caracteres."; return null; }
+    if (a !== b) { recadoUsuario = "As duas senhas n\u00e3o s\u00e3o iguais."; return null; }
+    return a;
+  }
+
+  function ligarEventosUsuarios() {
+    var busca = document.getElementById("u-busca");
+    if (busca) {
+      busca.addEventListener("input", function () {
+        buscaUsuario = busca.value;
+        var onde = busca.selectionStart;
+        desenhar();
+        var novo = document.getElementById("u-busca");
+        if (novo) { novo.focus(); novo.setSelectionRange(onde, onde); }
+      });
+    }
+
+    var novo = document.getElementById("u-novo");
+    if (novo) novo.addEventListener("click", function () {
+      formUsuario = "novo"; recadoUsuario = ""; desenhar();
+    });
+
+    var atualizar = document.getElementById("u-atualizar");
+    if (atualizar) atualizar.addEventListener("click", function () { carregarUsuarios(); });
+
+    var cancelar = document.getElementById("u-cancelar");
+    if (cancelar) cancelar.addEventListener("click", function () {
+      formUsuario = null; recadoUsuario = ""; desenhar();
+    });
+
+    var salvar = document.getElementById("u-salvar");
+    if (salvar) salvar.addEventListener("click", function () {
+      var corpo = lerFormulario();
+      recadoUsuario = "";
+      if (formUsuario === "novo") {
+        var senha = senhasConferem();
+        if (!senha) { desenhar(); return; }
+        corpo.acao = "usuario_criar";
+        corpo.senha = senha;
+      } else {
+        corpo.acao = "usuario_editar";
+        corpo.id = formUsuario.id;
+      }
+      operarUsuario(corpo);
+    });
+
+    var salvarSenha = document.getElementById("u-salvar-senha");
+    if (salvarSenha) salvarSenha.addEventListener("click", function () {
+      recadoUsuario = "";
+      var senha = senhasConferem();
+      if (!senha) { desenhar(); return; }
+      operarUsuario({ acao: "usuario_senha", id: formUsuario.senha.id, senha: senha });
+    });
+
+    Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-editar]"), function (b) {
+      b.addEventListener("click", function () {
+        formUsuario = acharUsuario(b.getAttribute("data-editar"));
+        recadoUsuario = "";
+        desenhar();
+      });
+    });
+
+    Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-senha]"), function (b) {
+      b.addEventListener("click", function () {
+        formUsuario = { senha: acharUsuario(b.getAttribute("data-senha")) };
+        recadoUsuario = "";
+        desenhar();
+      });
+    });
+
+    Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-status]"), function (b) {
+      b.addEventListener("click", function () {
+        var ativo = b.getAttribute("data-ativo") === "1";
+        var u = acharUsuario(b.getAttribute("data-status"));
+        if (!ativo && u && !confirm("Desativar " + u.nome +
+          "? As sess\u00f5es abertas dessa pessoa ser\u00e3o encerradas.")) return;
+        operarUsuario({ acao: "usuario_status", id: b.getAttribute("data-status"), ativo: ativo });
+      });
+    });
   }
 
   /* ---------------------------------------------------- sistema */

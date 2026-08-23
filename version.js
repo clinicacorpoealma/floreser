@@ -22,6 +22,28 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.8.0",
+      codinome: "CANTEIRO",
+      data: "23/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "Entrada por usuário individual nos três módulos, no botão “Entrar com usuário” logo abaixo do campo de senha. Cada pessoa tem o seu login e só abre os módulos que você liberar.",
+          "Área de Usuários no painel de manutenção: criar, editar, redefinir senha, desativar e reativar, com busca e a lista de quem entrou pela última vez.",
+          "Depois de entrar como usuário, o nome aparece no alto da tela e abre um menu com os módulos liberados e o botão de sair."
+        ],
+        "Alterado": [
+          "Quem entra por usuário continua entrando por sete dias sem precisar digitar de novo, mesmo fechando o navegador — o prazo é renovado a cada uso e só vence depois de sete dias parado.",
+          "Entrar num módulo vale para os outros: quem tem acesso aos três passa de um para o outro sem nova senha.",
+          "A senha compartilhada de cada módulo continua funcionando exatamente como antes, para quem preferir."
+        ],
+        "Técnico": [
+          "As senhas dos usuários nunca são guardadas: a planilha grava só um resumo embaralhado, com tempero individual e do servidor, repetido milhares de vezes.",
+          "O servidor confere a pessoa, o prazo e a permissão em toda leitura e gravação — tirar um módulo de alguém corta o acesso na chamada seguinte, e desativar ou trocar a senha encerra as sessões abertas.",
+          "Duas abas novas na planilha, Usuarios e Usuarios_Sessoes, criadas sozinhas na primeira vez."
+        ]
+      }
+    },
+    {
       versao: "2.7.1",
       codinome: "ATALHO",
       data: "22/08/2026",

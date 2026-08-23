@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Montserrat:wght@300;400;500;600;700&display=swap">
 <script src="../version.js"></script>
 <script src="../logs.js"></script>
+<script src="../auth.js"></script>
 
 <style>
 /* ============================================================
@@ -634,6 +635,10 @@ body.entrou .rodape{animation-delay:.24s}
 /* o cartão do portão precisa se descolar do fundo quase preto */
 :root[data-tema="escuro"] #portao .cartao{background:var(--surface);border:1px solid var(--border)}
 :root[data-tema="escuro"] #portao input{background:var(--surface-2)}
+:root[data-tema="escuro"] #portao{--fundo-alternar:var(--accent-soft)}
+:root[data-tema="escuro"]{--fs-menu-fundo:var(--surface);--fs-menu-borda:var(--border);
+  --fs-menu-texto:var(--text);--fs-menu-suave:var(--text-3);--fs-menu-selo:var(--accent-soft);
+  --fs-menu-selo-cor:var(--accent);--fs-menu-sair:var(--danger)}
 
 :root[data-tema="escuro"] .topbar{
   background:color-mix(in srgb, var(--bg) 92%, transparent);
@@ -693,6 +698,17 @@ body.entrou .rodape{animation-delay:.24s}
 #portao .olho .fechado{display:none}
 #portao .olho.aberto .destapado{display:none}
 #portao .olho.aberto .fechado{display:block}
+
+/* o segundo caminho de entrada: discreto, abaixo do botão principal */
+#portao .alternar{width:100%;margin-top:12px;padding:9px;border:none;background:none;
+  font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--taupe);cursor:pointer;border-radius:8px;
+  transition:color .18s ease, background .18s ease}
+#portao .alternar:hover{color:var(--teal);background:var(--fundo-alternar,rgba(201,211,202,.35))}
+#portao .alternar:focus-visible{outline:2px solid var(--teal-light);outline-offset:1px}
+#portao .campo + .campo{margin-top:10px}
+#portao .campo.simples input{padding-left:14px}
+#portao .risco.curto{margin:18px auto 20px}
 
 #portao .erro{display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding:10px 12px;
   border-radius:8px;background:var(--alerta-bg);color:var(--alerta);
@@ -764,6 +780,7 @@ body.entrou .rodape{animation-delay:.24s}
     <p class="tag">Clínica Corpo e Alma</p>
     <div class="risco"></div>
 
+    <div id="face-senha">
     <div class="campo">
       <label class="so-leitor" for="portao-senha">Senha de acesso</label>
       <svg class="cadeado" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -790,6 +807,24 @@ body.entrou .rodape{animation-delay:.24s}
 
     <div class="erro" id="portao-erro" role="alert"></div>
     <button id="portao-btn">Entrar</button>
+    <button type="button" class="alternar" id="ir-usuario">Entrar com usuário</button>
+    </div>
+
+    <div id="face-usuario" hidden>
+      <div class="campo simples">
+        <label class="so-leitor" for="u-login">Usuário</label>
+        <input type="text" id="u-login" placeholder="Usuário" autocomplete="username"
+               autocapitalize="none" spellcheck="false">
+      </div>
+      <div class="campo simples">
+        <label class="so-leitor" for="u-senha">Senha</label>
+        <input type="password" id="u-senha" placeholder="Senha"
+               autocomplete="current-password" enterkeyhint="go">
+      </div>
+      <div class="erro" id="u-erro" role="alert"></div>
+      <button id="u-btn">Entrar</button>
+      <button type="button" class="alternar" id="ir-senha">&lsaquo; Voltar para acesso por senha</button>
+    </div>
   </div>
   <a class="volta" href="../">&lsaquo; Início</a>
 </div>
@@ -805,6 +840,7 @@ body.entrou .rodape{animation-delay:.24s}
     </div>
     <div class="topbar-actions">
       <a class="voltar" href="../">&lsaquo; Início</a>
+      <span id="quemEsta"></span>
       <button type="button" class="voltar" id="btnSair" title="Encerrar a sessão neste aparelho">Sair</button>
       <span class="save-status" id="saveStatus" data-state="idle"><span class="dot"></span><span id="saveText">Carregando</span></span>
       <button class="btn btn-ghost" id="btnExport">Exportar</button>
@@ -1202,7 +1238,12 @@ body.entrou .rodape{animation-delay:.24s}
       });
       if (!r.ok) {
         if (r.erro === "conflito") { conflito(); return; }
-        if (r.erro === "sessao") {
+        if (r.erro === "sem_acesso") {
+          travado = true; setStatus("expirado");
+          toast("Seu acesso a este módulo foi retirado. Recarregue a página.");
+          return;
+        }
+        if (r.erro === "sessao" || r.erro === "expirada" || r.erro === "inativo") {
           /* não recarrego sozinho: se houver algo digitado agora, seria perdido */
           travado = true; esquecerToken(); setStatus("expirado");
           toast("Sua sessão expirou. Recarregue a página e informe a senha.");
@@ -2135,6 +2176,9 @@ body.entrou .rodape{animation-delay:.24s}
   const elErro = el("portao-erro");
   const elBtnEntrar = el("portao-btn");
 
+  /* de onde veio a sessão desta aba: a senha do módulo ou um usuário */
+  let origemSessao = "senhaModulo";
+
   /* sessionStorage: vale para esta aba, neste navegador, neste aparelho */
   function guardarToken(x) { try { sessionStorage.setItem(CHAVE_TOKEN, x); } catch (e) { } }
   function tokenGuardado() { try { return sessionStorage.getItem(CHAVE_TOKEN) || ""; } catch (e) { return ""; } }
@@ -2218,6 +2262,82 @@ body.entrou .rodape{animation-delay:.24s}
     location.reload();
   }
 
+  /* ---------- entrada por usuário ---------- */
+
+  function mostrarFace(qual) {
+    el("face-senha").hidden = qual !== "senha";
+    el("face-usuario").hidden = qual !== "usuario";
+    if (qual === "usuario") el("u-login").focus(); else elSenha.focus();
+  }
+
+  function avisarUsuario(texto) {
+    el("u-erro").innerHTML = texto ? AVISO + "<span>" + esc(texto) + "</span>" : "";
+  }
+
+  function ocupadoUsuario(ligado) {
+    const b = el("u-btn");
+    b.disabled = ligado;
+    b.classList.toggle("carregando", ligado);
+    b.textContent = ligado ? "Entrando…" : "Entrar";
+    el("u-login").disabled = ligado;
+    el("u-senha").disabled = ligado;
+  }
+
+  async function entrarComUsuario() {
+    const login = el("u-login").value.trim();
+    const senha = el("u-senha").value;
+    if (!login || !senha) { el(login ? "u-senha" : "u-login").focus(); return; }
+
+    ocupadoUsuario(true);
+    avisarUsuario("");
+    try {
+      const r = await window.FloreSerAuth.entrar(login, senha);
+      if (!r || !r.ok) {
+        avisarUsuario(window.FloreSerAuth.recado(r));
+        el("u-senha").value = "";
+        ocupadoUsuario(false);
+        el("u-senha").focus();
+        return;
+      }
+      if (!r.usuario.permissoes.entradas) {
+        avisarUsuario("Você não possui acesso a este módulo.");
+        await window.FloreSerAuth.sair();
+        el("u-senha").value = "";
+        ocupadoUsuario(false);
+        return;
+      }
+      SESSAO.token = r.token;
+      origemSessao = "usuario";
+      await carregar();
+      abrirApp();
+    } catch (e) {
+      avisarUsuario("Não foi possível falar com o servidor. Confira sua internet.");
+      ocupadoUsuario(false);
+    }
+  }
+
+  /* volta com a sessão de usuário guardada neste navegador */
+  async function retomarUsuario() {
+    const r = await window.FloreSerAuth.retomar("entradas");
+    if (!r || !r.ok) {
+      if (r && r.erro === "sem_acesso") {
+        avisar("Você não possui acesso a este módulo. Entre com a senha ou com outro usuário.");
+      } else if (r && r.erro === "expirada") {
+        avisar("Sua sessão expirou por inatividade. Entre novamente para continuar.");
+      }
+      return false;
+    }
+    SESSAO.token = window.FloreSerAuth.token();
+    origemSessao = "usuario";
+    try {
+      await carregar();
+      abrirApp();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function abrirApp() {
     elPortao.remove();
     document.body.style.overflow = "";
@@ -2227,6 +2347,11 @@ body.entrou .rodape{animation-delay:.24s}
     setStatus("saved");
     render();
     renderBackupNote();
+    if (origemSessao === "usuario" && window.FloreSerAuth) {
+      window.FloreSerAuth.montarIdentidade(el("quemEsta"), function () { location.reload(); });
+      const sair = el("btnSair");
+      if (sair) sair.hidden = true;   /* quem entrou como usuário sai pelo menu */
+    }
     if (window.FloreSerLogs) {
       window.FloreSerLogs.registrar("ENTRADAS_ABERTO", {
         mensagem: "Entradas abertas com " + state.entradas.length + " registro(s)"
@@ -2263,8 +2388,22 @@ body.entrou .rodape{animation-delay:.24s}
     const btnSair = el("btnSair");
     if (btnSair) btnSair.addEventListener("click", sair);
 
-    const guardado = tokenGuardado();
-    if (guardado) retomar(guardado); else elSenha.focus();
+    el("ir-usuario").addEventListener("click", () => mostrarFace("usuario"));
+    el("ir-senha").addEventListener("click", () => { avisarUsuario(""); mostrarFace("senha"); });
+    el("u-btn").addEventListener("click", entrarComUsuario);
+    ["u-login", "u-senha"].forEach(function (id) {
+      el(id).addEventListener("keydown", ev => { if (ev.key === "Enter") entrarComUsuario(); });
+    });
+
+    /* ordem de tentativa: a sessão de usuário (que vale entre módulos) e,
+       se não houver, a sessão da senha compartilhada desta aba */
+    (async function () {
+      if (window.FloreSerAuth && window.FloreSerAuth.token()) {
+        if (await retomarUsuario()) return;
+      }
+      const guardado = tokenGuardado();
+      if (guardado) retomar(guardado); else elSenha.focus();
+    })();
   }
 
   boot();
