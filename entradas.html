@@ -8,6 +8,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#3B6E6A">
 <link rel="icon" type="image/png" href="favicon.png">
+<script src="tema.js"></script>
 <link rel="apple-touch-icon" href="favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -201,7 +202,6 @@ body::before{
 .stat-value small{font-size:.5em;font-weight:500;color:var(--text-3);margin-right:3px;letter-spacing:0}
 .stat-note{font-size:11.5px;color:var(--text-3);margin-top:3px}
 /* o total do período manda na hierarquia: é o número que ela procura primeiro */
-.stat.is-accent{background:linear-gradient(var(--surface),var(--surface)) padding-box}
 .stat.is-accent .stat-value{color:var(--accent);font-size:36px}
 .stat.is-haver .stat-value{color:var(--m-haver-fg)}
 @media (hover:hover){ .stat:hover{background:var(--surface-2)} }
@@ -524,7 +524,8 @@ select.input{
    Rodapé
    ============================================================ */
 .rodape{
-  max-width:1180px;margin:0 auto;padding:26px 20px 44px;
+  /* a folga extra embaixo é o espaço do seletor de tema, que flutua no canto */
+  max-width:1180px;margin:0 auto;padding:26px 20px 76px;
   display:flex;align-items:center;gap:16px;flex-wrap:wrap;
   border-top:1px solid var(--border);
 }
@@ -614,7 +615,7 @@ body.entrou .rodape{animation-delay:.24s}
   .entry{flex-wrap:wrap;padding:14px 15px}
   .entry-value{margin-left:auto}
   .day-card-head{padding:14px 15px}
-  .rodape{padding:22px 14px 34px;gap:12px}
+  .rodape{padding:22px 14px 66px;gap:12px}
   .rodape-fio{display:none}
   .rodape-link{margin-left:auto;padding:11px 12px}
 }
@@ -624,9 +625,35 @@ body.entrou .rodape{animation-delay:.24s}
 }
 
 /* ============================================================
+   Tema escuro — só o que é próprio desta tela. O resto das cores
+   vem das variáveis trocadas em tema.js.
+   ============================================================ */
+:root[data-tema="escuro"] body::before{opacity:.05;filter:brightness(0) invert(1)}
+
+/* o cartão do portão precisa se descolar do fundo quase preto */
+:root[data-tema="escuro"] #portao .cartao{background:var(--surface);border:1px solid var(--border)}
+:root[data-tema="escuro"] #portao input{background:var(--surface-2)}
+
+:root[data-tema="escuro"] .topbar{
+  background:color-mix(in srgb, var(--bg) 92%, transparent);
+  box-shadow:0 10px 24px -22px rgba(0,0,0,.9);
+}
+:root[data-tema="escuro"] .btn-primary{color:var(--on-accent)}
+:root[data-tema="escuro"] .btn-primary:hover{box-shadow:0 8px 18px -10px rgba(0,0,0,.75)}
+:root[data-tema="escuro"] .seg button[aria-pressed="true"]{
+  background:var(--accent);color:var(--on-accent);box-shadow:none;
+}
+:root[data-tema="escuro"] .dist-bar{box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
+:root[data-tema="escuro"] #search:focus{box-shadow:0 0 0 3px rgba(127,184,178,.18)}
+:root[data-tema="escuro"] dialog::backdrop{background:rgba(6,11,10,.62)}
+:root[data-tema="escuro"] .toast{background:var(--surface-3);color:var(--text);
+  border:1px solid var(--border)}
+:root[data-tema="escuro"] .day.is-today::after{opacity:.9}
+
+/* ============================================================
    Portão de entrada — mesmo desenho do CRM e da agenda
    ============================================================ */
-#portao{position:fixed;inset:0;z-index:500;background:var(--teal-deep);
+#portao{position:fixed;inset:0;z-index:500;background:var(--teal-escuro-fundo);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:18px;padding:28px 20px;overflow:hidden}
 #portao::before{content:"";position:absolute;right:-140px;bottom:-170px;width:520px;height:520px;
@@ -653,14 +680,14 @@ body.entrou .rodape{animation-delay:.24s}
   border:1px solid var(--linha);border-radius:10px;font-family:var(--sans);font-size:15px;
   color:var(--carvao);letter-spacing:.02em;text-align:left;
   transition:border-color .18s ease, box-shadow .18s ease}
-#portao input::placeholder{color:#B9B0A6;letter-spacing:.01em}
+#portao input::placeholder{color:var(--text-3);letter-spacing:.01em}
 #portao input:focus{outline:none;border-color:var(--teal-light);
   box-shadow:0 0 0 3px rgba(90,148,144,.16)}
 
 #portao .olho{position:absolute;right:6px;width:34px;height:34px;display:flex;
   align-items:center;justify-content:center;border:none;border-radius:8px;background:none;
   color:var(--taupe);cursor:pointer;transition:color .18s ease, background .18s ease}
-#portao .olho:hover{color:var(--teal);background:rgba(201,211,202,.45)}
+#portao .olho:hover{color:var(--teal);background:var(--accent-soft)}
 #portao .olho:focus-visible{outline:2px solid var(--teal-light);outline-offset:1px}
 #portao .olho .fechado{display:none}
 #portao .olho.aberto .destapado{display:none}
@@ -674,13 +701,13 @@ body.entrou .rodape{animation-delay:.24s}
 #portao .erro svg{flex:0 0 auto;margin-top:1px}
 
 #portao button#portao-btn{width:100%;margin-top:16px;padding:13px;border:none;border-radius:10px;
-  background:var(--teal);color:#fff;font-family:var(--sans);font-size:13.5px;font-weight:600;
+  background:var(--teal-fundo);color:var(--sobre-teal);font-family:var(--sans);font-size:13.5px;font-weight:600;
   letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:10px;
   transition:background .18s ease, box-shadow .2s ease, transform .15s ease}
-#portao button#portao-btn:hover{background:var(--teal-light);box-shadow:0 8px 20px rgba(59,110,106,.28)}
+#portao button#portao-btn:hover{background:var(--teal-fundo-hover);box-shadow:0 8px 20px rgba(59,110,106,.28)}
 #portao button#portao-btn:active{transform:translateY(1px)}
 #portao button#portao-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
-#portao button#portao-btn[disabled]{opacity:.72;cursor:default;box-shadow:none;background:var(--teal)}
+#portao button#portao-btn[disabled]{opacity:.72;cursor:default;box-shadow:none;background:var(--teal-fundo)}
 #portao button#portao-btn.carregando::after{content:"";width:14px;height:14px;border-radius:50%;
   border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
   animation:portao-gira .7s linear infinite}

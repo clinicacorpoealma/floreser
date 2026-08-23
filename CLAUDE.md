@@ -11,6 +11,7 @@ cada uma abrindo direto no navegador.
 | `entradas.html` | entradas por dia, formas de pagamento, filtros e exportação (JS puro) |
 | `version.js` | **fonte única** de versão, codinome e changelog |
 | `logs.js` | registro técnico compartilhado pelas páginas |
+| `tema.js` | tema claro/escuro/automático: paleta, seletor e preferência local |
 | `painel.js` | painel de manutenção do portal (entrada discreta + senha no servidor) |
 | `logo.png` / `favicon.png` | marca |
 
@@ -68,7 +69,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA.
 
 ### Changelog
 

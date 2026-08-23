@@ -9,6 +9,7 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#3B6E6A">
   <link rel="icon" type="image/png" href="favicon.png">
+  <script src="tema.js"></script>
   <link rel="apple-touch-icon" href="favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,6 +34,35 @@
       --raio: 14px;
       --sombra: 0 1px 2px rgba(45, 45, 45, .04), 0 10px 28px rgba(59, 110, 106, .09);
       --sombra-alta: 0 2px 4px rgba(45, 45, 45, .05), 0 18px 40px rgba(59, 110, 106, .16);
+
+      /* selos de nível do painel de manutenção */
+      --nivel-info-bg: #E7EEEB;
+      --nivel-warning-bg: #F4EBDD;
+      --nivel-warning-fg: #8A6127;
+      --nivel-error-bg: #F5E5DE;
+      --nivel-error-fg: #93482A;
+      --nivel-security-bg: #E5E2ED;
+      --nivel-security-fg: #4C4470;
+
+      /* brilho e fios sobre o teal dos quadros de acesso */
+      --sobre-teal-fraco: rgba(255, 255, 255, .78);
+      --sobre-teal-fio: rgba(255, 255, 255, .16);
+      --sobre-teal-brilho: rgba(255, 255, 255, .05);
+    }
+
+    /* ---------- Tema escuro: só o que é próprio desta página ----------
+       O resto das cores vem das variáveis da marca, trocadas em tema.js. */
+    :root[data-tema="escuro"] {
+      --nivel-info-bg: #22403D;
+      --nivel-warning-bg: #3A3122;
+      --nivel-warning-fg: #D8B98A;
+      --nivel-error-bg: #3A241D;
+      --nivel-error-fg: #E79B82;
+      --nivel-security-bg: #2A2A3D;
+      --nivel-security-fg: #B0AAD6;
+      --sobre-teal-fraco: rgba(234, 241, 239, .74);
+      --sobre-teal-fio: rgba(234, 241, 239, .14);
+      --sobre-teal-brilho: rgba(234, 241, 239, .04);
     }
 
     * {
@@ -65,8 +95,24 @@
       height: 620px;
       background: url("logo.png") no-repeat center / contain;
       opacity: .04;
+      transition: opacity .22s ease, filter .22s ease;
       pointer-events: none;
       z-index: 0;
+    }
+
+    :root[data-tema="escuro"] body::before {
+      opacity: .05;
+      filter: brightness(0) invert(1);
+    }
+
+    /* o fundo do site inteiro no escuro: o creme já vira teal profundo em
+       tema.js, aqui só o cartão de janela precisa de ajuste de sombra */
+    :root[data-tema="escuro"] dialog {
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .55);
+    }
+
+    :root[data-tema="escuro"] dialog::backdrop {
+      background: rgba(8, 14, 13, .66);
     }
 
     .moldura {
@@ -167,8 +213,8 @@
       align-items: flex-start;
       padding: 26px 24px;
       border-radius: var(--raio);
-      background: var(--teal);
-      color: var(--branco);
+      background: var(--teal-fundo);
+      color: var(--sobre-teal);
       text-decoration: none;
       box-shadow: var(--sombra);
       overflow: hidden;
@@ -184,7 +230,7 @@
       width: 150px;
       height: 150px;
       border-radius: 50%;
-      background: rgba(255, 255, 255, .05);
+      background: var(--sobre-teal-brilho);
       transition: opacity .22s ease;
     }
 
@@ -204,14 +250,14 @@
       font-weight: 300;
       font-size: 12.5px;
       line-height: 1.5;
-      color: rgba(255, 255, 255, .78);
+      color: var(--sobre-teal-fraco);
       margin-top: 7px;
     }
 
     .quadro .meta {
       margin-top: 12px;
       padding-top: 11px;
-      border-top: 1px solid rgba(255, 255, 255, .16);
+      border-top: 1px solid var(--sobre-teal-fio);
       width: 100%;
       display: flex;
       align-items: center;
@@ -220,7 +266,7 @@
       font-size: 9.5px;
       letter-spacing: .16em;
       text-transform: uppercase;
-      color: rgba(255, 255, 255, .7);
+      color: var(--sobre-teal-fraco);
       transition: color .22s ease;
     }
 
@@ -232,7 +278,7 @@
 
     @media (hover: hover) {
       .quadro:hover {
-        background: var(--teal-light);
+        background: var(--teal-fundo-hover);
         transform: translateY(-4px);
         box-shadow: var(--sombra-alta);
       }
@@ -242,7 +288,7 @@
       }
 
       .quadro:hover .meta {
-        color: var(--branco);
+        color: var(--sobre-teal);
       }
 
       .quadro:hover .meta i {
@@ -295,7 +341,8 @@
       display: flex;
       align-items: center;
       gap: 14px;
-      padding-top: 18px;
+      /* a folga da direita é o espaço do seletor de tema, que flutua no canto */
+      padding: 18px 118px 0 0;
       border-top: 1px solid var(--linha);
       font-weight: 400;
       font-size: 10px;
@@ -633,8 +680,8 @@
       padding: 11px;
       border: none;
       border-radius: 8px;
-      background: var(--teal);
-      color: var(--branco);
+      background: var(--teal-fundo);
+      color: var(--sobre-teal);
       font-family: var(--sans);
       font-size: 13.5px;
       font-weight: 600;
@@ -644,7 +691,7 @@
     }
 
     .botao-cheio:hover {
-      background: var(--teal-light);
+      background: var(--teal-fundo-hover);
     }
 
     .botao-cheio[disabled] {
@@ -890,23 +937,23 @@
     }
 
     .nivel.INFO {
-      background: #E7EEEB;
+      background: var(--nivel-info-bg);
       color: var(--teal-deep);
     }
 
     .nivel.WARNING {
-      background: #F4EBDD;
-      color: #8A6127;
+      background: var(--nivel-warning-bg);
+      color: var(--nivel-warning-fg);
     }
 
     .nivel.ERROR {
-      background: #F5E5DE;
-      color: #93482A;
+      background: var(--nivel-error-bg);
+      color: var(--nivel-error-fg);
     }
 
     .nivel.SECURITY {
-      background: #E5E2ED;
-      color: #4C4470;
+      background: var(--nivel-security-bg);
+      color: var(--nivel-security-fg);
     }
 
     .detalhe {
@@ -1048,6 +1095,7 @@
         flex-wrap: wrap;
         gap: 10px;
         justify-content: space-between;
+        padding: 18px 0 56px;
       }
 
       .rodape-centro {

@@ -22,6 +22,39 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.6.1",
+      codinome: "BRISA",
+      data: "22/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "O seletor de tema continuava claro quando o site estava no escuro. Agora ele acompanha o tema como o resto da tela: fundo escuro, borda discreta e o ícone da opção em uso em teal claro."
+        ],
+        "Melhorado": [
+          "Os ícones das opções não escolhidas ficaram um tom mais escuros no tema claro, para se enxergarem melhor."
+        ]
+      }
+    },
+    {
+      versao: "2.6.0",
+      codinome: "CREPÚSCULO",
+      data: "22/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "Tema escuro em todas as telas — portal, CRM, agenda e entradas — desenhado para o escuro, com os mesmos tons da marca em vez de cores invertidas.",
+          "Seletor de tema no canto da tela, com três opções: claro, escuro e automático. O botão da opção em uso fica destacado.",
+          "No modo automático o site acompanha o tema do computador ou do celular, e muda junto na hora, sem precisar recarregar a página."
+        ],
+        "Melhorado": [
+          "A escolha do tema fica guardada neste aparelho e volta sozinha na próxima vez que o site abrir — cada computador e celular tem a sua.",
+          "A página já abre no tema certo, sem aquele lampejo claro antes de escurecer.",
+          "Trocar de tema não recarrega a página nem apaga o que estiver preenchido: uma ficha aberta pela metade continua exatamente onde estava."
+        ],
+        "Técnico": [
+          "As cores das quatro telas passaram a viver em variáveis CSS, num arquivo só (tema.js). Trocar de tema troca só o valor das variáveis, e criar um tema novo no futuro é acrescentar um bloco ali."
+        ]
+      }
+    },
+    {
       versao: "2.5.0",
       codinome: "ORVALHO",
       data: "22/08/2026",
