@@ -22,6 +22,26 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.7.0",
+      codinome: "SENTINELA",
+      data: "22/08/2026",
+      mudancas: {
+        "Alterado": [
+          "A entrada nos módulos passou a funcionar por sessão: quem acerta a senha recebe uma credencial daquele aparelho, emitida pelo servidor. A senha deixa de ficar guardada no navegador e não é reenviada a cada consulta.",
+          "A credencial vale só para o módulo em que a senha foi digitada: entrar no CRM não abre a agenda nem as entradas.",
+          "Cada módulo bloqueia por 15 minutos depois de cinco senhas erradas, e o aviso mostra quantas tentativas restam."
+        ],
+        "Adicionado": [
+          "Botão Sair no CRM, na agenda e nas entradas: encerra a sessão daquele aparelho, sem derrubar quem estiver usando em outro.",
+          "A sessão expira sozinha depois de 30 minutos sem uso, e a senha é pedida de novo na volta."
+        ],
+        "Técnico": [
+          "O servidor confere a credencial antes de devolver ou gravar qualquer dado; credencial inventada no navegador não abre nada.",
+          "As sessões viraram uma tabela no servidor, uma linha por aparelho, em vez do espaço único que o painel de manutenção usava — ali, entrar num aparelho derrubava o outro."
+        ]
+      }
+    },
+    {
       versao: "2.6.1",
       codinome: "BRISA",
       data: "22/08/2026",

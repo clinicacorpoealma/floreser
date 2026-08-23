@@ -632,6 +632,7 @@ main .page{animation:surgir-agenda .42s ease both}
 <nav class="nav">
   <div class="nav-inner">
     <a class="voltar" href="index.html">&lsaquo; Início</a>
+    <button class="voltar" id="btn-sair" type="button" title="Encerrar a sessão neste aparelho">Sair</button>
     <button data-pg="dash" class="on">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="4.5" width="18" height="16" rx="1.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/></svg>
       Dashboard <span class="pill" id="pill-dash">0</span>
@@ -909,8 +910,11 @@ function area(k){ return AREAS.find(a=>a.k===k)||{k:k,nome:k,cor:'#A39384',ic:I.
 /* Endereco do Apps Script publicado (o mesmo que atende o CRM) */
 var URL_API = "https://script.google.com/macros/s/AKfycbzy9WCfP4l08dn2h2K34uEL6e0mqFBjVMugcHiTc0oUGmpS7gOJjbxs58CB87AoFUw-/exec";
 
-const CHAVE_SENHA='floreser.agenda.senha';
-const SESSAO={senha:'',rev:0};
+/* O que fica guardado neste aparelho é um token de sessão, não a senha:
+   ele é emitido pelo servidor, vale só para a agenda, expira sozinho por
+   inatividade e pode ser cancelado sem afetar nenhum outro aparelho. */
+const CHAVE_TOKEN='floreser.agenda.sessao';
+const SESSAO={token:'',rev:0};
 let state = {pacientes:[], categorias:[], followups:[], maquinas:[], vindas:[],
              criado:null, seedMaq:false};
 
@@ -927,7 +931,7 @@ async function api(dados){
 }
 
 async function carregar(){
-  const r=await api({acao:'ler_agenda',senha:SESSAO.senha});
+  const r=await api({acao:'ler_agenda',token:SESSAO.token});
   if(!r.ok) throw new Error(r.erro||'falha');
   SESSAO.rev=r.rev;
   const o=r.dados||{};
@@ -1007,11 +1011,12 @@ async function enviar(){
   emVoo=true; precisaSalvar=false;
   const instantaneo=JSON.parse(JSON.stringify(state));
   try{
-    const r=await api({acao:'salvar_agenda',senha:SESSAO.senha,rev:SESSAO.rev,dados:instantaneo});
+    const r=await api({acao:'salvar_agenda',token:SESSAO.token,rev:SESSAO.rev,dados:instantaneo});
     if(!r.ok){
       if(r.erro==='conflito'){ conflito(); return; }
-      if(r.erro==='senha'){ travado=true; sinc='erro'; statusRodape();
-        toast('A senha da agenda foi alterada. Recarregue a página.',true); return; }
+      /* não recarrego sozinho: o que estiver aberto agora seria perdido */
+      if(r.erro==='sessao'){ travado=true; sinc='erro'; esquecerToken(); statusRodape();
+        toast('Sua sessão expirou. Recarregue a página e informe a senha.',true); return; }
       throw new Error(r.erro||'falha');
     }
     SESSAO.rev=r.rev; tentativa=0; sinc='ok';
@@ -1040,6 +1045,8 @@ function statusRodape(){
   const arq=arquivadas().length;
   const quem=ativas().length+' pacientes ativas'+(arq?' · '+arq+' arquivadas':'');
   if(sinc==='salvando'){ el.textContent='Salvando na planilha…'; el.style.color=''; }
+  else if(sinc==='erro' && travado){ el.textContent='Sessão expirada — recarregue e informe a senha';
+    el.style.color='var(--alerta)'; }
   else if(sinc==='erro'){ el.textContent='Sem conexão — as alterações vão subir assim que voltar';
     el.style.color='var(--alerta)'; }
   else { el.textContent='Sincronizado · '+quem; el.style.color=''; }
@@ -3018,9 +3025,10 @@ const elBtn   =document.getElementById('portao-btn');
 
 document.body.style.overflow='hidden';
 
-function guardarSenha(x){ try{ sessionStorage.setItem(CHAVE_SENHA,x); }catch(e){} }
-function senhaGuardada(){ try{ return sessionStorage.getItem(CHAVE_SENHA)||''; }catch(e){ return ''; } }
-function esquecerSenha(){ try{ sessionStorage.removeItem(CHAVE_SENHA); }catch(e){} }
+/* sessionStorage: vale para esta aba, neste navegador, neste aparelho */
+function guardarToken(x){ try{ sessionStorage.setItem(CHAVE_TOKEN,x); }catch(e){} }
+function tokenGuardado(){ try{ return sessionStorage.getItem(CHAVE_TOKEN)||''; }catch(e){ return ''; } }
+function esquecerToken(){ try{ sessionStorage.removeItem(CHAVE_TOKEN); }catch(e){} }
 
 const AVISO='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '+
   'stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3.8 21 19.5H3L12 3.8Z"/>'+
@@ -3030,23 +3038,61 @@ function avisar(texto){
   elErro.innerHTML = texto ? AVISO+'<span>'+texto+'</span>' : '';
 }
 
+function ocupado(ligado){
+  elBtn.disabled=ligado; elBtn.classList.toggle('carregando',ligado);
+  elBtn.textContent=ligado?'Conectando…':'Entrar'; elSenha.disabled=ligado;
+}
+
+/* Troca a senha por um token de sessão. A senha não fica guardada aqui nem
+   é reenviada depois: daqui para a frente só o token viaja. */
 async function entrar(senha){
   if(!senha){ elSenha.focus(); return; }
-  elBtn.disabled=true; elBtn.classList.add('carregando');
-  elBtn.textContent='Conectando…'; avisar('');
-  SESSAO.senha=senha;
+  ocupado(true); avisar('');
   try{
+    const r=await api({acao:'entrar',modulo:'agenda',senha:senha});
+    if(!r.ok){
+      if(r.erro==='bloqueado'){
+        avisar('Muitas tentativas erradas. Tente de novo em '+(r.minutos||15)+' minutos.');
+      } else if(r.erro==='senha'){
+        avisar('Senha incorreta. Confira e tente de novo.'+
+          (r.restam?' Restam '+r.restam+' tentativas.':''));
+      } else {
+        avisar('Não foi possível falar com a planilha. Confira sua internet.');
+      }
+      elSenha.value=''; ocupado(false); elSenha.focus(); return;
+    }
+    SESSAO.token=r.token;
+    guardarToken(r.token);
     await carregar();
-    guardarSenha(senha);
     abrirApp();
   }catch(e){
     const erro=String(e&&e.message||e);
-    if(erro==='senha'){ esquecerSenha(); avisar('Senha incorreta. Confira e tente de novo.'); }
-    else if(erro==='ocupado'){ avisar('A planilha está ocupada. Tente de novo em instantes.'); }
-    else { avisar('Não foi possível falar com a planilha. Confira sua internet.'); }
-    elSenha.value=''; elBtn.disabled=false; elBtn.classList.remove('carregando');
-    elBtn.textContent='Entrar'; elSenha.focus();
+    avisar(erro==='ocupado'
+      ? 'A planilha está ocupada. Tente de novo em instantes.'
+      : 'Não foi possível falar com a planilha. Confira sua internet.');
+    elSenha.value=''; ocupado(false); elSenha.focus();
   }
+}
+
+/* volta com o token guardado; se ele já não valer, o portão reaparece */
+async function retomar(token){
+  ocupado(true);
+  SESSAO.token=token;
+  try{
+    await carregar();
+    abrirApp();
+  }catch(e){
+    esquecerToken(); SESSAO.token=''; ocupado(false);
+    if(String(e&&e.message||e)==='sessao') avisar('Sua sessão expirou. Informe a senha de novo.');
+    elSenha.focus();
+  }
+}
+
+async function sair(){
+  const token=SESSAO.token;
+  esquecerToken(); SESSAO.token='';
+  try{ await api({acao:'sair',token:token}); }catch(e){ /* segue assim mesmo */ }
+  location.reload();
 }
 
 function abrirApp(){
@@ -3076,8 +3122,11 @@ elOlho.addEventListener('click',()=>{
   elSenha.focus();
 });
 
-const guardada=senhaGuardada();
-if(guardada) entrar(guardada); else elSenha.focus();
+const btnSair=document.getElementById('btn-sair');
+if(btnSair) btnSair.addEventListener('click',sair);
+
+const guardado=tokenGuardado();
+if(guardado) retomar(guardado); else elSenha.focus();
 </script>
 </body>
 </html>

@@ -148,6 +148,7 @@ body::before{
 .save-status[data-state="dirty"] .dot{background:var(--m-boleto-dot)}
 .save-status[data-state="local"] .dot{background:var(--m-haver-dot)}
 .save-status[data-state="error"] .dot{background:var(--danger)}
+.save-status[data-state="expirado"] .dot{background:var(--danger)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
 
 /* ============================================================
@@ -804,6 +805,7 @@ body.entrou .rodape{animation-delay:.24s}
     </div>
     <div class="topbar-actions">
       <a class="voltar" href="index.html">&lsaquo; Início</a>
+      <button type="button" class="voltar" id="btnSair" title="Encerrar a sessão neste aparelho">Sair</button>
       <span class="save-status" id="saveStatus" data-state="idle"><span class="dot"></span><span id="saveText">Carregando</span></span>
       <button class="btn btn-ghost" id="btnExport">Exportar</button>
       <button class="btn btn-primary" id="btnNew">Nova entrada</button>
@@ -1007,7 +1009,7 @@ body.entrou .rodape{animation-delay:.24s}
   const DOW_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
   /* Endereço do Apps Script publicado — o mesmo que atende o CRM e a agenda */
   const URL_API = "https://script.google.com/macros/s/AKfycbzy9WCfP4l08dn2h2K34uEL6e0mqFBjVMugcHiTc0oUGmpS7gOJjbxs58CB87AoFUw-/exec";
-  const CHAVE_SENHA = "floreser.entradas.senha";
+  const CHAVE_TOKEN = "floreser.entradas.sessao";
   const CHAVE_CACHE = "floreser.entradas.copia";
 
   /* ==========================================================
@@ -1122,8 +1124,11 @@ body.entrou .rodape{animation-delay:.24s}
     catch (e) { return false; }
   }
 
-  /* --- conversa com a planilha --- */
-  const SESSAO = { senha: "", rev: 0 };
+  /* --- conversa com a planilha ---
+     O que fica guardado neste aparelho é um token de sessão, não a senha.
+     Ele é emitido pelo servidor, vale só para as Entradas, expira sozinho
+     e pode ser cancelado sem mexer em nenhum outro aparelho. */
+  const SESSAO = { token: "", rev: 0 };
 
   async function api(dados) {
     const resposta = await fetch(URL_API, {
@@ -1136,7 +1141,7 @@ body.entrou .rodape{animation-delay:.24s}
   }
 
   async function carregar() {
-    const r = await api({ acao: "ler_entradas", senha: SESSAO.senha });
+    const r = await api({ acao: "ler_entradas", token: SESSAO.token });
     if (!r.ok) throw new Error(r.erro || "falha");
     SESSAO.rev = r.rev;
     const copia = readLocal();
@@ -1151,12 +1156,14 @@ body.entrou .rodape{animation-delay:.24s}
     idle: "Carregando",
     saving: "Salvando na planilha…",
     saved: "Sincronizado",
-    error: "Sem conexão — vou tentar de novo"
+    error: "Sem conexão — vou tentar de novo",
+    expirado: "Sessão expirada"
   };
   const SAVE_TITLE = {
     saving: "Enviando as alterações para a planilha do Google.",
     saved: "Tudo o que está aqui já está guardado na planilha.",
-    error: "As alterações ficaram neste aparelho e sobem sozinhas assim que a internet voltar."
+    error: "As alterações ficaram neste aparelho e sobem sozinhas assim que a internet voltar.",
+    expirado: "Recarregue a página e informe a senha para voltar a salvar."
   };
   function setStatus(s) {
     const box = el("saveStatus");
@@ -1191,13 +1198,14 @@ body.entrou .rodape{animation-delay:.24s}
     const instantaneo = { entradas: state.entradas };
     try {
       const r = await api({
-        acao: "salvar_entradas", senha: SESSAO.senha, rev: SESSAO.rev, dados: instantaneo
+        acao: "salvar_entradas", token: SESSAO.token, rev: SESSAO.rev, dados: instantaneo
       });
       if (!r.ok) {
         if (r.erro === "conflito") { conflito(); return; }
-        if (r.erro === "senha") {
-          travado = true; esquecerSenha(); setStatus("error");
-          toast("A senha das entradas mudou. Recarregue a página.");
+        if (r.erro === "sessao") {
+          /* não recarrego sozinho: se houver algo digitado agora, seria perdido */
+          travado = true; esquecerToken(); setStatus("expirado");
+          toast("Sua sessão expirou. Recarregue a página e informe a senha.");
           return;
         }
         throw new Error(r.erro || "falha");
@@ -2127,9 +2135,10 @@ body.entrou .rodape{animation-delay:.24s}
   const elErro = el("portao-erro");
   const elBtnEntrar = el("portao-btn");
 
-  function guardarSenha(x) { try { sessionStorage.setItem(CHAVE_SENHA, x); } catch (e) { } }
-  function senhaGuardada() { try { return sessionStorage.getItem(CHAVE_SENHA) || ""; } catch (e) { return ""; } }
-  function esquecerSenha() { try { sessionStorage.removeItem(CHAVE_SENHA); } catch (e) { } }
+  /* sessionStorage: vale para esta aba, neste navegador, neste aparelho */
+  function guardarToken(x) { try { sessionStorage.setItem(CHAVE_TOKEN, x); } catch (e) { } }
+  function tokenGuardado() { try { return sessionStorage.getItem(CHAVE_TOKEN) || ""; } catch (e) { return ""; } }
+  function esquecerToken() { try { sessionStorage.removeItem(CHAVE_TOKEN); } catch (e) { } }
 
   const AVISO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3.8 21 19.5H3L12 3.8Z"/>' +
@@ -2139,30 +2148,74 @@ body.entrou .rodape{animation-delay:.24s}
     elErro.innerHTML = texto ? AVISO + "<span>" + esc(texto) + "</span>" : "";
   }
 
+  function ocupado(ligado) {
+    elBtnEntrar.disabled = ligado;
+    elBtnEntrar.classList.toggle("carregando", ligado);
+    elBtnEntrar.textContent = ligado ? "Conectando…" : "Entrar";
+    elSenha.disabled = ligado;
+  }
+
+  /* Troca a senha por um token de sessão. A senha não é guardada aqui nem
+     reenviada depois: daqui para a frente só o token viaja. */
   async function entrar(senha) {
     if (!senha) { elSenha.focus(); return; }
-    elBtnEntrar.disabled = true;
-    elBtnEntrar.classList.add("carregando");
-    elBtnEntrar.textContent = "Conectando…";
-    elSenha.disabled = true;
+    ocupado(true);
     avisar("");
-    SESSAO.senha = senha;
     try {
+      const r = await api({ acao: "entrar", modulo: "entradas", senha: senha });
+      if (!r.ok) {
+        if (r.erro === "bloqueado") {
+          avisar("Muitas tentativas erradas. Tente de novo em " + (r.minutos || 15) + " minutos.");
+        } else if (r.erro === "senha") {
+          avisar("Senha incorreta. Confira e tente de novo." +
+            (r.restam ? " Restam " + r.restam + " tentativas." : ""));
+        } else {
+          avisar("Não foi possível falar com a planilha. Confira sua internet.");
+        }
+        elSenha.value = "";
+        ocupado(false);
+        elSenha.focus();
+        return;
+      }
+      SESSAO.token = r.token;
+      guardarToken(r.token);
       await carregar();
-      guardarSenha(senha);
       abrirApp();
     } catch (e) {
       const erro = String((e && e.message) || e);
-      if (erro === "senha") { esquecerSenha(); avisar("Senha incorreta. Confira e tente de novo."); }
-      else if (erro === "ocupado") { avisar("A planilha está ocupada. Tente de novo em instantes."); }
-      else { avisar("Não foi possível falar com a planilha. Confira sua internet."); }
+      avisar(erro === "ocupado"
+        ? "A planilha está ocupada. Tente de novo em instantes."
+        : "Não foi possível falar com a planilha. Confira sua internet.");
       elSenha.value = "";
-      elSenha.disabled = false;
-      elBtnEntrar.disabled = false;
-      elBtnEntrar.classList.remove("carregando");
-      elBtnEntrar.textContent = "Entrar";
+      ocupado(false);
       elSenha.focus();
     }
+  }
+
+  /* volta com o token guardado; se ele já não valer, o portão reaparece */
+  async function retomar(token) {
+    ocupado(true);
+    SESSAO.token = token;
+    try {
+      await carregar();
+      abrirApp();
+    } catch (e) {
+      esquecerToken();
+      SESSAO.token = "";
+      ocupado(false);
+      if (String((e && e.message) || e) === "sessao") {
+        avisar("Sua sessão expirou. Informe a senha de novo.");
+      }
+      elSenha.focus();
+    }
+  }
+
+  async function sair() {
+    const token = SESSAO.token;
+    esquecerToken();
+    SESSAO.token = "";
+    try { await api({ acao: "sair", token: token }); } catch (e) { /* segue assim mesmo */ }
+    location.reload();
   }
 
   function abrirApp() {
@@ -2207,8 +2260,11 @@ body.entrou .rodape{animation-delay:.24s}
       elSenha.focus();
     });
 
-    const guardada = senhaGuardada();
-    if (guardada) entrar(guardada); else elSenha.focus();
+    const btnSair = el("btnSair");
+    if (btnSair) btnSair.addEventListener("click", sair);
+
+    const guardado = tokenGuardado();
+    if (guardado) retomar(guardado); else elSenha.focus();
   }
 
   boot();

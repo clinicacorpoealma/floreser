@@ -127,7 +127,23 @@
     /* Endereco do Apps Script publicado (o mesmo que atende a agenda) */
     var URL_API = "https://script.google.com/macros/s/AKfycbzy9WCfP4l08dn2h2K34uEL6e0mqFBjVMugcHiTc0oUGmpS7gOJjbxs58CB87AoFUw-/exec";
 
-    var SESSAO = { senha: "", rev: 0 };
+    /* O que fica guardado neste aparelho é um token de sessão, não a senha:
+       ele é emitido pelo servidor, vale só para o CRM, expira sozinho por
+       inatividade e pode ser cancelado sem afetar nenhum outro aparelho. */
+    var CHAVE_TOKEN = "floreser.crm.sessao";
+    var SESSAO = { token: "", rev: 0 };
+
+    function guardarToken(x) { try { sessionStorage.setItem(CHAVE_TOKEN, x); } catch (e) { } }
+    function tokenGuardado() { try { return sessionStorage.getItem(CHAVE_TOKEN) || ""; } catch (e) { return ""; } }
+    function esquecerToken() { try { sessionStorage.removeItem(CHAVE_TOKEN); } catch (e) { } }
+
+    async function sairDoCRM() {
+      var token = SESSAO.token;
+      esquecerToken();
+      SESSAO.token = "";
+      try { await chamarAPI({ acao: "sair", token: token }); } catch (e) { /* segue assim mesmo */ }
+      location.reload();
+    }
 
     async function chamarAPI(dados) {
       var resposta = await fetch(URL_API, {
@@ -143,7 +159,7 @@
        mas por baixo tudo vai para a planilha do Google. */
     window.storage = {
       async get(chave) {
-        var r = await chamarAPI({ acao: "ler", senha: SESSAO.senha });
+        var r = await chamarAPI({ acao: "ler", token: SESSAO.token });
         if (!r.ok) throw new Error(r.erro || "falha ao ler");
         SESSAO.rev = r.rev;
         return { key: chave, value: JSON.stringify(r.dados), shared: false };
@@ -151,7 +167,7 @@
       async set(chave, valor) {
         var r = await chamarAPI({
           acao: "salvar",
-          senha: SESSAO.senha,
+          token: SESSAO.token,
           rev: SESSAO.rev,
           dados: JSON.parse(valor),
         });
@@ -163,6 +179,7 @@
             );
             location.reload();
           }
+          if (r.erro === "sessao") esquecerToken();
           throw new Error(r.erro || "falha ao salvar");
         }
         SESSAO.rev = r.rev;
@@ -579,6 +596,10 @@
                 <a href="index.html" style={{ marginLeft: "auto", fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--crm-topo-rotulo)", textDecoration: "none" }}>
                   ‹ Início
                 </a>
+                <button onClick={sairDoCRM} title="Encerrar a sessão neste aparelho"
+                  style={{ border: "none", background: "none", fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--crm-topo-rotulo)", padding: 0, cursor: "pointer" }}>
+                  Sair
+                </button>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 3 }}>
                 <img src="logo.png" width="366" height="380" alt=""
@@ -1400,28 +1421,56 @@
       const [erro, setErro] = useState("");
       const [mostrar, setMostrar] = useState(false);
 
+      /* Troca a senha por um token de sessão. A senha não fica guardada aqui
+         nem é reenviada depois: daqui para a frente só o token viaja. */
       async function entrar() {
         if (!senha.trim()) return;
         setEstado("verificando");
         setErro("");
-        SESSAO.senha = senha;
         try {
-          const r = await chamarAPI({ acao: "ler", senha: senha });
-          if (r.ok) {
-            SESSAO.rev = r.rev;
-            setEstado("ok");
-          } else if (r.erro === "senha") {
-            setErro("Senha incorreta. Confira e tente de novo.");
+          const r = await chamarAPI({ acao: "entrar", modulo: "crm", senha: senha });
+          if (!r.ok) {
+            if (r.erro === "bloqueado") {
+              setErro("Muitas tentativas erradas. Tente de novo em " + (r.minutos || 15) + " minutos.");
+            } else if (r.erro === "senha") {
+              setErro("Senha incorreta. Confira e tente de novo." +
+                (r.restam ? " Restam " + r.restam + " tentativas." : ""));
+            } else {
+              setErro("Não foi possível conectar à planilha. Verifique a publicação do Apps Script.");
+            }
             setEstado("form");
-          } else {
-            setErro("Não foi possível conectar à planilha. Verifique a publicação do Apps Script.");
-            setEstado("form");
+            return;
           }
+          SESSAO.token = r.token;
+          guardarToken(r.token);
+          setEstado("ok");
         } catch (e) {
           setErro("Sem conexão com a planilha. Confira a URL do Apps Script e sua internet.");
           setEstado("form");
         }
       }
+
+      /* volta com o token guardado; se ele já não valer, o portão fica de pé */
+      useEffect(() => {
+        const guardado = tokenGuardado();
+        if (!guardado) return;
+        let vivo = true;
+        (async () => {
+          SESSAO.token = guardado;
+          try {
+            const r = await chamarAPI({ acao: "ler", token: guardado });
+            if (!vivo) return;
+            if (r.ok) { setEstado("ok"); return; }
+            esquecerToken();
+            SESSAO.token = "";
+            if (r.erro === "sessao") setErro("Sua sessão expirou. Informe a senha de novo.");
+          } catch (e) {
+            esquecerToken();
+            SESSAO.token = "";
+          }
+        })();
+        return () => { vivo = false; };
+      }, []);
 
       if (estado === "ok") return <CRMFloreSer />;
 
