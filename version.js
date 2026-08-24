@@ -22,6 +22,35 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.9.0",
+      codinome: "REBROTA",
+      data: "24/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "Lixeira: o que você exclui no CRM, na Agenda e nas Entradas passa a ficar guardado por 30 dias antes de sumir de vez.",
+          "Área de Lixeira no painel de manutenção, com busca, filtro por módulo e por prazo, e ordenação por data, por prazo ou por nome.",
+          "Botão Restaurar em cada registro guardado: a ficha volta inteira, com o mesmo código e tudo o que dependia dela.",
+          "Campo de motivo, opcional, na hora de excluir — fica registrado junto e ajuda a lembrar por que aquilo saiu.",
+          "Botão “Limpar expirados” no painel, que mostra quantos venceram antes de apagar."
+        ],
+        "Alterado": [
+          "Excluir agora é “mover para a lixeira” nos três módulos, com uma explicação do que acontece antes de confirmar.",
+          "Uma paciente movida para a lixeira leva junto os ciclos, as condições, as máquinas, o histórico, os follow-ups e as respostas de vinda — e tudo volta junto na restauração.",
+          "Uma entrada movida para a lixeira sai dos totais, dos gráficos e da exportação na hora, e volta a contar quando é restaurada.",
+          "Apagar de vez virou uma decisão só do painel de manutenção, com a palavra EXCLUIR digitada por extenso."
+        ],
+        "Corrigido": [
+          "Restaurar um registro cujo lugar já foi ocupado por outro agora avisa antes, em vez de criar dois cadastros iguais sem aviso.",
+          "Os avisos em fundo cor de areia da Agenda ficavam quase ilegíveis no tema escuro; agora acompanham o tema."
+        ],
+        "Técnico": [
+          "Aba Lixeira nova na planilha, criada sozinha na primeira vez, com o registro inteiro guardado e a assinatura de quem excluiu.",
+          "Só o painel de manutenção apaga de vez ou limpa vencidos, e o servidor confere isso em toda chamada — esconder o botão não basta.",
+          "Mover, restaurar e apagar de vez ficam registrados nos logs, com o nome de quem fez, sem levar junto os dados da ficha."
+        ]
+      }
+    },
+    {
       versao: "2.8.0",
       codinome: "CANTEIRO",
       data: "23/08/2026",

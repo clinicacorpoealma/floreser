@@ -428,6 +428,20 @@ dialog::backdrop{background:rgba(24,34,32,.42);backdrop-filter:blur(3px)}
 }
 .sheet-foot .spacer{flex:1}
 
+/* confirmação de que a entrada vai para a lixeira */
+.confirma-lixeira{
+  padding:16px 22px;border-top:1px solid var(--border);background:var(--danger-soft);
+}
+.cl-titulo{margin:0;font-family:var(--serif);font-size:17px;color:var(--text-1)}
+.cl-texto{margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--text-2);max-width:52ch}
+.cl-motivo{
+  display:block;margin-top:13px;font-size:10.5px;letter-spacing:.16em;
+  /* rótulo pequeno sobre fundo de aviso: text-3 não alcança 4.5:1 aqui */
+  text-transform:uppercase;color:var(--text-2);font-weight:600;
+}
+.cl-motivo .input{margin-top:6px;letter-spacing:0;text-transform:none;font-weight:400}
+.cl-botoes{display:flex;gap:9px;margin-top:14px}
+
 .field{display:flex;flex-direction:column;gap:5px;margin-bottom:15px;position:relative}
 .field > label,.legend{
   font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-3);font-weight:600;
@@ -951,8 +965,21 @@ body.entrou .rodape{animation-delay:.24s}
       </div>
     </div>
 
+    <div class="confirma-lixeira" id="confDelete" hidden>
+      <p class="cl-titulo">Mover esta entrada para a lixeira?</p>
+      <p class="cl-texto">Ela sai da lista, dos totais e dos gráficos, e pode ser restaurada
+        pelo painel de manutenção durante 30 dias. As formas de pagamento vão junto.</p>
+      <label class="cl-motivo" for="fMotivoLixeira">Motivo (opcional)
+        <input class="input" type="text" id="fMotivoLixeira" maxlength="120"
+          placeholder="Lançamento em duplicidade, valor errado…"></label>
+      <div class="cl-botoes">
+        <button type="button" class="btn btn-danger" id="btnDeleteOk">Mover para lixeira</button>
+        <button type="button" class="btn btn-ghost" id="btnDeleteNo">Cancelar</button>
+      </div>
+    </div>
+
     <div class="sheet-foot">
-      <button type="button" class="btn btn-danger" id="btnDelete" style="display:none">Excluir</button>
+      <button type="button" class="btn btn-danger" id="btnDelete" style="display:none">Mover para a lixeira</button>
       <span class="spacer"></span>
       <button type="button" class="btn btn-ghost" id="btnCancel">Cancelar</button>
       <button type="submit" class="btn btn-primary" id="btnSave">Salvar entrada</button>
@@ -1496,7 +1523,7 @@ body.entrou .rodape{animation-delay:.24s}
         <button type="button" class="icon-btn" data-edit="${esc(e.id)}" title="Editar" aria-label="Editar entrada de ${esc(e.nome)}">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.2 2.8 13.2 4.8 5.6 12.4 3 13l.6-2.6 7.6-7.6Z"/></svg>
         </button>
-        <button type="button" class="icon-btn is-danger" data-del="${esc(e.id)}" title="Excluir" aria-label="Excluir entrada de ${esc(e.nome)}">
+        <button type="button" class="icon-btn is-danger" data-del="${esc(e.id)}" title="Mover para a lixeira" aria-label="Excluir entrada de ${esc(e.nome)}">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8"/></svg>
         </button>
       </div>
@@ -1677,7 +1704,6 @@ body.entrou .rodape{animation-delay:.24s}
   const entryDialog = el("entryDialog");
   let editingId = null;
   let splitMode = false;
-  let deleteArmed = false;
 
   function payRowHtml(p) {
     const parcelas = Array.from({ length: 12 }, (_, i) => i + 1)
@@ -1734,11 +1760,12 @@ body.entrou .rodape{animation-delay:.24s}
 
   function openEntryDialog(entry) {
     editingId = entry ? entry.id : null;
-    deleteArmed = false;
     el("entryTitle").textContent = entry ? "Editar entrada" : "Nova entrada";
     el("btnSave").textContent = entry ? "Salvar alterações" : "Salvar entrada";
     el("btnDelete").style.display = entry ? "" : "none";
-    el("btnDelete").textContent = "Excluir";
+    el("btnDelete").disabled = false;
+    el("confDelete").hidden = true;
+    el("fMotivoLixeira").value = "";
 
     el("fNome").value = entry ? entry.nome : "";
     el("fValor").value = entry ? fmtNum(entryTotal(entry)) : "";
@@ -1795,19 +1822,35 @@ body.entrou .rodape{animation-delay:.24s}
     render();
   }
 
-  function deleteEntry(id) {
+  /* Mover para a lixeira é operação do servidor: ele tira a entrada e as
+     formas de pagamento das abas, guarda tudo e devolve a revisão nova. Aqui
+     só refletimos o que ele já fez — nada é reenviado, para o registro não
+     voltar sozinho na próxima gravação. */
+  async function deleteEntry(id, motivo) {
     const i = state.entradas.findIndex(e => e.id === id);
     if (i < 0) return;
-    const removed = state.entradas[i];
-    state.entradas.splice(i, 1);
-    touch();
-    render();
-    toast("Entrada de " + removed.nome + " excluída.", "Desfazer", () => {
-      state.entradas.push(removed);
-      touch();
+    const alvo = state.entradas[i];
+
+    try {
+      const r = await api({
+        acao: "lixeira_mover", token: SESSAO.token, tipo: "entradas", id: id, motivo: motivo || ""
+      });
+      if (!r || !r.ok) {
+        toast(r && r.erro === "sem_acesso"
+          ? "Você não possui acesso a este módulo."
+          : "Não foi possível concluir a operação. Tente novamente.");
+        return;
+      }
+      if (typeof r.rev === "number") SESSAO.rev = r.rev;
+      state.entradas = state.entradas.filter(e => e.id !== id);
+      writeLocal();
       render();
-      toast("Entrada restaurada.");
-    });
+      renderBackupNote();
+      updateExportPreview();
+      toast("Entrada de " + alvo.nome + " foi movida para a lixeira.");
+    } catch (e) {
+      toast("Não foi possível concluir a operação. Tente novamente.");
+    }
   }
 
   /* ==========================================================
@@ -2055,13 +2098,13 @@ body.entrou .rodape{animation-delay:.24s}
       if (del) {
         if (del.dataset.armed === "1") { deleteEntry(del.dataset.del); return; }
         del.dataset.armed = "1";
-        del.title = "Clique de novo para excluir";
+        del.title = "Clique de novo para mover para a lixeira";
         del.style.background = "var(--danger-soft)";
         del.style.color = "var(--danger)";
         setTimeout(() => {
           if (!del.isConnected) return;
           del.dataset.armed = "";
-          del.title = "Excluir";
+          del.title = "Mover para a lixeira";
           del.style.background = "";
           del.style.color = "";
         }, 3500);
@@ -2073,16 +2116,26 @@ body.entrou .rodape{animation-delay:.24s}
     el("btnCancel").addEventListener("click", () => entryDialog.close());
     el("entryForm").addEventListener("submit", submitEntry);
 
+    /* o botão só abre a pergunta; quem move é o painel abaixo dele */
     el("btnDelete").addEventListener("click", () => {
       if (!editingId) return;
-      if (!deleteArmed) {
-        deleteArmed = true;
-        el("btnDelete").textContent = "Confirmar exclusão";
-        return;
-      }
+      el("confDelete").hidden = false;
+      el("btnDelete").disabled = true;
+      el("fMotivoLixeira").focus();
+    });
+
+    el("btnDeleteNo").addEventListener("click", () => {
+      el("confDelete").hidden = true;
+      el("btnDelete").disabled = false;
+      el("fMotivoLixeira").value = "";
+    });
+
+    el("btnDeleteOk").addEventListener("click", () => {
+      if (!editingId) return;
       const id = editingId;
+      const motivo = el("fMotivoLixeira").value.trim();
       entryDialog.close();
-      deleteEntry(id);
+      deleteEntry(id, motivo);
     });
 
     el("btnAddPay").addEventListener("click", () => {

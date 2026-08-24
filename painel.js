@@ -245,6 +245,16 @@
   var buscaUsuario = "";
   var formUsuario = null;   // null | "novo" | {id:...} | {senha:id}
   var recadoUsuario = "";
+
+  /* Lixeira: a lista vem do servidor a cada operação. */
+  var lixeira = [];
+  var lixeiraDias = 30;
+  var filtroTipo = "todos";      // todos | crm | agenda | entradas
+  var filtroPrazo = "todos";     // todos | ativos | expirados
+  var buscaLixeira = "";
+  var ordemLixeira = "recentes"; // recentes | antigos | prazo | nome
+  var confirmandoLixeira = null; // {acao, item} enquanto a confirmação está aberta
+  var recadoLixeira = "";
   var ordemDesc = true;
   var limite = POR_PAGINA;
   var selecionado = null;
@@ -274,6 +284,7 @@
       '<button data-aba="logs">Logs</button>' +
       '<button data-aba="acessos">Acessos</button>' +
       '<button data-aba="usuarios">Usu\u00e1rios</button>' +
+      '<button data-aba="lixeira" id="aba-lixeira">Lixeira</button>' +
       '<button data-aba="sistema">Sistema</button>' +
       "</div>" +
       '<div class="janela-corpo" id="painel-corpo" tabindex="0"></div>';
@@ -296,6 +307,7 @@
   function trocarAba(qual) {
     aba = qual;
     if (qual === "usuarios" && !usuarios.length) carregarUsuarios();
+    if (qual === "lixeira") carregarLixeira();
     Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-aba]"), function (b) {
       b.className = b.getAttribute("data-aba") === qual ? "on" : "";
     });
@@ -316,6 +328,7 @@
       if (r && r.ok) {
         base = r.dados || base;
         desenhar();
+        carregarLixeira();   /* a contagem da aba já aparece de cara */
         return;
       }
       base = { logs: [], sessoes: [], resumo: {} };
@@ -336,12 +349,14 @@
     else if (aba === "logs") html += telaLogs();
     else if (aba === "acessos") html += telaAcessos();
     else if (aba === "usuarios") html += telaUsuarios();
+    else if (aba === "lixeira") html += telaLixeira();
     else html += telaSistema();
 
     corpo.innerHTML = html;
     corpo.scrollTop = 0;
     ligarEventos();
     if (aba === "usuarios") ligarEventosUsuarios();
+    if (aba === "lixeira") ligarEventosLixeira();
   }
 
   /* ---------------------------------------------------- visão geral */
@@ -759,6 +774,287 @@
           "? As sess\u00f5es abertas dessa pessoa ser\u00e3o encerradas.")) return;
         operarUsuario({ acao: "usuario_status", id: b.getAttribute("data-status"), ativo: ativo });
       });
+    });
+  }
+
+  /* ---------------------------------------------------- lixeira */
+
+  function carregarLixeira(depois) {
+    chamar({ acao: "lixeira_listar", token: credencial() }).then(function (r) {
+      if (r && r.erro === "sessao") { credencial(null); fechar(dlgPainel); pedirSenha(); return; }
+      if (r && r.ok) {
+        lixeira = r.itens || [];
+        lixeiraDias = r.dias || lixeiraDias;
+      }
+      if (typeof depois === "function") depois();
+      desenhar();
+      marcarBadgeLixeira();
+    }).catch(function () {
+      recadoLixeira = "N\u00e3o foi poss\u00edvel falar com o servidor.";
+      desenhar();
+    });
+  }
+
+  function operarLixeira(corpo, aoTerminar) {
+    corpo.token = credencial();
+    chamar(corpo).then(function (r) {
+      if (r && r.erro === "sessao") { credencial(null); fechar(dlgPainel); pedirSenha(); return; }
+      if (r && r.ok) {
+        if (r.lixeira) lixeira = r.lixeira;
+        confirmandoLixeira = null;
+        recadoLixeira = "";
+        if (typeof aoTerminar === "function") aoTerminar(r);
+      } else if (r && r.erro === "conflito") {
+        confirmandoLixeira = { acao: "conflito", item: confirmandoLixeira && confirmandoLixeira.item,
+          mensagem: r.mensagem || "Pode haver um registro parecido j\u00e1 ativo." };
+      } else {
+        recadoLixeira = "N\u00e3o foi poss\u00edvel concluir a opera\u00e7\u00e3o. Tente novamente.";
+      }
+      desenhar();
+      marcarBadgeLixeira();
+    }).catch(function () {
+      recadoLixeira = "Sem conex\u00e3o com o servidor.";
+      desenhar();
+    });
+  }
+
+  function expirados() {
+    return lixeira.filter(function (i) { return i.expirado; });
+  }
+
+  function marcarBadgeLixeira() {
+    var b = document.getElementById("aba-lixeira");
+    if (!b) return;
+    b.textContent = lixeira.length ? "Lixeira (" + lixeira.length + ")" : "Lixeira";
+  }
+
+  var NOMES_TIPO = { crm: "CRM", agenda: "Agenda", entradas: "Entradas" };
+
+  function prazoEmTexto(item) {
+    if (item.expirado) return "Prazo de recupera\u00e7\u00e3o expirado";
+    if (item.diasRestantes <= 1) return "Expira hoje";
+    return "Expira em " + item.diasRestantes + " dias";
+  }
+
+  function confirmacaoLixeira() {
+    var c = confirmandoLixeira;
+    var i = c.item || {};
+
+    if (c.acao === "restaurar") {
+      return '<div class="form-usuario">' +
+        '<div class="titulo-secao">Restaurar registro</div>' +
+        "<p>Restaurar <strong>" + esc(i.titulo) + "</strong>?</p>" +
+        '<p class="nota-privacidade">O registro volta a aparecer normalmente em ' +
+        esc(NOMES_TIPO[i.tipo] || i.tipo) + ", com os mesmos dados e o mesmo identificador.</p>" +
+        '<div class="acoes-form">' +
+        '<button class="btn-fino" id="lx-ok">Restaurar</button>' +
+        '<button class="btn-fino" id="lx-cancelar">Cancelar</button>' +
+        "</div></div>";
+    }
+
+    if (c.acao === "conflito") {
+      return '<div class="form-usuario">' +
+        '<div class="titulo-secao">Poss\u00edvel conflito</div>' +
+        '<div class="aviso-form">' + esc(c.mensagem) + "</div>" +
+        '<p class="nota-privacidade">Restaurar assim mesmo deixa os dois registros ativos. ' +
+        "Depois d\u00e1 para juntar ou mandar o repetido para a lixeira.</p>" +
+        '<div class="acoes-form">' +
+        '<button class="btn-fino perigo" id="lx-forcar">Restaurar mesmo assim</button>' +
+        '<button class="btn-fino" id="lx-cancelar">Cancelar</button>' +
+        "</div></div>";
+    }
+
+    if (c.acao === "excluir") {
+      return '<div class="form-usuario">' +
+        '<div class="titulo-secao perigo-titulo">Exclus\u00e3o definitiva</div>' +
+        "<p><strong>" + esc(i.titulo) + "</strong> ser\u00e1 apagado permanentemente.</p>" +
+        '<p class="nota-privacidade">Depois desta a\u00e7\u00e3o o registro n\u00e3o pode mais ser ' +
+        "restaurado pela lixeira.</p>" +
+        '<label class="rot">Digite EXCLUIR para confirmar<input id="lx-palavra" type="text" ' +
+        'autocapitalize="characters" spellcheck="false"></label>' +
+        (recadoLixeira ? '<div class="aviso-form">' + esc(recadoLixeira) + "</div>" : "") +
+        '<div class="acoes-form">' +
+        '<button class="btn-fino perigo" id="lx-ok">Excluir definitivamente</button>' +
+        '<button class="btn-fino" id="lx-cancelar">Cancelar</button>' +
+        "</div></div>";
+    }
+
+    /* limpar expirados */
+    var contas = c.contas || {};
+    return '<div class="form-usuario">' +
+      '<div class="titulo-secao perigo-titulo">Limpar itens expirados</div>' +
+      "<p>Existem <strong>" + (c.quantos || 0) + "</strong> registro(s) na lixeira h\u00e1 mais de " +
+      lixeiraDias + " dias. Esta a\u00e7\u00e3o vai apag\u00e1-los permanentemente.</p>" +
+      '<div class="modulos-usuario">CRM: ' + (contas.crm || 0) +
+      " &middot; Agenda: " + (contas.agenda || 0) +
+      " &middot; Entradas: " + (contas.entradas || 0) + "</div>" +
+      '<label class="rot">Digite EXCLUIR para confirmar<input id="lx-palavra" type="text" ' +
+      'autocapitalize="characters" spellcheck="false"></label>' +
+      (recadoLixeira ? '<div class="aviso-form">' + esc(recadoLixeira) + "</div>" : "") +
+      '<div class="acoes-form">' +
+      '<button class="btn-fino perigo" id="lx-ok">Continuar</button>' +
+      '<button class="btn-fino" id="lx-cancelar">Cancelar</button>' +
+      "</div></div>";
+  }
+
+  function telaLixeira() {
+    if (confirmandoLixeira) return confirmacaoLixeira();
+
+    var vencidos = expirados().length;
+
+    var html = '<div class="ferramentas">' +
+      '<input type="search" id="lx-busca" placeholder="Buscar na lixeira\u2026" value="' +
+      esc(buscaLixeira) + '">' +
+      '<select id="lx-tipo">' +
+      [["todos", "Todos os m\u00f3dulos"], ["crm", "CRM"], ["agenda", "Agenda"],
+       ["entradas", "Entradas"]].map(function (o) {
+        return '<option value="' + o[0] + '"' + (filtroTipo === o[0] ? " selected" : "") + ">" +
+          o[1] + "</option>";
+      }).join("") + "</select>" +
+      '<select id="lx-prazo">' +
+      [["todos", "Todos os prazos"], ["ativos", "Dentro do prazo"], ["expirados", "Expirados"]]
+        .map(function (o) {
+          return '<option value="' + o[0] + '"' + (filtroPrazo === o[0] ? " selected" : "") + ">" +
+            o[1] + "</option>";
+        }).join("") + "</select>" +
+      '<select id="lx-ordem">' +
+      [["recentes", "Exclu\u00eddos recentemente"], ["antigos", "Exclu\u00eddos h\u00e1 mais tempo"],
+       ["prazo", "Expira primeiro"], ["nome", "Nome"]].map(function (o) {
+        return '<option value="' + o[0] + '"' + (ordemLixeira === o[0] ? " selected" : "") + ">" +
+          o[1] + "</option>";
+      }).join("") + "</select>" +
+      '<button class="btn-fino" id="lx-atualizar">Atualizar</button>' +
+      (vencidos ? '<button class="btn-fino perigo" id="lx-limpar">Limpar expirados (' +
+        vencidos + ")</button>" : "") +
+      "</div>" +
+      '<p class="nota-privacidade">O que \u00e9 exclu\u00eddo nos m\u00f3dulos vem parar aqui e pode ' +
+      "voltar por " + lixeiraDias + " dias. Nada sai da lixeira sozinho: apagar de vez \u00e9 " +
+      "sempre uma decis\u00e3o tomada nesta tela.</p>";
+
+    if (recadoLixeira) html += '<div class="aviso-form">' + esc(recadoLixeira) + "</div>";
+
+    var alvo = buscaLixeira.toLowerCase();
+    var lista = lixeira.filter(function (i) {
+      if (filtroTipo !== "todos" && i.tipo !== filtroTipo) return false;
+      if (filtroPrazo === "ativos" && i.expirado) return false;
+      if (filtroPrazo === "expirados" && !i.expirado) return false;
+      if (!alvo) return true;
+      return (i.titulo + " " + i.descricao + " " + i.excluidoPor + " " + i.motivo + " " +
+        i.registroId).toLowerCase().indexOf(alvo) >= 0;
+    });
+
+    lista.sort(function (a, b) {
+      if (ordemLixeira === "antigos") return a.excluidoEm - b.excluidoEm;
+      /* dias inteiros empatam entre si; o instante da exclusão desempata */
+      if (ordemLixeira === "prazo") return a.excluidoEm - b.excluidoEm;
+      if (ordemLixeira === "nome") return String(a.titulo).localeCompare(String(b.titulo));
+      return b.excluidoEm - a.excluidoEm;
+    });
+
+    if (!lista.length) {
+      return html + '<div class="vazio">' +
+        (lixeira.length ? "Nenhum registro com esse filtro." : "A lixeira est\u00e1 vazia.") +
+        "</div>";
+    }
+
+    return html + lista.map(function (i) {
+      return '<div class="cartao-usuario' + (i.expirado ? " inativo" : "") + '">' +
+        '<div class="topo-usuario">' +
+        "<div><h4>" + esc(i.titulo) + "</h4>" +
+        '<div class="arroba">' + esc(i.descricao) + "</div></div>" +
+        '<span class="selo-status">' + esc(NOMES_TIPO[i.tipo] || i.tipo) + "</span>" +
+        "</div>" +
+        '<div class="ultimo-login">Exclu\u00eddo em ' + dataHora(new Date(i.excluidoEm).toISOString()) +
+        " &middot; por " + esc(i.excluidoPor || "\u2014") + "</div>" +
+        (i.motivo ? '<div class="modulos-usuario">Motivo: ' + esc(i.motivo) + "</div>" : "") +
+        '<div class="modulos-usuario' + (i.expirado ? " alerta-prazo" : "") + '">' +
+        prazoEmTexto(i) + "</div>" +
+        '<div class="acoes-usuario">' +
+        '<button class="btn-fino" data-lx-restaurar="' + esc(i.id) + '">Restaurar</button>' +
+        '<button class="btn-fino perigo" data-lx-excluir="' + esc(i.id) + '">Excluir definitivamente</button>' +
+        "</div></div>";
+    }).join("");
+  }
+
+  function acharNaLixeira(id) {
+    var achados = lixeira.filter(function (i) { return i.id === id; });
+    return achados.length ? achados[0] : null;
+  }
+
+  function ligarEventosLixeira() {
+    var busca = document.getElementById("lx-busca");
+    if (busca) {
+      busca.addEventListener("input", function () {
+        buscaLixeira = busca.value;
+        var onde = busca.selectionStart;
+        desenhar();
+        var novo = document.getElementById("lx-busca");
+        if (novo) { novo.focus(); novo.setSelectionRange(onde, onde); }
+      });
+    }
+
+    [["lx-tipo", function (v) { filtroTipo = v; }],
+     ["lx-prazo", function (v) { filtroPrazo = v; }],
+     ["lx-ordem", function (v) { ordemLixeira = v; }]].forEach(function (par) {
+      var el = document.getElementById(par[0]);
+      if (el) el.addEventListener("change", function () { par[1](el.value); desenhar(); });
+    });
+
+    var atualizar = document.getElementById("lx-atualizar");
+    if (atualizar) atualizar.addEventListener("click", function () { carregarLixeira(); });
+
+    var limpar = document.getElementById("lx-limpar");
+    if (limpar) limpar.addEventListener("click", function () {
+      /* primeiro só conta, sem apagar nada */
+      operarLixeira({ acao: "lixeira_limpar" }, function (r) {
+        confirmandoLixeira = { acao: "limpar", quantos: r.quantos, contas: r.contas };
+        desenhar();
+      });
+    });
+
+    Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-lx-restaurar]"), function (b) {
+      b.addEventListener("click", function () {
+        confirmandoLixeira = { acao: "restaurar", item: acharNaLixeira(b.getAttribute("data-lx-restaurar")) };
+        recadoLixeira = "";
+        desenhar();
+      });
+    });
+
+    Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-lx-excluir]"), function (b) {
+      b.addEventListener("click", function () {
+        confirmandoLixeira = { acao: "excluir", item: acharNaLixeira(b.getAttribute("data-lx-excluir")) };
+        recadoLixeira = "";
+        desenhar();
+      });
+    });
+
+    var cancelar = document.getElementById("lx-cancelar");
+    if (cancelar) cancelar.addEventListener("click", function () {
+      confirmandoLixeira = null; recadoLixeira = ""; desenhar();
+    });
+
+    var forcar = document.getElementById("lx-forcar");
+    if (forcar) forcar.addEventListener("click", function () {
+      var i = confirmandoLixeira.item;
+      operarLixeira({ acao: "lixeira_restaurar", id: i.id, forcar: true });
+    });
+
+    var ok = document.getElementById("lx-ok");
+    if (ok) ok.addEventListener("click", function () {
+      var c = confirmandoLixeira;
+      if (c.acao === "restaurar") {
+        operarLixeira({ acao: "lixeira_restaurar", id: c.item.id });
+        return;
+      }
+      /* dupla confirmação: a palavra digitada */
+      var palavra = (document.getElementById("lx-palavra") || {}).value || "";
+      if (palavra.trim().toUpperCase() !== "EXCLUIR") {
+        recadoLixeira = "Digite EXCLUIR para confirmar.";
+        desenhar();
+        return;
+      }
+      if (c.acao === "excluir") operarLixeira({ acao: "lixeira_excluir", id: c.item.id, confirmar: true });
+      else operarLixeira({ acao: "lixeira_limpar", confirmar: true });
     });
   }
 

@@ -38,6 +38,8 @@
       --crm-borda-forte: #D8D2C4;
       --crm-borda-media: #C9C2B2;
       --crm-suave: #9A948A;
+      /* mesma família do suave, escuro o bastante para texto corrido */
+      --crm-suave-forte: #6B665E;
       --crm-texto: #1E3A3A;
       --crm-topo-rotulo: #C9BFA8;
       --crm-topo-serif: #D8C9A5;
@@ -214,6 +216,7 @@
       atrasado: "var(--crm-atrasado)",
       borda: "var(--crm-borda)",
       suave: "var(--crm-suave)",
+      suaveForte: "var(--crm-suave-forte)",
       /* o texto principal deixa de ser o verde-floresta no escuro */
       texto: "var(--crm-texto)",
       superficie: "var(--crm-superficie)",
@@ -375,6 +378,7 @@
       const [aberto, setAberto] = useState(null);
       const [importando, setImportando] = useState(false);
       const [faixaAberta, setFaixaAberta] = useState(null);
+      const [recado, setRecado] = useState("");
 
       /* a marca "Amanda ▾" é montada fora do React, pelo auth.js, para os três
          módulos usarem exatamente o mesmo componente */
@@ -466,10 +470,32 @@
         ));
       }
 
-      function excluirLead(id) {
-        salvar(leads.filter((l) => l.id !== id));
-        setAberto(null);
-        setEditando(null);
+      /* Mover para a lixeira é operação do servidor: ele tira o lead da aba,
+         guarda o cadastro inteiro e devolve a revisão nova. Aqui só refletimos
+         o que ele já fez — nada é reenviado, para não ressuscitar o registro. */
+      async function moverLeadParaLixeira(id, motivo) {
+        const lead = leads.find((l) => l.id === id);
+        try {
+          const r = await chamarAPI({
+            acao: "lixeira_mover", token: SESSAO.token, tipo: "crm", id: id, motivo: motivo || "",
+          });
+          if (!r || !r.ok) {
+            setErro(r && r.erro === "sem_acesso"
+              ? "Você não possui acesso a este módulo."
+              : "Não foi possível concluir a operação. Tente novamente.");
+            return;
+          }
+          if (typeof r.rev === "number") SESSAO.rev = r.rev;
+          setLeads(leads.filter((l) => l.id !== id));
+          setAberto(null);
+          setEditando(null);
+          setErro(null);
+          /* o nome do lead pode ser de qualquer pessoa: frase sem gênero */
+          setRecado((lead ? lead.nome : "O lead") +
+            " está na lixeira — dá para restaurar no painel de manutenção por 30 dias.");
+        } catch (e) {
+          setErro("Não foi possível concluir a operação. Tente novamente.");
+        }
       }
 
       function importarLeads(novos) {
@@ -655,6 +681,13 @@
           </header>
 
           <main style={{ maxWidth: 760, margin: "0 auto", padding: "20px 16px 80px" }}>
+            {recado && (
+              <div style={{ background: "var(--crm-etiqueta-bg)", color: CORES.texto, padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+                {recado}
+                <button onClick={() => setRecado("")} style={{ float: "right", border: "none", background: "none", color: CORES.texto, fontWeight: 700 }}>✕</button>
+              </div>
+            )}
+
             {erro && (
               <div style={{ background: "var(--crm-atrasado-bg)", color: CORES.atrasado, padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
                 {erro}
@@ -865,7 +898,7 @@
                 aoMudarEtapa={(e) => mudarEtapa(aberto.id, e)}
                 aoMudarCadencia={(c) => mudarCadencia(aberto.id, c)}
                 aoAlternarEx={() => alternarExCliente(aberto.id)}
-                aoExcluir={() => excluirLead(aberto.id)}
+                aoExcluir={(motivo) => moverLeadParaLixeira(aberto.id, motivo)}
               />
             </Modal>
           )}
@@ -1059,6 +1092,7 @@
     /* ==== Detalhe ==== */
     function DetalheLead({ lead, aoEditar, aoContatar, aoMudarEtapa, aoMudarCadencia, aoAlternarEx, aoExcluir }) {
       const [confirmando, setConfirmando] = useState(false);
+      const [motivo, setMotivo] = useState("");
       const etapa = etapaPor(lead.etapa);
       const tel = (lead.whatsapp || "").replace(/\D/g, "");
       const campo = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--crm-borda-forte)", fontSize: 14, background: CORES.branco, marginTop: 4 };
@@ -1124,16 +1158,38 @@
             <button onClick={aoEditar} style={{ border: "1.5px solid var(--crm-borda-media)", background: "none", color: CORES.texto, borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600 }}>
               Editar
             </button>
-            {!confirmando ? (
+            {!confirmando && (
               <button onClick={() => setConfirmando(true)} style={{ border: "none", background: "none", color: CORES.atrasado, fontSize: 13, fontWeight: 600, marginLeft: "auto" }}>
-                Excluir
-              </button>
-            ) : (
-              <button onClick={aoExcluir} style={{ border: "none", background: CORES.atrasado, color: CORES.branco, borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600, marginLeft: "auto" }}>
-                Confirmar exclusão
+                Mover para a lixeira
               </button>
             )}
           </div>
+
+      {confirmando && (
+            <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 10, background: "var(--crm-superficie-2)" }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Mover {lead.nome} para a lixeira?</div>
+              <p style={{ fontSize: 13, color: CORES.suaveForte, margin: "6px 0 0", lineHeight: 1.5 }}>
+                O lead sai das listas, do funil e das contagens, e pode ser restaurado pelo
+                painel de manutenção durante 30 dias.
+              </p>
+              <label style={{ display: "block", marginTop: 12, fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: CORES.suaveForte }}>
+                Motivo (opcional)
+                <input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={120}
+                  placeholder="Cadastro duplicado, criado por engano…"
+                  style={{ display: "block", width: "100%", marginTop: 5, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--crm-borda-forte)", fontSize: 14, background: CORES.branco, color: CORES.texto, letterSpacing: 0, textTransform: "none" }} />
+              </label>
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button onClick={() => aoExcluir(motivo)}
+                  style={{ border: "none", background: CORES.atrasado, color: "var(--crm-sobre-verde)", borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600 }}>
+                  Mover para lixeira
+                </button>
+                <button onClick={() => setConfirmando(false)}
+                  style={{ border: "1.5px solid var(--crm-borda-media)", background: "none", color: CORES.texto, borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600 }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       );
     }

@@ -33,6 +33,8 @@
   --linha:#E2DED7;
   --alerta:#A8623F;
   --alerta-bg:#F6EBE4;
+  --alerta-texto:#7A4527;
+  --info-bg:#F0F5F4;
   --serif:'Cormorant Garamond',Georgia,serif;
   --sans:'Montserrat',Calibri,system-ui,sans-serif;
   --sombra:0 1px 2px rgba(45,45,45,.04),0 8px 24px rgba(59,110,106,.06);
@@ -352,8 +354,8 @@ input[type=color]{width:44px;height:34px;padding:2px;border:1px solid var(--linh
 .note{padding:14px 17px;border-radius:2px;font-size:12.5px;font-weight:300;line-height:1.55;
   display:flex;gap:12px;align-items:flex-start}
 .note svg{flex:0 0 auto;margin-top:2px}
-.note.warn{background:var(--alerta-bg);color:#7A4527}
-.note.info{background:#F0F5F4;color:var(--teal-deep)}
+.note.warn{background:var(--alerta-bg);color:var(--alerta-texto)}
+.note.info{background:var(--info-bg);color:var(--teal-deep)}
 .note b{font-weight:600}
 
 /* ---------- RESUMO ---------- */
@@ -500,6 +502,15 @@ footer{border-top:1px solid var(--linha);padding:26px 0;background:var(--branco)
 #portao .alternar:hover{color:var(--teal);background:var(--fundo-teal)}
 #portao .alternar:focus-visible{outline:2px solid var(--teal-light);outline-offset:1px}
 #portao .campo + .campo{margin-top:10px}
+
+/* motivo opcional ao mandar algo para a lixeira */
+.motivo-lixeira{display:block;margin-top:14px;font-size:10.5px;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--alerta-texto)}
+.motivo-lixeira input{display:block;width:100%;margin-top:6px;padding:9px 11px;
+  border:1px solid var(--linha);border-radius:2px;background:var(--branco);
+  font-family:var(--sans);font-size:13.5px;color:var(--carvao);letter-spacing:0;
+  text-transform:none}
+.motivo-lixeira input:focus{outline:none;border-color:var(--teal-light)}
 #portao .campo.simples input{padding-left:14px}
 
 #portao .erro{display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding:10px 12px;
@@ -2402,6 +2413,28 @@ function modalFicha(id){
 
 /* ---------- Confirmação ---------- */
 let pendenteFn=null;
+/* Mover para a lixeira é operação do servidor: ele tira a paciente das abas,
+   guarda a ficha inteira e devolve a revisão nova. Aqui só acompanhamos o
+   que ele já fez, para a tela não ficar mostrando quem saiu. */
+async function paraLixeira(id,nome,motivo){
+  try{
+    const r=await api({acao:'lixeira_mover',token:SESSAO.token,tipo:'agenda',id:id,motivo:motivo||''});
+    if(!r||!r.ok){
+      if(r&&r.erro==='sem_acesso'){ toast('Você não possui acesso a este módulo.',true); return; }
+      toast('Não foi possível concluir a operação. Tente novamente.',true); return;
+    }
+    if(typeof r.rev==='number') SESSAO.rev=r.rev;
+    state.pacientes=state.pacientes.filter(x=>x.id!==id);
+    state.followups=state.followups.filter(f=>f.pacienteId!==id);
+    state.vindas.forEach(v=>{ if(v.resp) delete v.resp[id]; });
+    if(ui.editId===id){ ui.editId=null; ui.pacSub='todas'; }
+    tudo();
+    toast(nome+' foi movida para a lixeira.');
+  }catch(e){
+    toast('Não foi possível concluir a operação. Tente novamente.',true);
+  }
+}
+
 function confirmar(titulo,texto,rotulo,fn){
   pendenteFn=fn;
   abrir(cabecaModal(titulo)+
@@ -2821,7 +2854,12 @@ document.addEventListener('click',e=>{
   const a=b.dataset.act, id=b.dataset.id, ar=b.dataset.a;
   switch(a){
     case 'fechar': fechar(); break;
-    case 'confirmou': { const f=pendenteFn; pendenteFn=null; fechar(); if(f) f(); break; }
+    case 'confirmou': {
+      const f=pendenteFn; pendenteFn=null;
+      /* o campo some quando a janela fecha: leio antes */
+      const campo=document.getElementById('motivo-lixeira');
+      const motivo=campo?campo.value.trim():'';
+      fechar(); if(f) f(motivo); break; }
     case 'agendar': modalAgendar(id,ar); break;
     case 'confirmar-agenda': confirmarAgenda(id,ar); break;
     case 'naoresp': naoRespondeu(id,ar); break;
@@ -2831,15 +2869,14 @@ document.addEventListener('click',e=>{
       fechar(); ui.editId=id; ui.pacSub='nova'; irPara('pac'); renderPac(); break;
     case 'excluir': {
       const p=pac(id); if(!p) break;
-      confirmar('Excluir '+esc(p.nome)+'?',
-        'A ficha, os ciclos, o histórico e os follow-ups dela serão apagados. Não tem como desfazer.',
-        'Excluir paciente',()=>{
-          state.pacientes=state.pacientes.filter(x=>x.id!==id);
-          state.followups=state.followups.filter(f=>f.pacienteId!==id);
-          state.vindas.forEach(v=>{ if(v.resp) delete v.resp[id]; });
-          if(ui.editId===id){ ui.editId=null; ui.pacSub='todas'; }
-          salvar(); tudo(); toast(p.nome+' excluída.');
-        });
+      confirmar('Mover '+esc(p.nome)+' para a lixeira?',
+        'A ficha sai das listas, das contagens e dos follow-ups, e pode ser restaurada '+
+        'pelo painel de manutenção durante 30 dias. Os ciclos, as condições e o histórico '+
+        'vão junto e voltam junto.'+
+        '<label class="motivo-lixeira">Motivo (opcional)'+
+        '<input id="motivo-lixeira" type="text" maxlength="120" '+
+        'placeholder="Cadastro duplicado, criado por engano…"></label>',
+        'Mover para lixeira',(motivo)=>{ paraLixeira(id,p.nome,motivo); });
       break; }
     case 'fu-feito': {
       const f=state.followups.find(x=>x.id===id); if(!f) break;
