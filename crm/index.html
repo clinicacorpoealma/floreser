@@ -1497,39 +1497,22 @@
       const [estado, setEstado] = useState("form"); // form | verificando | ok
       const [erro, setErro] = useState("");
       const [mostrar, setMostrar] = useState(false);
-      const [modo, setModo] = useState("senha");   // senha | usuario
-      const [login, setLogin] = useState("");
-      const [senhaUsuario, setSenhaUsuario] = useState("");
 
-      /* Entrada por usuário individual. A permissão de verdade é conferida
-         pelo Apps Script em toda chamada; aqui só evitamos abrir a tela de
-         quem já sabemos que não tem acesso. */
-      async function entrarComUsuario() {
-        if (!login.trim() || !senhaUsuario) return;
-        setEstado("verificando");
+      /* Entrada por usuário individual: a tela é a mesma do portal, servida
+         pelo auth.js. Aqui só dizemos qual módulo estamos pedindo e o que
+         fazer quando a pessoa entrar — nada de segunda tela nem de segunda
+         sessão. A permissão de verdade é conferida pelo Apps Script em toda
+         chamada. */
+      function abrirLoginDeUsuario() {
         setErro("");
-        try {
-          const r = await window.FloreSerAuth.entrar(login.trim(), senhaUsuario);
-          if (!r || !r.ok) {
-            setErro(window.FloreSerAuth.recado(r));
-            setSenhaUsuario("");
-            setEstado("form");
-            return;
-          }
-          if (!r.usuario.permissoes.crm) {
-            setErro("Você não possui acesso a este módulo.");
-            await window.FloreSerAuth.sair();
-            setSenhaUsuario("");
-            setEstado("form");
-            return;
-          }
-          SESSAO.token = r.token;
-          ORIGEM_SESSAO = { tipo: "usuario" };
-          setEstado("ok");
-        } catch (e) {
-          setErro("Sem conexão com o servidor. Confira sua internet.");
-          setEstado("form");
-        }
+        window.FloreSerAuth.abrirLogin({
+          modulo: "crm",
+          aoEntrar: function (r) {
+            SESSAO.token = r.token;
+            ORIGEM_SESSAO = { tipo: "usuario" };
+            setEstado("ok");
+          },
+        });
       }
 
       /* Troca a senha por um token de sessão. A senha não fica guardada aqui
@@ -1733,7 +1716,7 @@
             <p className="pt-tag">Clínica Corpo e Alma</p>
             <div className="pt-risco"></div>
 
-            <div className="pt-campo" style={{ display: modo === "senha" ? "flex" : "none" }}>
+            <div className="pt-campo">
               <label className="pt-so-leitor" htmlFor="pt-senha">Senha de acesso</label>
               <svg className="pt-cadeado" width="15" height="15" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
@@ -1774,26 +1757,6 @@
               </button>
             </div>
 
-            {modo === "usuario" && (
-              <>
-                <div className="pt-campo simples">
-                  <label className="pt-so-leitor" htmlFor="pt-login">Usuário</label>
-                  <input id="pt-login" type="text" value={login} autoCapitalize="none"
-                    spellCheck="false" autoComplete="username" placeholder="Usuário"
-                    disabled={carregando} autoFocus
-                    onChange={(e) => setLogin(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") entrarComUsuario(); }} />
-                </div>
-                <div className="pt-campo simples">
-                  <label className="pt-so-leitor" htmlFor="pt-usenha">Senha</label>
-                  <input id="pt-usenha" type="password" value={senhaUsuario}
-                    autoComplete="current-password" placeholder="Senha" disabled={carregando}
-                    onChange={(e) => setSenhaUsuario(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") entrarComUsuario(); }} />
-                </div>
-              </>
-            )}
-
             {erro && (
               <div className="pt-erro" role="alert">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1805,35 +1768,16 @@
               </div>
             )}
 
-            {modo === "senha" ? (
-              <>
-                <button
-                  className={carregando ? "pt-entrar carregando" : "pt-entrar"}
-                  onClick={entrar}
-                  disabled={carregando || !senha.trim()}
-                >
-                  {carregando ? "Conectando…" : "Entrar"}
-                </button>
-                <button type="button" className="pt-alternar"
-                  onClick={() => { setErro(""); setModo("usuario"); }}>
-                  Entrar com usuário
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  className={carregando ? "pt-entrar carregando" : "pt-entrar"}
-                  onClick={entrarComUsuario}
-                  disabled={carregando || !login.trim() || !senhaUsuario}
-                >
-                  {carregando ? "Entrando…" : "Entrar"}
-                </button>
-                <button type="button" className="pt-alternar"
-                  onClick={() => { setErro(""); setModo("senha"); }}>
-                  ‹ Voltar para acesso por senha
-                </button>
-              </>
-            )}
+            <button
+              className={carregando ? "pt-entrar carregando" : "pt-entrar"}
+              onClick={entrar}
+              disabled={carregando || !senha.trim()}
+            >
+              {carregando ? "Conectando…" : "Entrar"}
+            </button>
+            <button type="button" className="pt-alternar" onClick={abrirLoginDeUsuario}>
+              Entrar com usuário
+            </button>
           </div>
 
           <a className="pt-volta" href="../">‹ Início</a>

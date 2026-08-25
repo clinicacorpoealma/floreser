@@ -638,22 +638,6 @@ main .page{animation:surgir-agenda .42s ease both}
     <button id="portao-btn">Entrar</button>
     <button type="button" class="alternar" id="ir-usuario">Entrar com usuário</button>
     </div>
-
-    <div id="face-usuario" hidden>
-      <div class="campo simples">
-        <label class="so-leitor" for="u-login">Usuário</label>
-        <input type="text" id="u-login" placeholder="Usuário" autocomplete="username"
-               autocapitalize="none" spellcheck="false">
-      </div>
-      <div class="campo simples">
-        <label class="so-leitor" for="u-senha">Senha</label>
-        <input type="password" id="u-senha" placeholder="Senha"
-               autocomplete="current-password" enterkeyhint="go">
-      </div>
-      <div class="erro" id="u-erro" role="alert"></div>
-      <button id="u-btn">Entrar</button>
-      <button type="button" class="alternar" id="ir-senha">&lsaquo; Voltar para acesso por senha</button>
-    </div>
   </div>
   <a class="volta" href="../">&lsaquo; Início</a>
 </div>
@@ -3172,53 +3156,23 @@ async function sair(){
   location.reload();
 }
 
-/* ---------- entrada por usuário ---------- */
+/* ---------- entrada por usuário ----------
+   A tela é a mesma do portal, servida pelo auth.js. Daqui só dizemos qual
+   módulo estamos pedindo e o que fazer quando a pessoa entrar — não existe
+   segunda tela nem segunda sessão. Quem decide a permissão é o Apps Script,
+   em toda leitura e gravação. */
 
-function mostrarFace(qual){
-  document.getElementById('face-senha').hidden = qual!=='senha';
-  document.getElementById('face-usuario').hidden = qual!=='usuario';
-  if(qual==='usuario') document.getElementById('u-login').focus(); else elSenha.focus();
-}
-
-function avisarUsuario(texto){
-  document.getElementById('u-erro').innerHTML = texto ? AVISO+'<span>'+esc(texto)+'</span>' : '';
-}
-
-function ocupadoUsuario(ligado){
-  const b=document.getElementById('u-btn');
-  b.disabled=ligado; b.classList.toggle('carregando',ligado);
-  b.textContent=ligado?'Entrando…':'Entrar';
-  document.getElementById('u-login').disabled=ligado;
-  document.getElementById('u-senha').disabled=ligado;
-}
-
-async function entrarComUsuario(){
-  const login=document.getElementById('u-login').value.trim();
-  const senha=document.getElementById('u-senha').value;
-  if(!login||!senha){ document.getElementById(login?'u-senha':'u-login').focus(); return; }
-
-  ocupadoUsuario(true); avisarUsuario('');
-  try{
-    const r=await window.FloreSerAuth.entrar(login,senha);
-    if(!r||!r.ok){
-      avisarUsuario(window.FloreSerAuth.recado(r));
-      document.getElementById('u-senha').value='';
-      ocupadoUsuario(false); document.getElementById('u-senha').focus(); return;
-    }
-    if(!r.usuario.permissoes.agenda){
-      avisarUsuario('Você não possui acesso a este módulo.');
-      await window.FloreSerAuth.sair();
-      document.getElementById('u-senha').value='';
-      ocupadoUsuario(false); return;
-    }
-    SESSAO.token=r.token;
-    origemSessao='usuario';
-    await carregar();
-    abrirApp();
-  }catch(e){
-    avisarUsuario('Não foi possível falar com o servidor. Confira sua internet.');
-    ocupadoUsuario(false);
-  }
+function abrirLoginDeUsuario(){
+  avisar('');
+  window.FloreSerAuth.abrirLogin({
+    modulo:'agenda',
+    aoEntrar: async function(r){
+      SESSAO.token=r.token;
+      origemSessao='usuario';
+      try{ await carregar(); abrirApp(); }
+      catch(e){ avisar('Não foi possível carregar os dados. Tente de novo.'); }
+    },
+  });
 }
 
 /* volta com a sessão de usuário guardada neste navegador */
@@ -3244,7 +3198,8 @@ function abrirApp(){
     window.FloreSerAuth.montarIdentidade(document.getElementById('quemEsta'),
       function(){ location.reload(); });
     const sair=document.getElementById('btn-sair');
-    if(sair) sair.hidden=true;   /* quem entrou como usuário sai pelo menu */
+    /* o CSS do topo vence o [hidden], então escondo pelo display mesmo */
+    if(sair) sair.style.display='none';   /* quem entrou como usuário sai pelo menu */
   }
   maturar();
   tudo();
@@ -3273,12 +3228,7 @@ elOlho.addEventListener('click',()=>{
 const btnSair=document.getElementById('btn-sair');
 if(btnSair) btnSair.addEventListener('click',sair);
 
-document.getElementById('ir-usuario').addEventListener('click',()=>mostrarFace('usuario'));
-document.getElementById('ir-senha').addEventListener('click',()=>{ avisarUsuario(''); mostrarFace('senha'); });
-document.getElementById('u-btn').addEventListener('click',entrarComUsuario);
-['u-login','u-senha'].forEach(function(id){
-  document.getElementById(id).addEventListener('keydown',ev=>{ if(ev.key==='Enter') entrarComUsuario(); });
-});
+document.getElementById('ir-usuario').addEventListener('click',abrirLoginDeUsuario);
 
 /* ordem de tentativa: a sessão de usuário (que vale entre módulos) e,
    se não houver, a sessão da senha compartilhada desta aba */

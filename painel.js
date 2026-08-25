@@ -560,7 +560,9 @@
       if (r && r.ok) {
         usuarios = r.usuarios || usuarios;
         formUsuario = null;
-        recadoUsuario = "";
+        fotoForm = { acao: "manter", dados: "" };
+        /* o cadastro entrou, mas a foto pode ter sido recusada */
+        recadoUsuario = r.aviso || "";
       } else {
         recadoUsuario = (r && r.mensagem) || "N\u00e3o foi poss\u00edvel concluir.";
       }
@@ -586,12 +588,50 @@
       (marcado ? " checked" : "") + "> " + rotulo + "</label>";
   }
 
+  /* A foto escolhida vive aqui at\u00e9 a pessoa salvar: "manter" n\u00e1o mexe no
+     que j\u00e1 existe, "trocar" leva a imagem nova e "remover" apaga a atual. */
+  var fotoForm = { acao: "manter", dados: "" };
+
+  function avatarDoPainel(u, px) {
+    var tamanho = px || 40;
+    var estilo = 'style="width:' + tamanho + "px;height:" + tamanho + 'px"';
+    if (u && u.foto) {
+      return '<img class="fs-avatar" ' + estilo + ' src="' + esc(u.foto) + '" alt="" aria-hidden="true">';
+    }
+    var letras = (global.FloreSerAuth && global.FloreSerAuth.iniciais)
+      ? global.FloreSerAuth.iniciais(u && u.nome) : "?";
+    return '<span class="fs-avatar fs-avatar-letras" ' + estilo + ' aria-hidden="true">' +
+      esc(letras) + "</span>";
+  }
+
+  /* O que aparece no cart\u00e1o do formul\u00e1rio: a escolha da vez, se houver, e
+     sen\u00e1o o que j\u00e1 est\u00e1 guardado para essa pessoa. */
+  function fotoEmEdicao(u) {
+    if (fotoForm.acao === "trocar") return { nome: u.nome, foto: fotoForm.dados };
+    if (fotoForm.acao === "remover") return { nome: u.nome, foto: "" };
+    return { nome: u.nome, foto: u.foto || "" };
+  }
+
   function formularioUsuario() {
     var novo = formUsuario === "novo";
     var u = novo ? { permissoes: {} } : (formUsuario || {});
     var p = u.permissoes || {};
+    var vendo = fotoEmEdicao(u);
+    var temFoto = !!vendo.foto;
     return '<div class="form-usuario">' +
       '<div class="titulo-secao">' + (novo ? "Novo usu\u00e1rio" : "Editar usu\u00e1rio") + "</div>" +
+      '<div class="campo-foto">' +
+      '<div class="previa-foto">' + avatarDoPainel(vendo, 72) + "</div>" +
+      '<div class="acoes-foto">' +
+      '<div class="rotulo-foto">Foto de perfil</div>' +
+      '<p class="dica-foto">Quadrada fica melhor. A imagem \u00e9 reduzida aqui mesmo, ' +
+      "antes de subir.</p>" +
+      '<input type="file" id="u-foto-arquivo" accept="image/png,image/jpeg,image/webp" hidden>' +
+      '<div class="botoes-foto">' +
+      '<button class="btn-fino" id="u-foto-escolher">' +
+      (temFoto ? "Trocar foto" : "Escolher foto") + "</button>" +
+      (temFoto ? '<button class="btn-fino perigo" id="u-foto-remover">Remover</button>' : "") +
+      "</div></div></div>" +
       '<label class="rot">Nome<input id="u-nome" type="text" value="' + esc(u.nome || "") + '"></label>' +
       '<label class="rot">Usu\u00e1rio<input id="u-login" type="text" autocapitalize="none" ' +
       'spellcheck="false" value="' + esc(u.usuario || "") + '"></label>' +
@@ -660,6 +700,7 @@
     return html + lista.map(function (u) {
       return '<div class="cartao-usuario' + (u.ativo ? "" : " inativo") + '">' +
         '<div class="topo-usuario">' +
+        avatarDoPainel(u, 40) +
         "<div><h4>" + esc(u.nome) + "</h4>" +
         '<div class="arroba">@' + esc(u.usuario) + (u.admin ? " &middot; administrador" : "") + "</div></div>" +
         '<span class="selo-status">' + (u.ativo ? "Ativo" : "Inativo") + "</span>" +
@@ -677,6 +718,79 @@
     }).join("");
   }
 
+  /* ---------- foto de perfil ----------
+     A imagem sai do computador da pessoa e vai para a planilha, ent\u00e1o precisa
+     ser pequena. Reduzimos aqui mesmo, antes de subir: corte quadrado pelo
+     centro, 128 px de lado, JPEG. Uma foto de celular de 4 MB vira uns 8 KB,
+     que cabem folgados numa c\u00e9lula. */
+  var LADO_FOTO = 128;
+  var QUALIDADE_FOTO = 0.82;
+  var TETO_ARQUIVO = 12 * 1024 * 1024;
+
+  function reduzirImagem(arquivo) {
+    return new Promise(function (resolve, reject) {
+      if (arquivo.size > TETO_ARQUIVO) {
+        reject(new Error("O arquivo \u00e9 grande demais. Escolha uma imagem menor."));
+        return;
+      }
+      var leitor = new FileReader();
+      leitor.onerror = function () { reject(new Error("N\u00e1o foi poss\u00edvel ler o arquivo.")); };
+      leitor.onload = function () {
+        var img = new Image();
+        img.onerror = function () { reject(new Error("Esse arquivo n\u00e1o \u00e9 uma imagem v\u00e1lida.")); };
+        img.onload = function () {
+          try {
+            var lado = Math.min(img.naturalWidth, img.naturalHeight);
+            if (!lado) throw new Error("imagem vazia");
+            var tela = document.createElement("canvas");
+            tela.width = LADO_FOTO;
+            tela.height = LADO_FOTO;
+            var pincel = tela.getContext("2d");
+            /* fundo branco: PNG com transpar\u00e9ncia n\u00e1o vira JPEG preto */
+            pincel.fillStyle = "#FFFFFF";
+            pincel.fillRect(0, 0, LADO_FOTO, LADO_FOTO);
+            pincel.drawImage(img,
+              (img.naturalWidth - lado) / 2, (img.naturalHeight - lado) / 2, lado, lado,
+              0, 0, LADO_FOTO, LADO_FOTO);
+            resolve(tela.toDataURL("image/jpeg", QUALIDADE_FOTO));
+          } catch (e) {
+            reject(new Error("N\u00e1o foi poss\u00edvel preparar a imagem."));
+          }
+        };
+        img.src = leitor.result;
+      };
+      leitor.readAsDataURL(arquivo);
+    });
+  }
+
+  function ligarEventosFoto() {
+    var campo = document.getElementById("u-foto-arquivo");
+    var escolher = document.getElementById("u-foto-escolher");
+    var remover = document.getElementById("u-foto-remover");
+
+    if (escolher && campo) {
+      escolher.addEventListener("click", function () { campo.click(); });
+      campo.addEventListener("change", async function () {
+        var arquivo = campo.files && campo.files[0];
+        if (!arquivo) return;
+        recadoUsuario = "";
+        try {
+          fotoForm = { acao: "trocar", dados: await reduzirImagem(arquivo) };
+        } catch (e) {
+          fotoForm = { acao: "manter", dados: "" };
+          recadoUsuario = e.message;
+        }
+        desenhar();
+      });
+    }
+
+    if (remover) remover.addEventListener("click", function () {
+      fotoForm = { acao: "remover", dados: "" };
+      recadoUsuario = "";
+      desenhar();
+    });
+  }
+
   function acharUsuario(id) {
     var achados = usuarios.filter(function (u) { return u.id === id; });
     return achados.length ? achados[0] : null;
@@ -686,7 +800,9 @@
     var corpo = {
       nome: (document.getElementById("u-nome") || {}).value || "",
       usuario: (document.getElementById("u-login") || {}).value || "",
+      fotoAcao: fotoForm.acao,
     };
+    if (fotoForm.acao === "trocar") corpo.foto = fotoForm.dados;
     Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-campo]"), function (c) {
       corpo[c.getAttribute("data-campo")] = c.checked;
     });
@@ -713,9 +829,12 @@
       });
     }
 
+    ligarEventosFoto();
+
     var novo = document.getElementById("u-novo");
     if (novo) novo.addEventListener("click", function () {
-      formUsuario = "novo"; recadoUsuario = ""; desenhar();
+      formUsuario = "novo"; recadoUsuario = ""; fotoForm = { acao: "manter", dados: "" };
+      desenhar();
     });
 
     var atualizar = document.getElementById("u-atualizar");
@@ -723,7 +842,8 @@
 
     var cancelar = document.getElementById("u-cancelar");
     if (cancelar) cancelar.addEventListener("click", function () {
-      formUsuario = null; recadoUsuario = ""; desenhar();
+      formUsuario = null; recadoUsuario = ""; fotoForm = { acao: "manter", dados: "" };
+      desenhar();
     });
 
     var salvar = document.getElementById("u-salvar");
@@ -754,6 +874,7 @@
       b.addEventListener("click", function () {
         formUsuario = acharUsuario(b.getAttribute("data-editar"));
         recadoUsuario = "";
+        fotoForm = { acao: "manter", dados: "" };
         desenhar();
       });
     });

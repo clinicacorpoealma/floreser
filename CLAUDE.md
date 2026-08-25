@@ -14,7 +14,7 @@ cada módulo mora numa pasta, para o endereço não mostrar `.html`:
 | `version.js` | **fonte única** de versão, codinome e changelog |
 | `logs.js` | registro técnico compartilhado pelas páginas |
 | `tema.js` | tema claro/escuro/automático: paleta, seletor e preferência local |
-| `auth.js` | entrada por usuário individual: sessão de 7 dias e menu com o nome |
+| `auth.js` | conta de usuário: tela de entrar, sessão de 30 dias, avatar e menu |
 | `painel.js` | painel de manutenção do portal (entrada discreta + senha no servidor) |
 | `logo.png` / `favicon.png` | marca |
 
@@ -77,7 +77,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA.
 
 ### Changelog
 

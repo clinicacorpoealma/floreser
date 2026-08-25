@@ -28,6 +28,8 @@
       --branco: #FFFFFF;
       --linha: #E2DED7;
       --alerta: #A8623F;
+      --alerta-bg: #F6EBE4;
+      --alerta-texto: #7A4527;
       --serif: 'Cormorant Garamond', Georgia, serif;
       --sans: 'Montserrat', Calibri, system-ui, sans-serif;
       --mono: ui-monospace, SFMono-Regular, 'Cascadia Mono', Menlo, Consolas, monospace;
@@ -164,6 +166,79 @@
       letter-spacing: .28em;
       text-transform: uppercase;
       color: var(--taupe);
+    }
+
+    /* ---------- Conta ----------
+       Fica no canto superior direito no desktop; no celular desce para
+       baixo da marca, onde ainda cabe sem espremer o título. */
+    .canto-conta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 38px;
+    }
+
+    .conta-entrar {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 17px;
+      border: 1px solid var(--teal);
+      border-radius: 999px;
+      background: none;
+      cursor: pointer;
+      font-family: var(--sans);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--teal);
+      transition: background .18s ease, color .18s ease;
+    }
+
+    .conta-entrar:hover {
+      background: var(--teal);
+      color: var(--sobre-teal);
+    }
+
+    /* Enquanto o servidor não responde, um traço discreto no lugar da
+       conta: nada pisca entre "entrar" e o nome de quem já estava. */
+    .conta-carregando {
+      width: 92px;
+      height: 15px;
+      border-radius: 999px;
+      background: var(--linha);
+      opacity: .55;
+      animation: conta-pulsa 1.5s ease-in-out infinite;
+    }
+
+    @keyframes conta-pulsa {
+      0%, 100% { opacity: .3 }
+      50% { opacity: .65 }
+    }
+
+    .canto-conta .fs-quem>button {
+      color: var(--teal);
+    }
+
+    .canto-conta .fs-quem>button:hover {
+      background: var(--teal-fundo);
+    }
+
+    /* Cartão sem permissão: continua clicável — quem quiser entra pela
+       senha do módulo — mas avisa antes de a pessoa bater na porta. */
+    .quadro .selo-sem-acesso {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      font-size: 8.5px;
+      font-weight: 500;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--alerta-bg);
+      color: var(--alerta-texto);
     }
 
     .topo-data {
@@ -975,6 +1050,57 @@
       gap: 12px;
     }
 
+    /* ---------- Foto de perfil ---------- */
+    .campo-foto {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 0 16px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid var(--linha);
+    }
+
+    .previa-foto {
+      flex: 0 0 auto;
+      line-height: 0;
+    }
+
+    .acoes-foto {
+      min-width: 0;
+    }
+
+    .rotulo-foto {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--teal);
+    }
+
+    .dica-foto {
+      margin-top: 4px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--carvao);
+      opacity: .78;
+      max-width: 40ch;
+    }
+
+    .botoes-foto {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 520px) {
+      .campo-foto {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+    }
+
     .topo-usuario h4 {
       font-family: var(--serif);
       font-size: 19px;
@@ -1094,7 +1220,7 @@
       padding: 10px 12px;
       border-radius: 8px;
       background: var(--alerta-bg);
-      color: var(--alerta);
+      color: var(--alerta-texto);
       font-size: 12.5px;
     }
 
@@ -1201,6 +1327,15 @@
 
       .topo-data {
         display: none;
+      }
+
+      .topo {
+        flex-wrap: wrap;
+        row-gap: 14px;
+      }
+
+      .canto-conta {
+        margin-left: auto;
       }
 
       main {
@@ -1328,6 +1463,9 @@
         </div>
       </div>
       <div class="topo-data" id="topo-data"></div>
+      <div class="canto-conta" id="canto-conta">
+        <span class="conta-carregando" id="conta-carregando" aria-hidden="true"></span>
+      </div>
     </header>
 
     <main>
@@ -1420,6 +1558,7 @@
 
   <script src="version.js"></script>
   <script src="logs.js"></script>
+  <script src="auth.js"></script>
   <script>
     (function () {
       "use strict";
@@ -1567,6 +1706,88 @@
           if (window.FloreSerLogs) window.FloreSerLogs.enviar();
         });
       });
+
+      /* ================================================================
+         Conta
+         ----------------------------------------------------------------
+         O portal não guarda permissão nenhuma: ele pergunta ao servidor
+         quem está e desenha. O que aparece ou some aqui é conveniência —
+         cada módulo confere de novo, e o Apps Script confere em toda
+         leitura e gravação. Enquanto a resposta não chega, fica o traço
+         de carregando, para o canto não piscar entre "entrar" e o nome de
+         quem já estava.
+         ================================================================ */
+
+      var Auth = window.FloreSerAuth;
+      var canto = document.getElementById("canto-conta");
+      var CHAVES = { CRM: "crm", Agenda: "agenda", Entradas: "entradas" };
+
+      function limparCanto() {
+        while (canto.firstChild) canto.removeChild(canto.firstChild);
+      }
+
+      function marcarCartoes(quem) {
+        Array.prototype.forEach.call(document.querySelectorAll(".quadro"), function (a) {
+          var chave = CHAVES[a.getAttribute("data-modulo")];
+          var selo = a.querySelector(".selo-sem-acesso");
+          var falta = quem && chave && !(quem.permissoes || {})[chave];
+          if (falta && !selo) {
+            selo = document.createElement("span");
+            selo.className = "selo-sem-acesso";
+            selo.textContent = "Sem acesso";
+            selo.title = "Sua conta não abre este módulo. A senha do módulo continua valendo.";
+            a.appendChild(selo);
+          } else if (!falta && selo) {
+            selo.remove();
+          }
+        });
+      }
+
+      function desenharEntrar(aviso) {
+        limparCanto();
+        marcarCartoes(null);
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "conta-entrar";
+        b.id = "btn-entrar";
+        b.innerHTML =
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<path d="M10 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4"/>' +
+          '<path d="M15.5 16 20 12l-4.5-4M20 12H9.5"/></svg><span>Entrar</span>';
+        b.addEventListener("click", function () {
+          Auth.abrirLogin({ aoEntrar: function (r) { desenharQuem(r.usuario); } });
+        });
+        canto.appendChild(b);
+        if (aviso) {
+          b.title = aviso;
+        }
+      }
+
+      function desenharQuem(quem) {
+        limparCanto();
+        marcarCartoes(quem);
+        Auth.montarIdentidade(canto, function () { desenharEntrar(); });
+      }
+
+      (async function conferirConta() {
+        if (!Auth) { limparCanto(); return; }
+        if (!Auth.token()) { desenharEntrar(); return; }
+        try {
+          var r = await Auth.retomar();
+          if (r && r.ok) {
+            desenharQuem(r.usuario);
+            registrar("SESSAO_RETOMADA", { mensagem: "Portal reconheceu a sessão de usuário" });
+          } else {
+            desenharEntrar(r && r.erro === "expirada"
+              ? "Sua sessão expirou por inatividade. Entre novamente."
+              : "");
+          }
+        } catch (e) {
+          /* servidor fora do ar: sem inventar quem está, oferece entrar */
+          desenharEntrar("Não foi possível confirmar sua sessão agora.");
+        }
+      })();
     })();
   </script>
 

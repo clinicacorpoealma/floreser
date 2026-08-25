@@ -22,6 +22,37 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.10.0",
+      codinome: "SOLEIRA",
+      data: "24/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "Botão Entrar no canto superior direito do portal: dá para entrar com a sua conta antes de escolher o módulo.",
+          "Depois de entrar, o canto mostra a sua foto e o seu nome, com um menu que lista os módulos liberados e o botão de sair.",
+          "Foto de perfil: no painel de manutenção dá para escolher uma imagem do computador, ver como ficou antes de salvar, trocar depois e remover.",
+          "Quem ainda não tem foto aparece com as iniciais num círculo, no portal, nos módulos e na lista de usuários."
+        ],
+        "Alterado": [
+          "Estando logada no portal, entrar num módulo que a sua conta abre não pede mais senha nenhuma — o sistema reconhece você e entra direto.",
+          "A sessão agora dura trinta dias de inatividade, em vez de sete, e o prazo recomeça a cada uso.",
+          "Os cartões do portal marcam “Sem acesso” nos módulos que a sua conta não abre, antes de você bater na porta.",
+          "“Entrar com usuário”, nos três módulos, abre a mesma tela de entrada do portal — antes cada módulo tinha a sua cópia."
+        ],
+        "Corrigido": [
+          "Quem entrava como usuário via dois botões de sair na Agenda e nas Entradas; agora a saída é uma só, pelo menu do seu nome.",
+          "O aviso de erro do formulário de usuários ficava sem fundo no tema claro."
+        ],
+        "Visual": [
+          "A tela de entrar por usuário, o menu do seu nome e o avatar acompanham o tema claro e escuro em todas as páginas."
+        ],
+        "Técnico": [
+          "As senhas continuam só no servidor: o navegador guarda apenas o token da sessão, o seu nome, a sua foto e a data do último uso.",
+          "Entrar pelo portal não dá acesso a módulo nenhum por si: o servidor confere a permissão em toda leitura e gravação, e tirar um módulo de alguém corta o acesso na chamada seguinte.",
+          "Aba Usuarios_Fotos nova na planilha, criada sozinha, com a imagem já reduzida a um quadrado de 128 px — uns 8 KB por pessoa."
+        ]
+      }
+    },
+    {
       versao: "2.9.0",
       codinome: "REBROTA",
       data: "24/08/2026",
