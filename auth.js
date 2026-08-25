@@ -207,6 +207,8 @@
     "  --fs-botao:#3B6E6A; --fs-botao-cor:#F5F0EB; --fs-botao-hover:#5A9490;",
     "  --fs-erro:#A8452F; --fs-selo:#E7EEEB; --fs-selo-cor:#2F5A57;",
     "  --fs-menu-fundo:#FFFFFF; --fs-menu-linha:#E2DED7;",
+    "  --fs-erro-bg:#F6EBE4; --fs-fio:#C9D3CA; --fs-sombra:rgba(20,40,38,.30);",
+    "  --fs-anel:rgba(90,148,144,.16); --fs-realce:#5A9490; --fs-hover-suave:#EDF3F1;",
     "}",
     ':root[data-tema="escuro"]{',
     "  --fs-fundo:#1E2927; --fs-texto:#E9E3DB; --fs-titulo:#A8D3CE;",
@@ -214,7 +216,14 @@
     "  --fs-botao:#7FB8B2; --fs-botao-cor:#12201E; --fs-botao-hover:#93C6C0;",
     "  --fs-erro:#E79B82; --fs-selo:#2A514D; --fs-selo-cor:#EAF1EF;",
     "  --fs-menu-fundo:#1E2927; --fs-menu-linha:#33403E;",
+    "  --fs-erro-bg:#3A241D; --fs-fio:#3C5A56; --fs-sombra:rgba(0,0,0,.55);",
+    "  --fs-anel:rgba(127,184,178,.20); --fs-realce:#93C6C0; --fs-hover-suave:#26332F;",
     "}",
+
+    /* --- o básico, sem depender da página ---
+       O CRM escopa o box-sizing em .pt-fundo e o diálogo nasce fora dele:
+       sem esta linha o cartão soma o padding à largura e estoura os 400 px. */
+    ".fs-login,.fs-login *,.fs-quem,.fs-quem *{box-sizing:border-box}",
 
     /* --- avatar --- */
     ".fs-avatar{flex:0 0 auto;border-radius:50%;object-fit:cover;display:inline-flex;",
@@ -238,65 +247,113 @@
     "  background:var(--fs-menu-fundo);border:1px solid var(--fs-menu-linha);",
     "  box-shadow:0 2px 4px rgba(20,30,28,.06), 0 16px 34px -18px rgba(20,30,28,.45);",
     "  color:var(--fs-texto);display:none}",
-    ".fs-quem.aberto .fs-menu{display:block}",
-    ".fs-menu .cabeca{display:flex;align-items:center;gap:11px}",
-    ".fs-menu .nome{font-family:var(--serif,Georgia,serif);font-size:19px;line-height:1.15}",
-    ".fs-menu .login{font-size:10px;letter-spacing:.16em;text-transform:uppercase;",
+    ".fs-quem.fs-aberto .fs-menu{display:block}",
+    ".fs-menu .fs-cabeca{display:flex;align-items:center;gap:11px}",
+    ".fs-menu .fs-nome-menu{font-family:var(--serif,Georgia,serif);font-size:19px;line-height:1.15}",
+    ".fs-menu .fs-login-arroba{font-size:10px;letter-spacing:.16em;text-transform:uppercase;",
     "  color:var(--fs-suave);margin-top:2px}",
-    ".fs-menu .mods{margin-top:12px;display:flex;flex-wrap:wrap;gap:5px}",
-    ".fs-menu .mods span{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;",
+    ".fs-menu .fs-mods{margin-top:12px;display:flex;flex-wrap:wrap;gap:5px}",
+    ".fs-menu .fs-mods span{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;",
     "  padding:3px 8px;border-radius:999px;background:var(--fs-selo);",
     "  color:var(--fs-selo-cor)}",
-    ".fs-menu .mods span.nenhum{background:none;padding:0;letter-spacing:.04em;",
+    ".fs-menu .fs-mods span.fs-nenhum{background:none;padding:0;letter-spacing:.04em;",
     "  text-transform:none;font-size:11.5px;color:var(--fs-suave)}",
-    ".fs-menu .fio{height:1px;background:var(--fs-menu-linha);margin:13px 0 10px}",
-    ".fs-menu button.sair{width:100%;border:none;background:none;padding:8px 0;cursor:pointer;",
+    ".fs-menu .fs-fio-linha{height:1px;background:var(--fs-menu-linha);margin:13px 0 10px}",
+    ".fs-menu button.fs-sair{width:100%;border:none;background:none;padding:8px 0;cursor:pointer;",
     "  font:inherit;font-size:11px;letter-spacing:.16em;text-transform:uppercase;text-align:left;",
     "  color:var(--fs-erro)}",
-    ".fs-menu button.sair:hover{text-decoration:underline;text-underline-offset:3px}",
+    ".fs-menu button.fs-sair:hover{text-decoration:underline;text-underline-offset:3px}",
     /* a marca fica sempre no canto direito, então o menu abre para dentro;
        no celular ele ainda precisa caber na largura da tela */
     "@media (max-width:480px){.fs-menu{min-width:0;",
     "  width:max(190px,58vw);max-width:calc(100vw - 24px)}}",
 
-    /* --- a tela de entrar, a mesma no portal e nos módulos --- */
-    ".fs-login{border:none;padding:0;background:none;max-width:100%}",
-    ".fs-login::backdrop{background:rgba(20,30,28,.52)}",
-    ".fs-login .cartao{width:min(400px,calc(100vw - 32px));padding:34px 32px 30px;",
-    "  border-radius:3px;text-align:center;",
+    /* --- a tela de entrar, a mesma no portal e nos módulos ---
+       Mesmo vocabulário do portão de cada módulo: cartão creme de 400 px,
+       marca acima do nome, fio de sage separando, campos de canto suave com
+       anel de foco e o botão cheio em teal. Quem vê as duas telas reconhece
+       que são a mesma casa. */
+    /* As Entradas estilizam dialog{} para as próprias janelas, e a
+       centralização do navegador se perde. Em vez de torcer para que
+       margin:auto sobreviva, a tela se centraliza sozinha. */
+    ".fs-login:not([open]){display:none}",
+    ".fs-login[open]{position:fixed;inset:0;width:100%;height:100%;max-width:100%;",
+    "  max-height:100%;margin:0;border:none;padding:16px;background:none;",
+    "  display:flex;align-items:center;justify-content:center;overflow:auto}",
+    ".fs-login::backdrop{background:rgba(12,24,22,.62)}",
+
+    ".fs-login .fs-cartao{position:relative;width:min(400px,calc(100vw - 32px));",
+    "  padding:42px 38px 32px;border-radius:16px;text-align:center;",
     "  background:var(--fs-fundo);color:var(--fs-texto);",
-    "  box-shadow:0 24px 60px -28px rgba(10,20,18,.6)}",
-    ".fs-login .marca{display:flex;flex-direction:column;align-items:center;gap:12px}",
-    ".fs-login .marca img{height:48px;width:auto}",
-    ".fs-login h2{font-family:var(--serif,Georgia,serif);font-weight:600;font-size:25px;",
-    "  line-height:1.15;color:var(--fs-titulo)}",
-    ".fs-login .sub{margin-top:5px;font-size:9.5px;letter-spacing:.26em;text-transform:uppercase;",
-    "  color:var(--fs-suave)}",
-    ".fs-login .campo{position:relative;margin-top:13px;text-align:left}",
-    ".fs-login .campo input{width:100%;padding:13px 42px 13px 40px;",
-    "  border:1px solid var(--fs-linha);border-radius:2px;",
-    "  background:var(--fs-campo);color:inherit;",
-    "  font-family:var(--sans,'Montserrat',sans-serif);font-size:14px}",
-    ".fs-login .campo input:focus{outline:none;border-color:var(--fs-titulo)}",
-    ".fs-login .campo>svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);",
-    "  opacity:.5;pointer-events:none}",
-    ".fs-login .olho{position:absolute;right:6px;top:50%;transform:translateY(-50%);",
-    "  border:none;background:none;padding:8px;cursor:pointer;color:inherit;opacity:.55;",
-    "  display:flex;align-items:center}",
-    ".fs-login .olho:hover{opacity:.9}",
-    ".fs-login .erro{min-height:17px;margin-top:11px;font-size:12px;line-height:1.4;",
-    "  color:var(--fs-erro);text-align:left}",
-    ".fs-login .entrar{width:100%;margin-top:13px;padding:13px;border:none;border-radius:2px;",
-    "  cursor:pointer;font-family:var(--sans,'Montserrat',sans-serif);font-size:11px;",
-    "  font-weight:500;letter-spacing:.2em;text-transform:uppercase;",
+    "  box-shadow:0 1px 2px rgba(20,40,38,.10), 0 24px 60px var(--fs-sombra);",
+    "  animation:fs-surge .42s cubic-bezier(.2,.8,.2,1) both}",
+    "@keyframes fs-surge{from{opacity:0;transform:translateY(12px)}}",
+    "@media (prefers-reduced-motion:reduce){.fs-login .fs-cartao{animation:none}}",
+
+    /* rótulo que só o leitor de tela enxerga */
+    ".fs-login .fs-so-leitor{position:absolute;width:1px;height:1px;overflow:hidden;",
+    "  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}",
+
+    ".fs-login .fs-marca img{display:block;height:56px;width:auto;margin:0 auto 20px}",
+    ".fs-login h2{font-family:var(--serif,\'Cormorant Garamond\',Georgia,serif);font-weight:600;",
+    "  font-size:30px;line-height:1.1;color:var(--fs-titulo)}",
+    ".fs-login .fs-sub-marca{margin-top:7px;font-size:9.5px;font-weight:300;letter-spacing:.26em;",
+    "  text-transform:uppercase;color:var(--fs-suave)}",
+    ".fs-login .fs-fio-linha{width:38px;height:1px;background:var(--fs-fio);margin:22px auto 24px}",
+
+    ".fs-login .fs-campo{position:relative;display:flex;align-items:center;text-align:left}",
+    ".fs-login .fs-campo + .campo{margin-top:10px}",
+    ".fs-login .fs-campo>svg{position:absolute;left:14px;color:var(--fs-suave);pointer-events:none}",
+    ".fs-login .fs-campo input{width:100%;padding:14px 46px 14px 40px;",
+    "  border:1px solid var(--fs-linha);border-radius:10px;",
+    "  background:var(--fs-campo);color:var(--fs-texto);",
+    "  font-family:var(--sans,\'Montserrat\',Calibri,system-ui,sans-serif);font-size:15px;",
+    "  letter-spacing:.02em;",
+    "  transition:border-color .18s ease, box-shadow .18s ease}",
+    ".fs-login .fs-campo input::placeholder{color:var(--fs-suave);opacity:.85;letter-spacing:.01em}",
+    ".fs-login .fs-campo input:focus{outline:none;border-color:var(--fs-realce);",
+    "  box-shadow:0 0 0 3px var(--fs-anel)}",
+    ".fs-login .fs-campo input:disabled{opacity:.6}",
+
+    ".fs-login .fs-olho{position:absolute;right:6px;width:34px;height:34px;display:flex;",
+    "  align-items:center;justify-content:center;border:none;border-radius:8px;",
+    "  background:none;color:var(--fs-suave);cursor:pointer;",
+    "  transition:color .18s ease, background .18s ease}",
+    ".fs-login .fs-olho:hover{color:var(--fs-titulo);background:var(--fs-hover-suave)}",
+    ".fs-login .fs-olho:focus-visible{outline:2px solid var(--fs-realce);outline-offset:1px}",
+    ".fs-login .fs-olho .fs-fechado{display:none}",
+    ".fs-login .fs-olho.fs-aberto .fs-destapado{display:none}",
+    ".fs-login .fs-olho.fs-aberto .fs-fechado{display:block}",
+
+    ".fs-login .fs-erro-caixa{display:flex;align-items:flex-start;gap:8px;margin-top:12px;",
+    "  padding:10px 12px;border-radius:8px;",
+    "  background:var(--fs-erro-bg);color:var(--fs-erro);",
+    "  font-size:12.5px;line-height:1.45;text-align:left;",
+    "  animation:fs-surge .26s ease both}",
+    ".fs-login .fs-erro-caixa:empty{display:none}",
+    ".fs-login .fs-erro-caixa svg{flex:0 0 auto;margin-top:1px}",
+
+    ".fs-login .fs-entrar{width:100%;margin-top:16px;padding:13px;border:none;border-radius:10px;",
+    "  cursor:pointer;font-family:var(--sans,\'Montserrat\',Calibri,system-ui,sans-serif);",
+    "  font-size:13.5px;font-weight:600;letter-spacing:.06em;",
     "  background:var(--fs-botao);color:var(--fs-botao-cor);",
-    "  transition:background .18s ease}",
-    ".fs-login .entrar:hover:not(:disabled){background:var(--fs-botao-hover)}",
-    ".fs-login .entrar:disabled{opacity:.6;cursor:default}",
-    ".fs-login .fechar{margin-top:14px;border:none;background:none;cursor:pointer;",
-    "  font:inherit;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;",
-    "  color:var(--fs-suave)}",
-    ".fs-login .fechar:hover{text-decoration:underline;text-underline-offset:3px}",
+    "  transition:background .18s ease, box-shadow .2s ease, transform .15s ease}",
+    ".fs-login .fs-entrar:hover:not(:disabled){background:var(--fs-botao-hover);",
+    "  box-shadow:0 8px 20px rgba(59,110,106,.28)}",
+    ".fs-login .fs-entrar:active:not(:disabled){transform:translateY(1px)}",
+    ".fs-login .fs-entrar:focus-visible{outline:2px solid var(--fs-realce);outline-offset:2px}",
+    ".fs-login .fs-entrar:disabled{opacity:.72;cursor:default;box-shadow:none}",
+
+    ".fs-login .fs-fechar{width:100%;margin-top:12px;padding:9px;border:none;border-radius:8px;",
+    "  background:none;cursor:pointer;",
+    "  font-family:var(--sans,\'Montserrat\',Calibri,system-ui,sans-serif);",
+    "  font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;",
+    "  color:var(--fs-suave);transition:color .18s ease, background .18s ease}",
+    ".fs-login .fs-fechar:hover{color:var(--fs-titulo);background:var(--fs-hover-suave)}",
+    ".fs-login .fs-fechar:focus-visible{outline:2px solid var(--fs-realce);outline-offset:1px}",
+
+    "@media (max-width:420px){.fs-login .fs-cartao{padding:34px 24px 26px}",
+    "  .fs-login h2{font-size:26px}.fs-login .fs-marca img{height:48px}}",
   ].join("\n");
 
   /* O estilo entra assim que o arquivo carrega: o painel de manutenção
@@ -330,11 +387,26 @@
     return raizArquivos + "logo.png";
   }
 
+  /* as duas caras do olho, como no portão dos módulos: o CSS mostra uma
+     ou outra conforme a classe "aberto" */
   var OLHO =
-    '<svg class="aberto" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<svg class="fs-destapado" width="17" height="17" viewBox="0 0 24 24" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" ' +
+    'aria-hidden="true">' +
     '<path d="M2.5 12S6.1 5.5 12 5.5 21.5 12 21.5 12 17.9 18.5 12 18.5 2.5 12 2.5 12Z"/>' +
-    '<circle cx="12" cy="12" r="2.8"/></svg>';
+    '<circle cx="12" cy="12" r="2.8"/></svg>' +
+    '<svg class="fs-fechado" width="17" height="17" viewBox="0 0 24 24" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" ' +
+    'aria-hidden="true">' +
+    '<path d="M2.5 12S6.1 5.5 12 5.5c1.6 0 3 .3 4.3.9M21.5 12s-3.6 6.5-9.5 6.5' +
+    'c-1.7 0-3.1-.3-4.4-.9"/>' +
+    '<path d="M9.7 9.8a3 3 0 0 0 4.2 4.2"/><path d="M4.2 19.8 19.8 4.2"/></svg>';
+
+  /* o mesmo triângulo de aviso que os m\u00f3dulos usam */
+  var AVISO =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.5" stroke-linecap="round" aria-hidden="true">' +
+    '<path d="M12 3.8 21 19.5H3L12 3.8Z"/><path d="M12 10v4M12 16.6v.4"/></svg>';
 
   function construir() {
     if (dlg) return dlg;
@@ -342,32 +414,34 @@
     dlg = document.createElement("dialog");
     dlg.className = "fs-login";
     dlg.innerHTML =
-      '<div class="cartao">' +
-      '<div class="marca">' +
+      '<div class="fs-cartao">' +
+      '<div class="fs-marca">' +
       '<img src="' + esc(caminhoDaLogo()) + '" alt="" aria-hidden="true">' +
-      '<div><h2>Entrar</h2><div class="sub" id="fs-sub">Corpo e Alma</div></div>' +
+      "<h2>Entrar</h2>" +
+      '<div class="fs-sub-marca" id="fs-sub">Corpo e Alma</div>' +
       "</div>" +
-      '<div class="campo">' +
+      '<div class="fs-fio-linha"></div>' +
+      '<div class="fs-campo">' +
       '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
       'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
       '<circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c.9-3.6 3.7-5.4 7.2-5.4S18.3 16.4 19.2 20"/></svg>' +
-      '<label class="so-leitor" for="fs-login-usuario">Usuário</label>' +
+      '<label class="fs-so-leitor" for="fs-login-usuario">Usuário</label>' +
       '<input type="text" id="fs-login-usuario" placeholder="Usuário" autocomplete="username" ' +
       'autocapitalize="none" spellcheck="false">' +
       "</div>" +
-      '<div class="campo">' +
+      '<div class="fs-campo">' +
       '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
       'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
       '<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7"/></svg>' +
-      '<label class="so-leitor" for="fs-login-senha">Senha</label>' +
+      '<label class="fs-so-leitor" for="fs-login-senha">Senha</label>' +
       '<input type="password" id="fs-login-senha" placeholder="Senha" ' +
       'autocomplete="current-password" enterkeyhint="go">' +
-      '<button type="button" class="olho" id="fs-olho" aria-label="Mostrar senha" ' +
+      '<button type="button" class="fs-olho" id="fs-olho" aria-label="Mostrar senha" ' +
       'aria-pressed="false">' + OLHO + "</button>" +
       "</div>" +
-      '<div class="erro" id="fs-login-erro" role="alert"></div>' +
-      '<button type="button" class="entrar" id="fs-login-btn">Entrar</button>' +
-      '<button type="button" class="fechar" id="fs-login-fechar">Cancelar</button>' +
+      '<div class="fs-erro-caixa" id="fs-login-erro" role="alert"></div>' +
+      '<button type="button" class="fs-entrar" id="fs-login-btn">Entrar</button>' +
+      '<button type="button" class="fs-fechar" id="fs-login-fechar">Cancelar</button>' +
       "</div>";
     document.body.appendChild(dlg);
 
@@ -378,6 +452,7 @@
     olho.addEventListener("click", function () {
       var visivel = campoS.type === "text";
       campoS.type = visivel ? "password" : "text";
+      olho.classList.toggle("fs-aberto", !visivel);
       olho.setAttribute("aria-pressed", String(!visivel));
       olho.setAttribute("aria-label", visivel ? "Mostrar senha" : "Ocultar senha");
       campoS.focus();
@@ -395,7 +470,7 @@
 
   function avisar(texto) {
     var caixa = dlg.querySelector("#fs-login-erro");
-    caixa.textContent = texto || "";
+    caixa.innerHTML = texto ? AVISO + "<span>" + esc(texto) + "</span>" : "";
   }
 
   function ocupado(ligado) {
@@ -467,6 +542,7 @@
     dlg.querySelector("#fs-login-usuario").value = "";
     dlg.querySelector("#fs-login-senha").value = "";
     dlg.querySelector("#fs-login-senha").type = "password";
+    dlg.querySelector("#fs-olho").classList.remove("fs-aberto");
     avisar(o.aviso || "");
     ocupado(false);
 
@@ -498,34 +574,34 @@
       avatarHTML(quem, 30) +
       '<span class="fs-nome">' + esc(quem.nome) + "</span><i>&#9662;</i></button>" +
       '<div class="fs-menu" role="menu">' +
-      '<div class="cabeca">' + avatarHTML(quem, 44) +
-      "<div><div class=\"nome\">" + esc(quem.nome) + "</div>" +
-      '<div class="login">@' + esc(quem.usuario) + (quem.admin ? " &middot; admin" : "") + "</div>" +
+      '<div class="fs-cabeca">' + avatarHTML(quem, 44) +
+      '<div><div class="fs-nome-menu">' + esc(quem.nome) + "</div>" +
+      '<div class="fs-login-arroba">@' + esc(quem.usuario) + (quem.admin ? " &middot; admin" : "") + "</div>" +
       "</div></div>" +
-      '<div class="mods">' + (mods.length
+      '<div class="fs-mods">' + (mods.length
         ? mods.map(function (m) { return "<span>" + NOMES[m] + "</span>"; }).join("")
-        : '<span class="nenhum">Sem módulos liberados</span>') + "</div>" +
-      '<div class="fio"></div>' +
-      '<button type="button" class="sair">Sair</button>' +
+        : '<span class="fs-nenhum">Sem módulos liberados</span>') + "</div>" +
+      '<div class="fs-fio-linha"></div>' +
+      '<button type="button" class="fs-sair">Sair</button>' +
       "</div>";
 
     var botao = caixa.querySelector("button");
     botao.addEventListener("click", function (ev) {
       ev.stopPropagation();
-      var abriu = caixa.classList.toggle("aberto");
+      var abriu = caixa.classList.toggle("fs-aberto");
       botao.setAttribute("aria-expanded", abriu ? "true" : "false");
     });
 
-    caixa.querySelector(".sair").addEventListener("click", async function () {
+    caixa.querySelector(".fs-sair").addEventListener("click", async function () {
       await sair();
       if (typeof aoSair === "function") aoSair(); else location.reload();
     });
 
     document.addEventListener("click", function (ev) {
-      if (!caixa.contains(ev.target)) caixa.classList.remove("aberto");
+      if (!caixa.contains(ev.target)) caixa.classList.remove("fs-aberto");
     });
     document.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape") caixa.classList.remove("aberto");
+      if (ev.key === "Escape") caixa.classList.remove("fs-aberto");
     });
 
     alvo.appendChild(caixa);

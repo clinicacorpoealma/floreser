@@ -22,6 +22,27 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.10.1",
+      codinome: "PEITORIL",
+      data: "24/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "O menu que abre no seu nome ficava por trás dos quadrados dos módulos no portal.",
+          "Na tela de entrar, os rótulos “Usuário” e “Senha” apareciam soltos acima dos campos — eram para ser lidos só por leitores de tela.",
+          "A marca, o título e o subtítulo da tela de entrar saíam lado a lado em vez de empilhados.",
+          "No CRM e nas Entradas o cartão de entrar saía mais largo do que devia e desencostado do centro da tela."
+        ],
+        "Visual": [
+          "A tela de entrar por usuário ganhou o mesmo desenho do portão de cada módulo: cartão creme de cantos suaves, marca acima do nome, fio de sage separando, campos com anel de foco e botão cheio em teal.",
+          "O olho da senha agora troca de cara ao mostrar e ocultar, como nos módulos.",
+          "Os avisos de erro aparecem com o triângulo de atenção sobre fundo de alerta, no lugar do texto solto."
+        ],
+        "Técnico": [
+          "As classes da tela de entrar e do menu passaram a ter nome próprio, para nunca esbarrarem no estilo de cada página."
+        ]
+      }
+    },
+    {
       versao: "2.10.0",
       codinome: "SOLEIRA",
       data: "24/08/2026",

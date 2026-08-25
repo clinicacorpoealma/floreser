@@ -129,7 +129,12 @@
     }
 
     /* ---------- Cabeçalho ---------- */
+    /* A animação de entrada dos cartões deixa uma transform aplicada para
+       sempre (fill both), e transform cria contexto de empilhamento — sem
+       isto o menu da conta abre por baixo dos módulos. */
     .topo {
+      position: relative;
+      z-index: 10;
       display: flex;
       align-items: center;
       gap: 20px;
