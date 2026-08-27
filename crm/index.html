@@ -407,7 +407,13 @@
               if (d.leads) setLeads(d.leads.map(migrar));
             }
           } catch (e) {
-            /* primeiro uso */
+            /* Aqui NÃO é primeiro uso: storage.get só lança quando o
+               servidor recusou. Uma planilha vazia responde ok, com lista
+               vazia. Mostrar o funil zerado neste caso faria parecer que os
+               leads sumiram. */
+            setErro("Não foi possível carregar os leads. O servidor recusou a " +
+              "leitura — os dados continuam na planilha. Recarregue a página " +
+              "para tentar de novo.");
           } finally {
             setCarregando(false);
           }
@@ -1578,6 +1584,9 @@
               SESSAO.token = window.FloreSerAuth.token();
               ORIGEM_SESSAO = { tipo: "usuario" };
               setEstado("ok");
+              /* o CRM assume a tela e cuida do próprio carregamento, com o
+                 aviso dele se algo falhar */
+              window.FloreSerAuth.encerrarRetomada();
             }
             /* Deu errado: a tela do auth.js continua no ar com o motivo, e
                é ela quem oferece as saídas. Cair para a sessão da senha

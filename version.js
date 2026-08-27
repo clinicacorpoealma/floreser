@@ -22,7 +22,7 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
-      versao: "2.12.0",
+      versao: "2.12.1",
       codinome: "UMBRAL",
       data: "27/08/2026",
       mudancas: {
@@ -33,6 +33,10 @@
           "Quando a entrada automática falha, o motivo agora fica na tela: sem acesso ao módulo, sessão expirada, usuário desativado, erro do servidor ou falta de conexão. Antes o erro sumia e parecia que nada tinha acontecido.",
           "Da mesma tela dá para seguir com a senha do módulo ou entrar com outra conta, e quando o problema é de conexão aparece um botão de tentar de novo.",
           "Uma sessão antiga da senha compartilhada não entra mais por baixo escondendo a falha da conta — quem escolhe o caminho é você."
+        ],
+        "Corrigido": [
+          "A tela de entrada automática sumia e deixava o pedido de senha no lugar, sem erro nenhum, quando a conta era reconhecida mas os dados do módulo não carregavam. Agora ela fica no ar e explica o que houve.",
+          "O CRM mostrava o funil vazio quando o servidor recusava a leitura, como se não houvesse leads. Agora avisa que não conseguiu carregar e lembra que os dados continuam na planilha."
         ],
         "Técnico": [
           "A tela de entrada automática é uma só, no auth.js, usada pelos três módulos. Ela só aparece quando existe sessão de usuário individual guardada, e respeita quem pediu menos animação no sistema."

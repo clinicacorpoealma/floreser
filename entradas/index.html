@@ -2347,6 +2347,8 @@ body.entrou .rodape{animation-delay:.24s}
     try {
       await carregar();
       abrirApp();
+      /* agora sim: o módulo está na tela, a espera acabou */
+      window.FloreSerAuth.encerrarRetomada();
       return true;
     } catch (e) {
       /* a sessão valia; quem falhou foi a leitura dos dados */

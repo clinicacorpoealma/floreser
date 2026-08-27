@@ -746,8 +746,15 @@
     return telaRetomada;
   }
 
-  /* estado: { etapa, modulo, quem, mensagem, acoes:[{texto,fn}] } */
+  /* estado: { etapa, modulo, quem, mensagem, acoes:[{texto,fn}] }
+
+     Se a tela já tiver sido fechada e alguém vier relatar um erro, ela é
+     refeita. Sem isto um erro depois do fechamento não teria onde aparecer,
+     e a pessoa veria o portão de senha sem explicação nenhuma. */
   function atualizarRetomada(estado) {
+    if (!telaRetomada && estado && estado.etapa === "erro") {
+      mostrarRetomada(estado.modulo);
+    }
     if (!telaRetomada) return;
     var corpo = telaRetomada.querySelector(".fs-corpo-retoma");
     if (!corpo) return;
@@ -820,10 +827,12 @@
       return false;
     }
 
-    if (r && r.ok) {
-      encerrarRetomada();
-      return true;
-    }
+    /* Deu certo com o servidor — mas o módulo ainda vai carregar os dados,
+       e isso também pode falhar. A tela FICA no ar até quem chamou dizer
+       que o módulo abriu de verdade, chamando encerrarRetomada(). Fechar
+       aqui deixaria um erro do carregamento sem lugar para aparecer, e o
+       portão de senha surgiria sem explicação. */
+    if (r && r.ok) return true;
 
     atualizarRetomada({
       etapa: "erro", modulo: modulo,
