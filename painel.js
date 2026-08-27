@@ -308,6 +308,7 @@
     aba = qual;
     if (qual === "usuarios" && !usuarios.length) carregarUsuarios();
     if (qual === "lixeira") carregarLixeira();
+    if (qual === "sistema") pedirEstadoPWA();
     Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-aba]"), function (b) {
       b.className = b.getAttribute("data-aba") === qual ? "on" : "";
     });
@@ -1181,6 +1182,20 @@
 
   /* ---------------------------------------------------- sistema */
 
+  /* O que o Service Worker respondeu da última vez. A pergunta é assíncrona
+     e a tela se desenha de uma vez, então guardamos a resposta e mandamos
+     redesenhar quando ela chega. */
+  var estadoPWA = null;
+  var recadoPWA = "";
+
+  function pedirEstadoPWA() {
+    if (!global.Alveare || !global.Alveare.estadoTecnico) return;
+    global.Alveare.estadoTecnico().then(function (e) {
+      estadoPWA = e;
+      if (aba === "sistema") desenhar();
+    });
+  }
+
   function telaSistema() {
     var s = tentar(function () { return global.FloreSerLogs.sessao(); }, {});
     var e = tentar(function () { return global.FloreSerLogs.estado(); }, {});
@@ -1188,6 +1203,11 @@
     var v = global.FLORESER || {};
     var atual = v.atual || {};
     var resumo = base.resumo || {};
+    var p = estadoPWA || {
+      suportado: "serviceWorker" in navigator, controlando: false,
+      modo: "—", atualizacao: "—", conexao: navigator.onLine ? "online" : "offline",
+      cache: "—", arquivos: 0,
+    };
 
     return '<div class="titulo-secao">Navegador</div><div class="grade">' +
       cartao("Navegador", s.navegador) +
@@ -1226,6 +1246,24 @@
       cartao("Eventos enviados", String(e.enviados === undefined ? "" : e.enviados)) +
       "</div>" +
 
+      '<div class="titulo-secao">Alveare (aplicativo)</div><div class="grade">' +
+      cartao("Service Worker", !p.suportado ? "não suportado"
+        : p.controlando ? "ativo" : "registrando…") +
+      cartao("Modo", p.modo) +
+      cartao("Conexão", p.conexao) +
+      cartao("Atualização", p.atualizacao) +
+      cartao("Cache", p.cache) +
+      cartao("Arquivos guardados", String(p.arquivos)) +
+      "</div>" +
+      '<div class="acoes-form">' +
+      '<button class="btn-fino" id="pwa-conferir">Conferir</button>' +
+      '<button class="btn-fino perigo" id="pwa-limpar">Limpar cache do aplicativo</button>' +
+      "</div>" +
+      '<p class="nota-privacidade">Limpar o cache apaga só os arquivos guardados ' +
+      "do aplicativo. Sessão, tema, foto e preferências não são tocadas — ninguém " +
+      "sai do sistema por causa disso.</p>" +
+      (recadoPWA ? '<div class="aviso-form">' + esc(recadoPWA) + "</div>" : "") +
+
       '<div class="titulo-secao">Planilha</div><div class="grade">' +
       cartao("Revisão do CRM", String(resumo.revCRM === undefined ? "" : resumo.revCRM)) +
       cartao("Revisão da agenda", String(resumo.revAgenda === undefined ? "" : resumo.revAgenda)) +
@@ -1253,6 +1291,21 @@
     em("#f-mais", "click", function () { limite += POR_PAGINA; desenhar(); });
     em("#f-atualizar", "click", function () { selecionado = null; carregar(); });
     em("#f-limpar", "click", limpar);
+
+    em("#pwa-conferir", "click", function () { recadoPWA = ""; pedirEstadoPWA(); });
+    em("#pwa-limpar", "click", function () {
+      if (!global.Alveare || !global.Alveare.limparCasca) return;
+      recadoPWA = "Limpando…";
+      desenhar();
+      global.Alveare.limparCasca().then(function (deu) {
+        recadoPWA = deu
+          ? "Cache do aplicativo limpo. Os arquivos voltam a ser guardados no próximo acesso."
+          : "Não foi possível limpar agora — o aplicativo ainda não está controlando esta aba.";
+        estadoPWA = null;
+        desenhar();
+        pedirEstadoPWA();
+      });
+    });
 
     Array.prototype.forEach.call(corpo.querySelectorAll("[data-linha]"), function (tr) {
       tr.addEventListener("click", function () {

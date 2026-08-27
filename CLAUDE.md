@@ -16,6 +16,11 @@ cada módulo mora numa pasta, para o endereço não mostrar `.html`:
 | `tema.js` | tema claro/escuro/automático: paleta, seletor e preferência local |
 | `auth.js` | conta de usuário: tela de entrar, sessão de 30 dias, avatar e menu |
 | `painel.js` | painel de manutenção do portal (entrada discreta + senha no servidor) |
+| `pwa.js` | camada do aplicativo: registra o Service Worker, oferece instalar, avisa de versão nova e de conexão |
+| `service-worker.js` | cache da casca do sistema; **um só**, na raiz, para todo o Alveare |
+| `manifest.webmanifest` | identidade do aplicativo instalado: nome Alveare, ícones, atalhos |
+| `offline.html` | tela de sem conexão, sem nenhuma dependência externa |
+| `icons/` | ícones do aplicativo, gerados a partir de `logo.png` |
 | `logo.png` / `favicon.png` | marca |
 
 Os arquivos compartilhados ficam **sempre na raiz**. Como as páginas dos módulos
@@ -77,7 +82,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA.
 
 ### Changelog
 
@@ -107,6 +112,78 @@ documentação fora do repositório), não incremente.
 5. As entradas estão da mais nova para a mais antiga.
 6. Versão e histórico continuam legíveis no desktop e no celular.
 7. Não sobrou nenhuma referência de versão antiga espalhada pelo projeto.
+
+---
+
+## Alveare — o aplicativo instalável
+
+**Alveare é o nome do aplicativo; FloreSer é o sistema.** O que aparece no
+Menu Iniciar, na tela do celular e na loja do navegador é *Alveare*. O que
+aparece dentro da janela continua sendo o *FloreSer*, com a mesma marca e as
+mesmas telas. Nunca troque `FloreSer` por `Alveare` na interface — a única
+tela onde o nome do aplicativo aparece é o botão "Instalar Alveare" e o aviso
+de versão nova.
+
+O site é publicado em `https://clinicacorpoealma.github.io/floreser/`, que
+**não é a raiz do domínio**. Por isso, dentro do manifest e do Service Worker,
+tudo é relativo:
+
+- o `manifest.webmanifest` usa `./`, `./crm/`, `./icons/…`;
+- o `pwa.js` descobre a raiz pelo próprio `<script src>`, como o `logs.js`;
+- o `service-worker.js` descobre a raiz por `registration.scope`.
+
+**A única exceção** é o `id` do manifest, que vale `/floreser/`. O `id` é
+resolvido a partir da origem do domínio, não do manifest, e precisa ser fixo
+para o navegador reconhecer que a atualização continua sendo o mesmo
+aplicativo. Se o repositório mudar de nome, esse valor muda junto — e o
+sistema operacional passará a ver um aplicativo novo.
+
+### O que entra no cache e o que nunca entra
+
+O Service Worker guarda a **casca**: HTML das quatro páginas, os scripts da
+raiz, a marca, os ícones e a `offline.html`. Guarda também, por endereço
+exato, as quatro bibliotecas que o CRM carrega do cdnjs (React, ReactDOM,
+Babel e SheetJS) — sem elas o CRM não desenha nada offline.
+
+**Nunca** entram no cache: qualquer chamada ao Apps Script, qualquer `POST`,
+qualquer endereço de fora que não seja uma dessas bibliotecas ou as fontes do
+Google. Login, sessão, pacientes, leads, entradas e lixeira passam sempre pela
+rede. Se a rede falhar, quem avisa é a tela do módulo, com a mensagem de
+sempre — o cache nunca responde no lugar do servidor.
+
+Estratégias: **rede primeiro** para as páginas e para o `version.js` (para
+ninguém ficar preso numa versão velha) e **guardado enquanto atualiza** para o
+resto.
+
+### Publicar uma versão nova
+
+Suba os arquivos como sempre. Quem já tem o Alveare instalado recebe o aviso
+"Nova versão do Alveare disponível" e troca ao clicar em Atualizar — a página
+recarrega uma vez e pronto. Ninguém precisa limpar cache nem apertar Ctrl+F5.
+
+Se você mudar a **lista de arquivos** do precache no `service-worker.js`, suba
+o número em `CACHE_ATUAL` (`alveare-casca-1` → `alveare-casca-2`). Esse número
+é técnico e não aparece para ninguém: a versão que a tela mostra continua
+saindo só do `version.js`.
+
+### Testar
+
+O Service Worker só funciona em `https://` ou em `localhost`/`127.0.0.1` —
+abrir o arquivo direto do disco (`file://`) não serve. Para testar igual ao
+GitHub Pages, sirva o projeto **debaixo de uma pasta**, não na raiz: assim um
+caminho absoluto esquecido quebra no teste, e não na publicação.
+
+No navegador, em Ferramentas do desenvolvedor → Application:
+
+- **Manifest** — precisa dizer Alveare, com os quatro ícones e os três atalhos;
+- **Service Workers** — precisa aparecer ativo, com escopo terminando em `/floreser/`;
+- **Cache Storage** — precisa existir `alveare-casca-…` com a casca dentro, e
+  **nenhuma** resposta do Apps Script.
+
+Para começar do zero durante o desenvolvimento: Application → Service Workers →
+Unregister, e Cache Storage → apagar o `alveare-casca-…`. O painel de
+manutenção também tem, na aba Sistema, o botão "Limpar cache do aplicativo" —
+ele apaga só os arquivos guardados e **não** mexe em sessão, tema nem foto.
 
 ---
 

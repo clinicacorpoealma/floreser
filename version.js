@@ -22,6 +22,31 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.11.0",
+      codinome: "CUMEEIRA",
+      data: "27/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "O sistema agora pode ser instalado como aplicativo. No computador e no celular ele aparece com o nome Alveare e abre em janela própria, sem a barra do navegador.",
+          "Botão “Instalar Alveare” no rodapé do portal, que aparece só quando o navegador realmente oferece a instalação.",
+          "Atalhos para CRM, Agendamentos e Entradas direto no ícone do aplicativo, para quem quiser pular o portal.",
+          "Aviso de “Você está offline” e de “Conexão restabelecida”, discreto, no rodapé da tela.",
+          "Tela própria para quando a página pedida ainda não foi aberta nenhuma vez e não há conexão.",
+          "Seção do aplicativo no painel de manutenção, com o estado do cache e o botão de limpá-lo."
+        ],
+        "Melhorado": [
+          "Depois de aberto uma vez, o sistema abre sem internet: as telas aparecem, e só o que precisa do servidor é que espera a conexão voltar.",
+          "Quando sai uma versão nova, o sistema avisa e troca quando você mandar — sem ninguém precisar limpar cache nem apertar Ctrl+F5.",
+          "Nenhuma atualização entra no meio do que você está fazendo: ela espera você clicar em Atualizar."
+        ],
+        "Técnico": [
+          "Alveare é só o nome do aplicativo instalado. Dentro dele o sistema continua sendo o FloreSer, com a mesma marca, as mesmas telas e o mesmo login.",
+          "O aplicativo guarda a casca do sistema — telas, scripts e marca. Dado de paciente, de lead, de entrada e resposta de login nunca são guardados: cada chamada ao servidor vai pela rede, sempre.",
+          "Os ícones do aplicativo usam a lótus da marca, inclusive nos formatos que o Android recorta em círculo."
+        ]
+      }
+    },
+    {
       versao: "2.10.1",
       codinome: "PEITORIL",
       data: "24/08/2026",

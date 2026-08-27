@@ -10,7 +10,14 @@
   <meta name="theme-color" content="#3B6E6A">
   <link rel="icon" type="image/png" href="favicon.png">
   <script src="tema.js"></script>
-  <link rel="apple-touch-icon" href="favicon.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <!-- Alveare: o nome do aplicativo instalado. O sistema aqui dentro
+       continua sendo o FloreSer. -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Alveare">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
@@ -447,6 +454,33 @@
       letter-spacing: .18em;
       color: var(--teal);
       line-height: 1;
+    }
+
+    /* ---------- Instalar o Alveare ---------- */
+    .canto-instalar {
+      display: inline-flex;
+      align-items: center;
+      margin-left: auto;
+    }
+
+    .canto-instalar:empty {
+      display: none;
+    }
+
+    .canto-instalar .pwa-instalar {
+      padding: 7px 13px;
+      font-size: 9.5px;
+    }
+
+    .dica-instalar {
+      font-family: var(--sans);
+      font-weight: 400;
+      font-size: 10px;
+      letter-spacing: .1em;
+      line-height: 1.5;
+      color: var(--taupe);
+      max-width: 34ch;
+      text-transform: none;
     }
 
     .canto-historico {
@@ -1540,6 +1574,10 @@
         Histórico
       </button>
       <span class="rodape-centro">Método FloreSer &middot; Uso interno</span>
+      <!-- O convite para instalar o Alveare só aparece quando o navegador
+           realmente permite instalar; no iPhone vira uma instrução, porque
+           lá o caminho é o menu Compartilhar. O pwa.js cuida disso. -->
+      <span class="canto-instalar" id="canto-instalar"></span>
       <span class="canto" id="versao-atual"></span>
     </footer>
 
@@ -1563,6 +1601,7 @@
 
   <script src="version.js"></script>
   <script src="logs.js"></script>
+<script src="pwa.js"></script>
   <script src="auth.js"></script>
   <script>
     (function () {
@@ -1773,6 +1812,35 @@
         limparCanto();
         marcarCartoes(quem);
         Auth.montarIdentidade(canto, function () { desenharEntrar(); });
+      }
+
+      /* ================================================================
+         Instalar o Alveare
+         ----------------------------------------------------------------
+         Alveare é o nome do aplicativo; o sistema continua sendo o
+         FloreSer, e nada aqui muda a interface. O botão só nasce quando o
+         navegador oferece a instalação de verdade — botão que não instala
+         nada não ajuda ninguém.
+         ================================================================ */
+
+      var cantoInstalar = document.getElementById("canto-instalar");
+
+      if (window.Alveare && cantoInstalar) {
+        if (Alveare.instalado()) {
+          /* já está instalado: nada a oferecer */
+        } else if (Alveare.montarBotaoInstalar) {
+          Alveare.montarBotaoInstalar(cantoInstalar);
+
+          /* No iPhone e no iPad não existe convite programático. Em vez de
+             um botão que não faz nada, a instrução do caminho real. */
+          var dica = Alveare.dicaIOS();
+          if (dica) {
+            var texto = document.createElement("span");
+            texto.className = "dica-instalar";
+            texto.textContent = dica;
+            cantoInstalar.appendChild(texto);
+          }
+        }
       }
 
       (async function conferirConta() {
