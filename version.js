@@ -22,6 +22,17 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.11.1",
+      codinome: "APRUMO",
+      data: "27/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "Quando o servidor respondia com um erro dele, a tela de entrar dizia “não foi possível falar com o servidor” e mandava conferir a internet — que estava boa. Agora a mensagem diz que o erro veio do servidor e aponta o lugar certo.",
+          "Uma resposta que não seja a esperada deixa de virar uma falha de conexão disfarçada: o motivo técnico fica registrado nos logs, para o painel de manutenção mostrar."
+        ]
+      }
+    },
+    {
       versao: "2.11.0",
       codinome: "CUMEEIRA",
       data: "27/08/2026",

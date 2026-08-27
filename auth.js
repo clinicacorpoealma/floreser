@@ -108,6 +108,11 @@
     return Date.now() - quando > DIAS * 86400000;
   }
 
+  /* Quando algo estoura do lado do Apps Script, ele devolve uma página de
+     erro em HTML, não o JSON de sempre. Antes isso virava exceção aqui e a
+     tela mandava conferir a internet — que estava ótima. Agora a resposta
+     estranha é reconhecida pelo que é, e o texto do servidor fica guardado
+     para o painel de manutenção mostrar. */
   async function api(dados) {
     var resposta = await fetch(URL_API, {
       method: "POST",
@@ -115,7 +120,24 @@
       body: JSON.stringify(dados),
       redirect: "follow",
     });
-    return await resposta.json();
+
+    var texto = await resposta.text();
+    try {
+      return JSON.parse(texto);
+    } catch (e) {
+      return { ok: false, erro: "servidor_falhou", detalhe: motivoDaPagina(texto) };
+    }
+  }
+
+  /* Tira o texto visível da página de erro do Google, para o log técnico. */
+  function motivoDaPagina(html) {
+    var limpo = String(html || "")
+      .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&quot;/g, '"').replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")
+      .trim();
+    return limpo.slice(0, 180);
   }
 
   /* ---------- entrar, retomar e sair ---------- */
@@ -123,7 +145,20 @@
   async function entrar(usuario, senha) {
     var r = await api({ acao: "login_usuario", usuario: usuario, senha: senha });
     if (r && r.ok) guardar(r.token, r.usuario);
+    else anotarFalha(r);
     return r;
+  }
+
+  /* O que o servidor disse vai para o log técnico, que o painel de
+     manutenção mostra. Sem senha, sem token, sem usuário: só o motivo. */
+  function anotarFalha(r) {
+    if (!r || r.erro === "credenciais" || r.erro === "bloqueado") return;
+    var registrar = global.FloreSerLogs && global.FloreSerLogs.registrar;
+    if (!registrar) return;
+    registrar("LOGIN_SERVIDOR_FALHOU", {
+      nivel: "ERROR",
+      mensagem: "Login recusado pelo servidor: " + (r.detalhe || r.erro || "sem motivo"),
+    });
   }
 
   /* Chamada quando a página abre com um token guardado. O servidor diz se a
@@ -165,7 +200,14 @@
     if (r.erro === "sem_acesso") return "Esta conta não possui acesso a este módulo.";
     if (r.erro === "inativo") return "Este usuário está desativado.";
     if (r.erro === "expirada") return "Sua sessão expirou por inatividade. Entre novamente para continuar.";
-    return "Não foi possível falar com o servidor.";
+
+    /* O servidor respondeu — e o que ele respondeu foi um erro dele. Dizer
+       "sem conexão" aqui manda procurar o problema no lugar errado. */
+    if (r.erro === "servidor_falhou") {
+      return "O servidor respondeu com um erro. A planilha pode estar sem " +
+        "permissão de escrita. Avise o suporte.";
+    }
+    return "O servidor recusou a operação. Se continuar, avise o suporte.";
   }
 
   /* ---------- avatar ----------
