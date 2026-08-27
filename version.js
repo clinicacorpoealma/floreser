@@ -22,7 +22,7 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
-      versao: "2.12.1",
+      versao: "2.12.2",
       codinome: "UMBRAL",
       data: "27/08/2026",
       mudancas: {
@@ -33,6 +33,11 @@
           "Quando a entrada automática falha, o motivo agora fica na tela: sem acesso ao módulo, sessão expirada, usuário desativado, erro do servidor ou falta de conexão. Antes o erro sumia e parecia que nada tinha acontecido.",
           "Da mesma tela dá para seguir com a senha do módulo ou entrar com outra conta, e quando o problema é de conexão aparece um botão de tentar de novo.",
           "Uma sessão antiga da senha compartilhada não entra mais por baixo escondendo a falha da conta — quem escolhe o caminho é você."
+        ],
+        "Visual": [
+          "A tela de entrada automática foi recomposta: a marca fica discreta no alto e a sua foto passa a ocupar o centro, com o anel da espera girando em volta dela — antes eram dois círculos do mesmo tamanho disputando atenção.",
+          "As duas telas ganharam a lótus esmaecida no canto e um fio de sage atravessando o topo do cartão, os mesmos detalhes do portão de cada módulo.",
+          "Ao abrir a tela de entrar, o que está atrás escurece e desfoca de leve, deixando o cartão em foco."
         ],
         "Corrigido": [
           "A tela de entrada automática sumia e deixava o pedido de senha no lugar, sem erro nenhum, quando a conta era reconhecida mas os dados do módulo não carregavam. Agora ela fica no ar e explica o que houve.",

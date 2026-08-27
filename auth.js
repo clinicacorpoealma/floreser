@@ -250,7 +250,8 @@
     "  --fs-erro:#A8452F; --fs-selo:#E7EEEB; --fs-selo-cor:#2F5A57;",
     "  --fs-menu-fundo:#FFFFFF; --fs-menu-linha:#E2DED7;",
     "  --fs-erro-bg:#F6EBE4; --fs-fio:#C9D3CA; --fs-sombra:rgba(20,40,38,.30);",
-    "  --fs-fundo-portao:#12201E;",
+    "  --fs-fundo-portao:#12201E; --fs-borda-cartao:rgba(59,110,106,.10);",
+    "  --fs-agua-forca:.05;",
     "  --fs-anel:rgba(90,148,144,.16); --fs-realce:#5A9490; --fs-hover-suave:#EDF3F1;",
     "}",
     ':root[data-tema="escuro"]{',
@@ -260,7 +261,8 @@
     "  --fs-erro:#E79B82; --fs-selo:#2A514D; --fs-selo-cor:#EAF1EF;",
     "  --fs-menu-fundo:#1E2927; --fs-menu-linha:#33403E;",
     "  --fs-erro-bg:#3A241D; --fs-fio:#3C5A56; --fs-sombra:rgba(0,0,0,.55);",
-    "  --fs-fundo-portao:#0B1413;",
+    "  --fs-fundo-portao:#0B1413; --fs-borda-cartao:rgba(255,255,255,.06);",
+    "  --fs-agua-forca:.07;",
     "  --fs-anel:rgba(127,184,178,.20); --fs-realce:#93C6C0; --fs-hover-suave:#26332F;",
     "}",
 
@@ -324,14 +326,31 @@
     ".fs-login[open]{position:fixed;inset:0;width:100%;height:100%;max-width:100%;",
     "  max-height:100%;margin:0;border:none;padding:16px;background:none;",
     "  display:flex;align-items:center;justify-content:center;overflow:auto}",
-    ".fs-login::backdrop{background:rgba(12,24,22,.62)}",
+    /* O fundo escurece e desfoca de leve: a página atrás recua sem sumir,
+       e o cartão passa a ser a única coisa em foco. */
+    ".fs-login::backdrop{background:rgba(12,24,22,.66);",
+    "  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}",
 
     ".fs-login .fs-cartao,.fs-retomada .fs-cartao{position:relative;width:min(400px,calc(100vw - 32px));",
-    "  padding:42px 38px 32px;border-radius:16px;text-align:center;",
+    "  padding:42px 38px 32px;border-radius:16px;text-align:center;overflow:hidden;",
     "  background:var(--fs-fundo);color:var(--fs-texto);",
+    "  border:1px solid var(--fs-borda-cartao);",
     "  box-shadow:0 1px 2px rgba(20,40,38,.10), 0 24px 60px var(--fs-sombra);",
     "  animation:fs-surge .42s cubic-bezier(.2,.8,.2,1) both}",
     "@keyframes fs-surge{from{opacity:0;transform:translateY(12px)}}",
+
+    /* A lótus no canto do cartão, quase invisível — o mesmo gesto do
+       portão de cada módulo, na medida de um cartão. */
+    ".fs-login .fs-cartao::after{content:'';position:absolute;",
+    "  right:-58px;bottom:-72px;width:230px;height:230px;",
+    "  background:var(--fs-marca-dagua) no-repeat center/contain;",
+    "  opacity:var(--fs-agua-forca);pointer-events:none}",
+
+    /* Um fio de sage atravessa o topo do cartão: o mesmo detalhe do fio que
+       separa a marca, agora costurando a borda. */
+    ".fs-login .fs-cartao::before,.fs-retomada .fs-cartao::before{",
+    "  content:'';position:absolute;left:0;right:0;top:0;height:2px;",
+    "  background:linear-gradient(90deg,transparent,var(--fs-fio),transparent)}",
     "@media (prefers-reduced-motion:reduce){.fs-login .fs-cartao{animation:none}}",
 
     /* rótulo que só o leitor de tela enxerga */
@@ -400,32 +419,56 @@
     "  .fs-login h2{font-size:26px}.fs-login .fs-marca img{height:48px}}",
 
     /* --- retomada automática ---
-       Mesmo cartão do portão: fundo teal profundo, cartão creme, marca
-       acima. A diferença é que aqui ninguém digita nada — o sistema está
-       conferindo a sessão que já existe. */
+       Aqui o assunto é a pessoa, não a marca: quem está sendo reconhecido é
+       ela. Por isso a marca fica pequena no alto e o rosto no meio, com o
+       arco da espera girando em volta — um foco só, em vez de dois círculos
+       de mesmo tamanho competindo.
+
+       O fundo repete o portão dos módulos, inclusive a lótus esmaecida no
+       canto: quem vê as duas telas reconhece a mesma casa. */
     ".fs-retomada{position:fixed;inset:0;z-index:2147482000;",
     "  display:flex;align-items:center;justify-content:center;padding:20px;",
     "  background:var(--fs-fundo-portao);overflow:auto}",
-    ".fs-retomada .fs-cartao{animation:none}",
-    ".fs-retomada .fs-quem-retoma{display:flex;flex-direction:column;align-items:center;gap:9px}",
-    ".fs-retomada .fs-quem-retoma .fs-avatar{width:56px;height:56px;font-size:23px}",
-    ".fs-retomada .fs-nome-retoma{font-family:var(--serif,'Cormorant Garamond',Georgia,serif);",
-    "  font-size:21px;line-height:1.15;color:var(--fs-texto)}",
-    ".fs-retomada .fs-passo{margin-top:4px;font-size:13px;line-height:1.5;color:var(--fs-suave)}",
+    ".fs-retomada::before{content:'';position:absolute;right:-140px;bottom:-170px;",
+    "  width:520px;height:520px;background:var(--fs-marca-dagua) no-repeat center/contain;",
+    "  opacity:.055;filter:brightness(0) invert(1);pointer-events:none}",
 
-    /* o traço que gira: um arco fino, sem estardalhaço */
-    ".fs-girando{display:block;margin:22px auto 2px;width:26px;height:26px;",
-    "  border:2px solid var(--fs-linha);border-top-color:var(--fs-titulo);",
-    "  border-radius:50%;animation:fs-gira .9s linear infinite}",
+    ".fs-retomada .fs-cartao{padding:36px 38px 34px;",
+    "  animation:fs-surge .42s cubic-bezier(.2,.8,.2,1) both}",
+
+    /* a marca, discreta, só para situar */
+    ".fs-retomada .fs-selo{display:flex;flex-direction:column;align-items:center;gap:9px}",
+    ".fs-retomada .fs-selo img{display:block;height:34px;width:auto;opacity:.9}",
+    ".fs-retomada .fs-selo .fs-modulo{font-size:9.5px;font-weight:500;letter-spacing:.26em;",
+    "  text-transform:uppercase;color:var(--fs-suave)}",
+
+    /* o rosto no meio, com o arco em volta */
+    ".fs-halo{position:relative;width:96px;height:96px;margin:26px auto 0}",
+    /* o anel fica sempre: na espera o arco corre por cima dele, no erro ele
+       sozinho continua emoldurando o rosto */
+    ".fs-halo::after{content:'';position:absolute;inset:0;border-radius:50%;",
+    "  border:2px solid var(--fs-linha);opacity:.5}",
+    ".fs-halo .fs-avatar{position:absolute;left:12px;top:12px;width:72px;height:72px;",
+    "  font-size:27px;border:none}",
+    ".fs-arco{position:absolute;inset:0;width:96px;height:96px;z-index:1;",
+    "  animation:fs-gira 1.5s linear infinite}",
+    ".fs-arco circle{fill:none;stroke-width:2.5;stroke-linecap:round;",
+    "  stroke:var(--fs-titulo);stroke-dasharray:64 220}",
     "@keyframes fs-gira{to{transform:rotate(360deg)}}",
 
-    /* Quem pediu menos movimento recebe um ponto que respira, em vez do
-       giro — o estado continua legível, sem nada rodando na tela. */
+    /* Quem pediu menos movimento fica com o anel parado, respirando de
+       leve: o estado continua visível, sem nada rodando. */
     "@media (prefers-reduced-motion:reduce){",
-    "  .fs-girando{width:10px;height:10px;border:none;margin-top:30px;",
-    "    background:var(--fs-titulo);animation:fs-pulsa 1.8s ease-in-out infinite}",
+    "  .fs-arco{animation:fs-respira 2.4s ease-in-out infinite}",
+    "  .fs-retomada .fs-cartao{animation:none}",
     "}",
-    "@keyframes fs-pulsa{0%,100%{opacity:.3}50%{opacity:1}}",
+    "@keyframes fs-respira{0%,100%{opacity:.4}50%{opacity:1}}",
+
+    ".fs-retomada .fs-nome-retoma{margin-top:16px;",
+    "  font-family:var(--serif,'Cormorant Garamond',Georgia,serif);",
+    "  font-size:23px;line-height:1.15;color:var(--fs-texto)}",
+    ".fs-retomada .fs-passo{margin-top:6px;font-size:13px;line-height:1.55;",
+    "  color:var(--fs-suave);max-width:30ch;margin-inline:auto}",
 
     ".fs-retomada .fs-botoes-retoma{display:flex;flex-direction:column;gap:8px;margin-top:18px}",
     ".fs-retomada .fs-secundario{width:100%;padding:11px;border-radius:10px;cursor:pointer;",
@@ -483,7 +526,13 @@
     'c-1.7 0-3.1-.3-4.4-.9"/>' +
     '<path d="M9.7 9.8a3 3 0 0 0 4.2 4.2"/><path d="M4.2 19.8 19.8 4.2"/></svg>';
 
-  /* o mesmo triângulo de aviso que os m\u00f3dulos usam */
+  /* O anel da espera: um trilho fino e um arco de um quarto girando por
+     cima do anel do halo — o mesmo traço fino dos ícones do sistema. */
+  var ARCO =
+    '<svg class="fs-arco" viewBox="0 0 96 96" aria-hidden="true">' +
+    '<circle cx="48" cy="48" r="46.5"/></svg>';
+
+  /* o mesmo triângulo de aviso que os módulos usam */
   var AVISO =
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="1.5" stroke-linecap="round" aria-hidden="true">' +
@@ -494,6 +543,7 @@
     porEstilo();
     dlg = document.createElement("dialog");
     dlg.className = "fs-login";
+    dlg.style.setProperty("--fs-marca-dagua", 'url("' + caminhoDaLogo() + '")');
     dlg.innerHTML =
       '<div class="fs-cartao">' +
       '<div class="fs-marca">' +
@@ -727,16 +777,16 @@
 
     telaRetomada = document.createElement("div");
     telaRetomada.className = "fs-retomada";
+    /* o caminho da logo só se sabe agora; o CSS o recebe por variável */
+    telaRetomada.style.setProperty("--fs-marca-dagua", 'url("' + caminhoDaLogo() + '")');
     telaRetomada.setAttribute("role", "status");
     telaRetomada.setAttribute("aria-live", "polite");
     telaRetomada.innerHTML =
       '<div class="fs-cartao">' +
-      '<div class="fs-marca">' +
+      '<div class="fs-selo">' +
       '<img src="' + esc(caminhoDaLogo()) + '" alt="" aria-hidden="true">' +
-      "<h2>FloreSer</h2>" +
-      '<div class="fs-sub-marca">' + esc(nome) + "</div>" +
+      '<div class="fs-modulo">' + esc(nome) + "</div>" +
       "</div>" +
-      '<div class="fs-fio-linha"></div>' +
       '<div class="fs-corpo-retoma"></div>' +
       "</div>";
 
@@ -765,17 +815,24 @@
     if (estado.modulo === "agenda") preposicao = "na ";
 
     var html = "";
+    var esperando = estado.etapa === "entrando";
 
-    /* O retrato local só enfeita: quem diz se a sessão vale é o servidor. */
+    /* O retrato local só enfeita: quem diz se a sessão vale é o servidor.
+       O arco só gira enquanto há espera — no erro o anel para e fica de
+       moldura, para o rosto continuar ancorando a tela. */
     if (quem && quem.nome) {
-      html += '<div class="fs-quem-retoma">' + avatarHTML(quem, 56) +
-        '<div class="fs-nome-retoma">' + esc(quem.nome) + "</div></div>";
+      html += '<div class="fs-halo">' +
+        (esperando ? ARCO : "") +
+        avatarHTML(quem, 72) +
+        "</div>" +
+        '<div class="fs-nome-retoma">' + esc(quem.nome) + "</div>";
+    } else if (esperando) {
+      html += '<div class="fs-halo">' + ARCO + "</div>";
     }
 
-    if (estado.etapa === "entrando") {
+    if (esperando) {
       html += '<div class="fs-passo">Entrando ' + esc(preposicao) + esc(nome) +
-        " com sua conta…</div>" +
-        '<div class="fs-girando" aria-hidden="true"></div>';
+        " com sua conta…</div>";
     } else {
       html += '<div class="fs-erro-caixa">' + AVISO +
         "<span>" + esc(estado.mensagem || "") + "</span></div>";
