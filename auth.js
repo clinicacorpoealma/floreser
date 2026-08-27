@@ -250,6 +250,7 @@
     "  --fs-erro:#A8452F; --fs-selo:#E7EEEB; --fs-selo-cor:#2F5A57;",
     "  --fs-menu-fundo:#FFFFFF; --fs-menu-linha:#E2DED7;",
     "  --fs-erro-bg:#F6EBE4; --fs-fio:#C9D3CA; --fs-sombra:rgba(20,40,38,.30);",
+    "  --fs-fundo-portao:#12201E;",
     "  --fs-anel:rgba(90,148,144,.16); --fs-realce:#5A9490; --fs-hover-suave:#EDF3F1;",
     "}",
     ':root[data-tema="escuro"]{',
@@ -259,6 +260,7 @@
     "  --fs-erro:#E79B82; --fs-selo:#2A514D; --fs-selo-cor:#EAF1EF;",
     "  --fs-menu-fundo:#1E2927; --fs-menu-linha:#33403E;",
     "  --fs-erro-bg:#3A241D; --fs-fio:#3C5A56; --fs-sombra:rgba(0,0,0,.55);",
+    "  --fs-fundo-portao:#0B1413;",
     "  --fs-anel:rgba(127,184,178,.20); --fs-realce:#93C6C0; --fs-hover-suave:#26332F;",
     "}",
 
@@ -324,7 +326,7 @@
     "  display:flex;align-items:center;justify-content:center;overflow:auto}",
     ".fs-login::backdrop{background:rgba(12,24,22,.62)}",
 
-    ".fs-login .fs-cartao{position:relative;width:min(400px,calc(100vw - 32px));",
+    ".fs-login .fs-cartao,.fs-retomada .fs-cartao{position:relative;width:min(400px,calc(100vw - 32px));",
     "  padding:42px 38px 32px;border-radius:16px;text-align:center;",
     "  background:var(--fs-fundo);color:var(--fs-texto);",
     "  box-shadow:0 1px 2px rgba(20,40,38,.10), 0 24px 60px var(--fs-sombra);",
@@ -336,12 +338,12 @@
     ".fs-login .fs-so-leitor{position:absolute;width:1px;height:1px;overflow:hidden;",
     "  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}",
 
-    ".fs-login .fs-marca img{display:block;height:56px;width:auto;margin:0 auto 20px}",
-    ".fs-login h2{font-family:var(--serif,\'Cormorant Garamond\',Georgia,serif);font-weight:600;",
+    ".fs-login .fs-marca img,.fs-retomada .fs-marca img{display:block;height:56px;width:auto;margin:0 auto 20px}",
+    ".fs-login h2,.fs-retomada h2{font-family:var(--serif,\'Cormorant Garamond\',Georgia,serif);font-weight:600;",
     "  font-size:30px;line-height:1.1;color:var(--fs-titulo)}",
-    ".fs-login .fs-sub-marca{margin-top:7px;font-size:9.5px;font-weight:300;letter-spacing:.26em;",
+    ".fs-login .fs-sub-marca,.fs-retomada .fs-sub-marca{margin-top:7px;font-size:9.5px;font-weight:300;letter-spacing:.26em;",
     "  text-transform:uppercase;color:var(--fs-suave)}",
-    ".fs-login .fs-fio-linha{width:38px;height:1px;background:var(--fs-fio);margin:22px auto 24px}",
+    ".fs-login .fs-fio-linha,.fs-retomada .fs-fio-linha{width:38px;height:1px;background:var(--fs-fio);margin:22px auto 24px}",
 
     ".fs-login .fs-campo{position:relative;display:flex;align-items:center;text-align:left}",
     ".fs-login .fs-campo + .campo{margin-top:10px}",
@@ -367,24 +369,24 @@
     ".fs-login .fs-olho.fs-aberto .fs-destapado{display:none}",
     ".fs-login .fs-olho.fs-aberto .fs-fechado{display:block}",
 
-    ".fs-login .fs-erro-caixa{display:flex;align-items:flex-start;gap:8px;margin-top:12px;",
+    ".fs-login .fs-erro-caixa,.fs-retomada .fs-erro-caixa{display:flex;align-items:flex-start;gap:8px;margin-top:12px;",
     "  padding:10px 12px;border-radius:8px;",
     "  background:var(--fs-erro-bg);color:var(--fs-erro);",
     "  font-size:12.5px;line-height:1.45;text-align:left;",
     "  animation:fs-surge .26s ease both}",
-    ".fs-login .fs-erro-caixa:empty{display:none}",
-    ".fs-login .fs-erro-caixa svg{flex:0 0 auto;margin-top:1px}",
+    ".fs-login .fs-erro-caixa:empty,.fs-retomada .fs-erro-caixa:empty{display:none}",
+    ".fs-login .fs-erro-caixa svg,.fs-retomada .fs-erro-caixa svg{flex:0 0 auto;margin-top:1px}",
 
-    ".fs-login .fs-entrar{width:100%;margin-top:16px;padding:13px;border:none;border-radius:10px;",
+    ".fs-login .fs-entrar,.fs-retomada .fs-entrar{width:100%;margin-top:16px;padding:13px;border:none;border-radius:10px;",
     "  cursor:pointer;font-family:var(--sans,\'Montserrat\',Calibri,system-ui,sans-serif);",
     "  font-size:13.5px;font-weight:600;letter-spacing:.06em;",
     "  background:var(--fs-botao);color:var(--fs-botao-cor);",
     "  transition:background .18s ease, box-shadow .2s ease, transform .15s ease}",
-    ".fs-login .fs-entrar:hover:not(:disabled){background:var(--fs-botao-hover);",
+    ".fs-login .fs-entrar:hover:not(:disabled),.fs-retomada .fs-entrar:hover:not(:disabled){background:var(--fs-botao-hover);",
     "  box-shadow:0 8px 20px rgba(59,110,106,.28)}",
-    ".fs-login .fs-entrar:active:not(:disabled){transform:translateY(1px)}",
-    ".fs-login .fs-entrar:focus-visible{outline:2px solid var(--fs-realce);outline-offset:2px}",
-    ".fs-login .fs-entrar:disabled{opacity:.72;cursor:default;box-shadow:none}",
+    ".fs-login .fs-entrar:active:not(:disabled),.fs-retomada .fs-entrar:active:not(:disabled){transform:translateY(1px)}",
+    ".fs-login .fs-entrar:focus-visible,.fs-retomada .fs-entrar:focus-visible{outline:2px solid var(--fs-realce);outline-offset:2px}",
+    ".fs-login .fs-entrar:disabled,.fs-retomada .fs-entrar:disabled{opacity:.72;cursor:default;box-shadow:none}",
 
     ".fs-login .fs-fechar{width:100%;margin-top:12px;padding:9px;border:none;border-radius:8px;",
     "  background:none;cursor:pointer;",
@@ -396,6 +398,43 @@
 
     "@media (max-width:420px){.fs-login .fs-cartao{padding:34px 24px 26px}",
     "  .fs-login h2{font-size:26px}.fs-login .fs-marca img{height:48px}}",
+
+    /* --- retomada automática ---
+       Mesmo cartão do portão: fundo teal profundo, cartão creme, marca
+       acima. A diferença é que aqui ninguém digita nada — o sistema está
+       conferindo a sessão que já existe. */
+    ".fs-retomada{position:fixed;inset:0;z-index:2147482000;",
+    "  display:flex;align-items:center;justify-content:center;padding:20px;",
+    "  background:var(--fs-fundo-portao);overflow:auto}",
+    ".fs-retomada .fs-cartao{animation:none}",
+    ".fs-retomada .fs-quem-retoma{display:flex;flex-direction:column;align-items:center;gap:9px}",
+    ".fs-retomada .fs-quem-retoma .fs-avatar{width:56px;height:56px;font-size:23px}",
+    ".fs-retomada .fs-nome-retoma{font-family:var(--serif,'Cormorant Garamond',Georgia,serif);",
+    "  font-size:21px;line-height:1.15;color:var(--fs-texto)}",
+    ".fs-retomada .fs-passo{margin-top:4px;font-size:13px;line-height:1.5;color:var(--fs-suave)}",
+
+    /* o traço que gira: um arco fino, sem estardalhaço */
+    ".fs-girando{display:block;margin:22px auto 2px;width:26px;height:26px;",
+    "  border:2px solid var(--fs-linha);border-top-color:var(--fs-titulo);",
+    "  border-radius:50%;animation:fs-gira .9s linear infinite}",
+    "@keyframes fs-gira{to{transform:rotate(360deg)}}",
+
+    /* Quem pediu menos movimento recebe um ponto que respira, em vez do
+       giro — o estado continua legível, sem nada rodando na tela. */
+    "@media (prefers-reduced-motion:reduce){",
+    "  .fs-girando{width:10px;height:10px;border:none;margin-top:30px;",
+    "    background:var(--fs-titulo);animation:fs-pulsa 1.8s ease-in-out infinite}",
+    "}",
+    "@keyframes fs-pulsa{0%,100%{opacity:.3}50%{opacity:1}}",
+
+    ".fs-retomada .fs-botoes-retoma{display:flex;flex-direction:column;gap:8px;margin-top:18px}",
+    ".fs-retomada .fs-secundario{width:100%;padding:11px;border-radius:10px;cursor:pointer;",
+    "  border:1.5px solid var(--fs-linha);background:none;color:var(--fs-texto);",
+    "  font-family:var(--sans,'Montserrat',Calibri,system-ui,sans-serif);",
+    "  font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;",
+    "  transition:border-color .18s ease, color .18s ease}",
+    ".fs-retomada .fs-secundario:hover{border-color:var(--fs-realce);color:var(--fs-titulo)}",
+    ".fs-retomada .fs-secundario:focus-visible{outline:2px solid var(--fs-realce);outline-offset:2px}",
   ].join("\n");
 
   /* O estilo entra assim que o arquivo carrega: o painel de manutenção
@@ -652,6 +691,210 @@
 
   porEstilo();
 
+  /* ---------- retomada automática ----------
+     Quando existe sessão de usuário guardada e a pessoa abre um módulo, o
+     sistema tenta entrar sozinho. Antes isso acontecia em silêncio: a tela
+     de senha aparecia como se nada estivesse em curso, e um erro na
+     tentativa sumia sem deixar rastro.
+
+     Esta tela cobre a espera e, se der errado, fica no lugar mostrando o
+     motivo — quem decide o que fazer depois é a pessoa.
+
+     A tela vive fora do React de propósito, como a marca de quem está
+     usando: assim os três módulos usam exatamente a mesma, e o CRM não
+     precisa de um componente só dele. */
+
+  var telaRetomada = null;
+
+  function encerrarRetomada() {
+    if (telaRetomada && telaRetomada.parentNode) {
+      telaRetomada.parentNode.removeChild(telaRetomada);
+    }
+    telaRetomada = null;
+    document.body.style.overflow = "";
+  }
+
+  /* Só faz sentido para sessão de usuário individual. Quem entra pela senha
+     compartilhada do módulo não tem conta, e a retomada daquela sessão
+     continua acontecendo em silêncio, como sempre foi. */
+  function mostrarRetomada(modulo) {
+    if (!token()) return null;
+    porEstilo();
+    encerrarRetomada();
+
+    var quem = perfil();
+    var nome = NOMES[modulo] || modulo || "o sistema";
+
+    telaRetomada = document.createElement("div");
+    telaRetomada.className = "fs-retomada";
+    telaRetomada.setAttribute("role", "status");
+    telaRetomada.setAttribute("aria-live", "polite");
+    telaRetomada.innerHTML =
+      '<div class="fs-cartao">' +
+      '<div class="fs-marca">' +
+      '<img src="' + esc(caminhoDaLogo()) + '" alt="" aria-hidden="true">' +
+      "<h2>FloreSer</h2>" +
+      '<div class="fs-sub-marca">' + esc(nome) + "</div>" +
+      "</div>" +
+      '<div class="fs-fio-linha"></div>' +
+      '<div class="fs-corpo-retoma"></div>' +
+      "</div>";
+
+    document.body.appendChild(telaRetomada);
+    document.body.style.overflow = "hidden";
+    atualizarRetomada({ etapa: "entrando", modulo: modulo, quem: quem });
+    return telaRetomada;
+  }
+
+  /* estado: { etapa, modulo, quem, mensagem, acoes:[{texto,fn}] } */
+  function atualizarRetomada(estado) {
+    if (!telaRetomada) return;
+    var corpo = telaRetomada.querySelector(".fs-corpo-retoma");
+    if (!corpo) return;
+
+    var quem = estado.quem || perfil();
+    var nome = NOMES[estado.modulo] || estado.modulo || "o sistema";
+    var preposicao = estado.modulo === "entradas" ? "em " : "no ";
+    if (estado.modulo === "agenda") preposicao = "na ";
+
+    var html = "";
+
+    /* O retrato local só enfeita: quem diz se a sessão vale é o servidor. */
+    if (quem && quem.nome) {
+      html += '<div class="fs-quem-retoma">' + avatarHTML(quem, 56) +
+        '<div class="fs-nome-retoma">' + esc(quem.nome) + "</div></div>";
+    }
+
+    if (estado.etapa === "entrando") {
+      html += '<div class="fs-passo">Entrando ' + esc(preposicao) + esc(nome) +
+        " com sua conta…</div>" +
+        '<div class="fs-girando" aria-hidden="true"></div>';
+    } else {
+      html += '<div class="fs-erro-caixa">' + AVISO +
+        "<span>" + esc(estado.mensagem || "") + "</span></div>";
+    }
+
+    corpo.innerHTML = html;
+
+    if (estado.acoes && estado.acoes.length) {
+      var caixa = document.createElement("div");
+      caixa.className = "fs-botoes-retoma";
+      estado.acoes.forEach(function (a, i) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = i === 0 ? "fs-entrar" : "fs-secundario";
+        b.textContent = a.texto;
+        b.addEventListener("click", a.fn);
+        caixa.appendChild(b);
+      });
+      corpo.appendChild(caixa);
+      var primeiro = caixa.querySelector("button");
+      if (primeiro) primeiro.focus();
+    }
+  }
+
+  /* Faz a tentativa inteira: mostra a tela, chama o servidor e, quando dá
+     errado, deixa o motivo na tela com as saídas possíveis.
+
+     Devolve true quando entrou. Devolve false quando não entrou — e nesse
+     caso a tela CONTINUA no ar com o erro, de propósito: sem isto, uma
+     sessão antiga da senha compartilhada entraria por baixo e esconderia
+     o que aconteceu. Quem chama só precisa saber que não deve seguir. */
+  async function tentarRetomar(modulo, opcoes) {
+    var o = opcoes || {};
+    if (!token()) return false;
+
+    mostrarRetomada(modulo);
+
+    var r;
+    try {
+      r = await retomar(modulo);
+    } catch (e) {
+      /* aqui o fetch falhou de verdade: é rede, não resposta do servidor */
+      atualizarRetomada({
+        etapa: "erro", modulo: modulo,
+        mensagem: "Não foi possível confirmar sua sessão. Verifique sua conexão e tente novamente.",
+        acoes: saidas(modulo, o, true),
+      });
+      anotarRetomadaFalhou(modulo, "rede");
+      return false;
+    }
+
+    if (r && r.ok) {
+      encerrarRetomada();
+      return true;
+    }
+
+    atualizarRetomada({
+      etapa: "erro", modulo: modulo,
+      mensagem: motivoDaRetomada(r),
+      acoes: saidas(modulo, o, false),
+    });
+    anotarRetomadaFalhou(modulo, (r && r.erro) || "sem_resposta");
+    return false;
+  }
+
+  function motivoDaRetomada(r) {
+    if (!r) return "Não foi possível confirmar sua sessão.";
+    if (r.erro === "sem_acesso") {
+      return "Não foi possível entrar automaticamente. Sua conta não possui acesso a este módulo.";
+    }
+    if (r.erro === "expirada") {
+      return "Sua sessão expirou por inatividade. Entre novamente para continuar.";
+    }
+    if (r.erro === "inativo") return "Este usuário está desativado.";
+    if (r.erro === "servidor_falhou") {
+      return "Não foi possível confirmar sua sessão. O servidor respondeu com um erro.";
+    }
+    if (r.erro === "sessao") return "Sua sessão não vale mais. Entre novamente para continuar.";
+    return "Não foi possível confirmar sua sessão.";
+  }
+
+  /* As saídas são sempre as mesmas do portão: a senha do módulo continua
+     valendo, e trocar de conta também. */
+  function saidas(modulo, o, foiRede) {
+    var lista = [];
+
+    if (foiRede) {
+      lista.push({
+        texto: "Tentar novamente",
+        fn: function () { location.reload(); },
+      });
+    }
+
+    lista.push({
+      texto: "Entrar com senha",
+      fn: function () {
+        encerrarRetomada();
+        if (typeof o.aoPedirSenha === "function") o.aoPedirSenha();
+      },
+    });
+
+    lista.push({
+      texto: "Entrar com outra conta",
+      fn: function () {
+        encerrarRetomada();
+        abrirLogin({
+          modulo: modulo,
+          aoEntrar: function (r) {
+            if (typeof o.aoEntrar === "function") o.aoEntrar(r);
+          },
+        });
+      },
+    });
+
+    return lista;
+  }
+
+  function anotarRetomadaFalhou(modulo, motivo) {
+    var registrar = global.FloreSerLogs && global.FloreSerLogs.registrar;
+    if (!registrar) return;
+    registrar("AUTOLOGIN_USUARIO_FALHOU", {
+      nivel: "WARNING",
+      mensagem: "Entrada automática em " + modulo + " não completou: " + motivo,
+    });
+  }
+
   global.FloreSerAuth = {
     token: token,
     usuario: perfil,
@@ -666,6 +909,10 @@
     avatarHTML: avatarHTML,
     iniciais: iniciais,
     montarIdentidade: montarIdentidade,
+    tentarRetomar: tentarRetomar,
+    mostrarRetomada: mostrarRetomada,
+    atualizarRetomada: atualizarRetomada,
+    encerrarRetomada: encerrarRetomada,
     dias: DIAS,
     nomeDoModulo: function (m) { return NOMES[m] || m; },
     possuiPermissao: function (modulo) {

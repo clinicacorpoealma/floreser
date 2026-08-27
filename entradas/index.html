@@ -2326,17 +2326,22 @@ body.entrou .rodape{animation-delay:.24s}
     });
   }
 
-  /* volta com a sessão de usuário guardada neste navegador */
+  /* Volta com a sessão de usuário guardada neste navegador. A tela de
+     espera é a do auth.js, a mesma dos três módulos: ela aparece antes da
+     chamada e, se der errado, fica no lugar mostrando o motivo. */
   async function retomarUsuario() {
-    const r = await window.FloreSerAuth.retomar("entradas");
-    if (!r || !r.ok) {
-      if (r && r.erro === "sem_acesso") {
-        avisar("Você não possui acesso a este módulo. Entre com a senha ou com outro usuário.");
-      } else if (r && r.erro === "expirada") {
-        avisar("Sua sessão expirou por inatividade. Entre novamente para continuar.");
-      }
-      return false;
-    }
+    const entrou = await window.FloreSerAuth.tentarRetomar("entradas", {
+      aoPedirSenha() { elSenha.focus(); },
+      aoEntrar(r) {
+        SESSAO.token = r.token;
+        origemSessao = "usuario";
+        carregar().then(abrirApp).catch(() => {
+          avisar("Não foi possível carregar os dados. Tente de novo.");
+        });
+      },
+    });
+    if (!entrou) return false;
+
     SESSAO.token = window.FloreSerAuth.token();
     origemSessao = "usuario";
     try {
@@ -2344,6 +2349,12 @@ body.entrou .rodape{animation-delay:.24s}
       abrirApp();
       return true;
     } catch (e) {
+      /* a sessão valia; quem falhou foi a leitura dos dados */
+      window.FloreSerAuth.atualizarRetomada({
+        etapa: "erro", modulo: "entradas",
+        mensagem: "Sua conta foi reconhecida, mas não foi possível carregar os dados. Tente de novo.",
+        acoes: [{ texto: "Tentar novamente", fn() { location.reload(); } }],
+      });
       return false;
     }
   }
@@ -2401,11 +2412,16 @@ body.entrou .rodape{animation-delay:.24s}
 
     el("ir-usuario").addEventListener("click", abrirLoginDeUsuario);
 
-    /* ordem de tentativa: a sessão de usuário (que vale entre módulos) e,
-       se não houver, a sessão da senha compartilhada desta aba */
+    /* Ordem de tentativa: a sessão de usuário (que vale entre módulos) e,
+       se não houver, a sessão da senha compartilhada desta aba.
+
+       Quando existe usuário e a tentativa falha, paramos aqui de propósito:
+       a tela do erro fica no ar. Deixar a sessão antiga da senha entrar por
+       baixo esconderia o motivo. */
     (async function () {
       if (window.FloreSerAuth && window.FloreSerAuth.token()) {
-        if (await retomarUsuario()) return;
+        await retomarUsuario();
+        return;
       }
       const guardado = tokenGuardado();
       if (guardado) retomar(guardado); else elSenha.focus();

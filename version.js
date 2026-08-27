@@ -22,6 +22,24 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.12.0",
+      codinome: "UMBRAL",
+      data: "27/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "Ao abrir o CRM, a Agenda ou as Entradas com sua conta já conectada, aparece uma tela dizendo que o sistema está entrando — com a sua foto e o seu nome — em vez de a tela de senha piscar enquanto isso."
+        ],
+        "Melhorado": [
+          "Quando a entrada automática falha, o motivo agora fica na tela: sem acesso ao módulo, sessão expirada, usuário desativado, erro do servidor ou falta de conexão. Antes o erro sumia e parecia que nada tinha acontecido.",
+          "Da mesma tela dá para seguir com a senha do módulo ou entrar com outra conta, e quando o problema é de conexão aparece um botão de tentar de novo.",
+          "Uma sessão antiga da senha compartilhada não entra mais por baixo escondendo a falha da conta — quem escolhe o caminho é você."
+        ],
+        "Técnico": [
+          "A tela de entrada automática é uma só, no auth.js, usada pelos três módulos. Ela só aparece quando existe sessão de usuário individual guardada, e respeita quem pediu menos animação no sistema."
+        ]
+      }
+    },
+    {
       versao: "2.11.1",
       codinome: "APRUMO",
       data: "27/08/2026",

@@ -1502,7 +1502,12 @@
     /* ==== Tela de entrada com senha ==== */
     function Portao() {
       const [senha, setSenha] = useState("");
-      const [estado, setEstado] = useState("form"); // form | verificando | ok
+      /* Começa em "retomando" quando existe sessão de usuário guardada: o
+         portão não chega a ser desenhado, e o formulário de senha não pisca
+         antes da tela de espera. Sem sessão, começa no portão de sempre. */
+      const [estado, setEstado] = useState(
+        () => (window.FloreSerAuth && window.FloreSerAuth.token()) ? "retomando" : "form"
+      ); // form | retomando | verificando | ok
       const [erro, setErro] = useState("");
       const [mostrar, setMostrar] = useState(false);
 
@@ -1558,21 +1563,26 @@
         let vivo = true;
         (async () => {
           if (window.FloreSerAuth && window.FloreSerAuth.token()) {
-            try {
-              const r = await window.FloreSerAuth.retomar("crm");
-              if (!vivo) return;
-              if (r && r.ok) {
-                SESSAO.token = window.FloreSerAuth.token();
+            const entrou = await window.FloreSerAuth.tentarRetomar("crm", {
+              /* a tela de espera saiu; o portão assume */
+              aoPedirSenha() { if (vivo) setEstado("form"); },
+              aoEntrar(r) {
+                if (!vivo) return;
+                SESSAO.token = r.token;
                 ORIGEM_SESSAO = { tipo: "usuario" };
                 setEstado("ok");
-                return;
-              }
-              if (r && r.erro === "sem_acesso") {
-                setErro("Você não possui acesso a este módulo. Entre com a senha ou com outro usuário.");
-              } else if (r && r.erro === "expirada") {
-                setErro("Sua sessão expirou por inatividade. Entre novamente para continuar.");
-              }
-            } catch (e) { /* segue para a senha do módulo */ }
+              },
+            });
+            if (!vivo) return;
+            if (entrou) {
+              SESSAO.token = window.FloreSerAuth.token();
+              ORIGEM_SESSAO = { tipo: "usuario" };
+              setEstado("ok");
+            }
+            /* Deu errado: a tela do auth.js continua no ar com o motivo, e
+               é ela quem oferece as saídas. Cair para a sessão da senha
+               aqui esconderia o erro. */
+            return;
           }
 
           const guardado = tokenGuardado();
@@ -1594,6 +1604,10 @@
       }, []);
 
       if (estado === "ok") return <CRMFloreSer />;
+
+      /* Enquanto a retomada corre, quem está na tela é o cartão do auth.js.
+         Desenhar o portão por baixo faria o formulário de senha piscar. */
+      if (estado === "retomando") return null;
 
       const carregando = estado === "verificando";
 
