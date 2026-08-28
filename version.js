@@ -22,6 +22,22 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.13.2",
+      codinome: "TRAVESSA",
+      data: "28/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "O erro 404 que às vezes aparecia ao abrir um módulo com a conta conectada. Não era endereço errado nem problema de internet: o Google responde a cada chamada mandando buscar o resultado em outro endereço, e esse segundo passo falha de vez em quando. Agora o sistema tenta de novo sozinho, até três vezes, e a pessoa não vê nada.",
+          "O mesmo vale para entrar com usuário e senha, que também tropeçava. Uma senha errada continua sendo recusada de primeira — só a falha do Google é repetida.",
+          "Quando nem assim dá certo, a mensagem diz o que realmente aconteceu e pede para tentar em alguns segundos, em vez de mandar conferir a conexão ou a permissão da planilha."
+        ],
+        "Técnico": [
+          "As tentativas repetidas ficam registradas no painel de manutenção, com o status que voltou, para dar para acompanhar se o problema aumentar.",
+          "Só leitura e conferência de sessão são repetidas automaticamente. Gravação não: quem grava tem a revisão em mãos e continua cuidando do próprio reenvio."
+        ]
+      }
+    },
+    {
       versao: "2.13.1",
       codinome: "PARAPEITO",
       data: "28/08/2026",

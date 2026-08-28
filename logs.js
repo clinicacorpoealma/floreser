@@ -396,6 +396,123 @@
 
   setTimeout(conferirVersao, 4000);
 
+
+  /* =====================================================================
+     Falar com o Apps Script
+     ---------------------------------------------------------------------
+     Um POST para o /exec nunca é respondido direto: o Google devolve 302
+     e manda o navegador buscar a resposta em
+     script.googleusercontent.com/macros/echo?user_content_key=…
+
+     Esse segundo salto é o ponto fraco. Ele falha de vez em quando com
+     404 — sem nada de errado do nosso lado, sem nada de errado com a
+     internet de quem está usando. Acontece mais quando várias chamadas
+     saem quase juntas, que é justamente o que o sistema faz ao abrir um
+     módulo com a conta já conectada: confere a sessão, lê os dados e
+     registra o log, tudo em poucos segundos.
+
+     Contra isso só há um remédio honesto: tentar de novo. Mas repetir
+     sozinho só o que pode ser repetido sem consequência — leitura e
+     conferência de sessão. Gravação não entra aqui: quem grava é dono do
+     próprio reenvio, e cada módulo já cuida disso com a revisão em mãos.
+     ===================================================================== */
+
+  /* Status que valem outra tentativa. O 404 é o do redirecionamento; os
+     5xx são o Apps Script sobrecarregado; 429 é limite de chamadas. */
+  var STATUS_PASSAGEIRO = [404, 408, 425, 429, 500, 502, 503, 504];
+
+  var ESPERAS = [400, 1200];    /* ms antes da 2ª e da 3ª tentativa */
+
+  function dormir(ms) {
+    return new Promise(function (ok) { setTimeout(ok, ms); });
+  }
+
+  /* Quando o Apps Script estoura, devolve uma página de erro em HTML.
+     Ler o texto e não conseguir virar JSON é sinal disso. */
+  function lerResposta(texto) {
+    try { return { ok: true, dados: JSON.parse(texto) }; }
+    catch (e) { return { ok: false, texto: texto }; }
+  }
+
+  /* postar(corpo, { repetir })
+       repetir:true  → tenta até 3 vezes em falha passageira
+       repetir:false → uma só, e quem chamou decide o que fazer
+     Devolve o objeto que o servidor mandou. Se nem assim vier JSON,
+     devolve { ok:false, erro:"servidor_falhou" } com o motivo legível —
+     nunca deixa a tela achar que o problema é a internet de quem usa. */
+  async function postar(corpo, opcoes) {
+    var o = opcoes || {};
+    var tentativas = o.repetir ? ESPERAS.length + 1 : 1;
+    var ultimoStatus = 0;
+    var ultimoTexto = "";
+
+    for (var i = 0; i < tentativas; i++) {
+      if (i > 0) await dormir(ESPERAS[i - 1]);
+
+      var resposta;
+      try {
+        resposta = await fetch(URL_API, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: typeof corpo === "string" ? corpo : JSON.stringify(corpo),
+          redirect: "follow",
+        });
+      } catch (e) {
+        /* rede caiu de verdade: repetir não ajuda a distinguir, e quem
+           chamou precisa saber que foi conexão */
+        throw e;
+      }
+
+      ultimoStatus = resposta.status;
+      var texto = await resposta.text();
+      ultimoTexto = texto;
+
+      var lido = lerResposta(texto);
+      if (resposta.ok && lido.ok) {
+        if (i > 0) {
+          registrar("REDE_REPETIU", {
+            mensagem: "A resposta do servidor veio na tentativa " + (i + 1) +
+              " (a anterior falhou com " + ultimoStatus + ").",
+          });
+        }
+        return lido.dados;
+      }
+
+      /* resposta boa mas sem JSON, ou status que não vale repetir: para */
+      var valeRepetir = STATUS_PASSAGEIRO.indexOf(resposta.status) >= 0;
+      if (!valeRepetir && lido.ok) return lido.dados;
+      if (!valeRepetir) break;
+    }
+
+    if (o.repetir) {
+      registrar("REDE_DESISTIU", {
+        nivel: "ERRO",
+        mensagem: "O servidor não respondeu depois de " + tentativas +
+          " tentativas (último status " + ultimoStatus + ").",
+      });
+    }
+
+    return {
+      ok: false,
+      erro: "servidor_falhou",
+      status: ultimoStatus,
+      detalhe: resumoDaPagina(ultimoTexto),
+    };
+  }
+
+  /* O texto da página de erro, sem marcação, para o painel mostrar. */
+  function resumoDaPagina(html) {
+    return String(html || "")
+      .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&quot;/g, '"').replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 180);
+  }
+
+  global.FloreSerRede = { postar: postar, enderecoDaApi: function () { return URL_API; } };
+
   global.FloreSerLogs = {
     registrar: registrar,
     enviar: function () { enviar(false); },

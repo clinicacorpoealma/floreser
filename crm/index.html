@@ -168,7 +168,16 @@
       location.reload();
     }
 
+    /* Ler pode ser repetido sem consequência; gravar, não — quem grava tem a
+       revisão em mãos e cuida do próprio reenvio. O que se ganha aqui é o
+       tropeço do redirecionamento do Apps Script, que devolve 404 de vez em
+       quando sem nada estar errado. */
     async function chamarAPI(dados) {
+      if (window.FloreSerRede) {
+        var soLeitura = String((dados && dados.acao) || "").indexOf("ler") === 0 ||
+          dados.acao === "repetido_na_lixeira";
+        return await window.FloreSerRede.postar(dados, { repetir: soLeitura });
+      }
       var resposta = await fetch(URL_API, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },

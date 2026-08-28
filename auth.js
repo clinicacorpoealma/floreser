@@ -113,7 +113,20 @@
      tela mandava conferir a internet — que estava ótima. Agora a resposta
      estranha é reconhecida pelo que é, e o texto do servidor fica guardado
      para o painel de manutenção mostrar. */
-  async function api(dados) {
+  /* repetir:true para o que pode ser repetido sem consequência.
+
+     A dúvida era o login, porque cada recusa conta para o bloqueio. Mas a
+     repetição só acontece quando o Google NÃO devolve resposta (404, 5xx).
+     Senha errada volta como resposta de verdade e para ali mesmo — não é
+     repetida uma vez sequer. Então repetir o login não gasta tentativa de
+     quem errou a senha: gasta, no máximo, de quem esbarrou em dois
+     tropeços seguidos, que é raro o bastante para valer a troca. */
+  async function api(dados, repetir) {
+    if (global.FloreSerRede) {
+      return await global.FloreSerRede.postar(dados, { repetir: !!repetir });
+    }
+
+    /* sem o logs.js por perto, segue pelo caminho simples */
     var resposta = await fetch(URL_API, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -143,7 +156,7 @@
   /* ---------- entrar, retomar e sair ---------- */
 
   async function entrar(usuario, senha) {
-    var r = await api({ acao: "login_usuario", usuario: usuario, senha: senha });
+    var r = await api({ acao: "login_usuario", usuario: usuario, senha: senha }, true);
     if (r && r.ok) guardar(r.token, r.usuario);
     else anotarFalha(r);
     return r;
@@ -170,7 +183,9 @@
     if (!tk) return { ok: false, erro: "sem_token" };
     if (venceuLocalmente()) { esquecer(); return { ok: false, erro: "expirada" }; }
 
-    var r = await api({ acao: "sessao_usuario", token: tk, modulo: modulo || "" });
+    /* este é o caminho da entrada automática, o que mais sofria com o 404
+       do redirecionamento: conferir a sessão é leitura, pode repetir */
+    var r = await api({ acao: "sessao_usuario", token: tk, modulo: modulo || "" }, true);
     if (r && r.ok) {
       guardar(tk, r.usuario);
     } else if (r && r.erro === "sem_acesso") {
@@ -185,7 +200,7 @@
   async function sair() {
     var tk = token();
     esquecer();
-    if (tk) { try { await api({ acao: "logout_usuario", token: tk }); } catch (e) { } }
+    if (tk) { try { await api({ acao: "logout_usuario", token: tk }, true); } catch (e) { } }
   }
 
   function recado(r) {
@@ -204,6 +219,9 @@
     /* O servidor respondeu — e o que ele respondeu foi um erro dele. Dizer
        "sem conexão" aqui manda procurar o problema no lugar errado. */
     if (r.erro === "servidor_falhou") {
+      if (r.status === 404) {
+        return "O Google não devolveu a resposta desta vez. Tente de novo em alguns segundos.";
+      }
       return "O servidor respondeu com um erro. A planilha pode estar sem " +
         "permissão de escrita. Avise o suporte.";
     }
@@ -964,7 +982,15 @@
     }
     if (r.erro === "inativo") return "Este usuário está desativado.";
     if (r.erro === "servidor_falhou") {
-      return "Não foi possível confirmar sua sessão. O servidor respondeu com um erro.";
+      /* O 404 aqui não é endereço errado: é o Google falhando no segundo
+         salto da resposta. Já tentamos três vezes antes de chegar neste
+         texto, então mandar "verifique a internet" seria mentira. */
+      if (r.status === 404) {
+        return "O Google não devolveu a resposta desta vez — acontece de " +
+          "vez em quando e não é problema seu. Tente de novo em alguns segundos.";
+      }
+      return "Não foi possível confirmar sua sessão. O servidor respondeu com um erro" +
+        (r.status ? " (" + r.status + ")" : "") + ".";
     }
     if (r.erro === "sessao") return "Sua sessão não vale mais. Entre novamente para continuar.";
     return "Não foi possível confirmar sua sessão.";

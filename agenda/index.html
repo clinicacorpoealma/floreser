@@ -967,7 +967,15 @@ let state = {pacientes:[], categorias:[], followups:[], maquinas:[], vindas:[],
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
+/* Ler pode ser repetido sem consequência; gravar, não — quem grava tem a
+   revisão em mãos e cuida do próprio reenvio. O que se ganha aqui é o
+   tropeço do redirecionamento do Apps Script, que devolve 404 de vez em
+   quando sem nada estar errado. */
 async function api(dados){
+  if(window.FloreSerRede){
+    const so_leitura = String(dados&&dados.acao||'').indexOf('ler')===0;
+    return await window.FloreSerRede.postar(dados,{repetir:so_leitura});
+  }
   const resposta=await fetch(URL_API,{
     method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
