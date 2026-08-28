@@ -22,7 +22,7 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
-      versao: "2.12.2",
+      versao: "2.12.3",
       codinome: "UMBRAL",
       data: "27/08/2026",
       mudancas: {
@@ -40,6 +40,8 @@
           "Ao abrir a tela de entrar, o que está atrás escurece e desfoca de leve, deixando o cartão em foco."
         ],
         "Corrigido": [
+          "No CRM, a tela de entrada automática e a de entrar saíam com a fonte errada e o cartão mais largo do que devia. As fontes da marca agora carregam junto com a página, e as duas telas trazem a própria medida em vez de depender do que a página define.",
+          "A lótus do canto criava barras de rolagem na janela e ainda empurrava o cartão alguns pixels para o lado. Agora ela é recortada por dentro, sem sobrar para fora.",
           "A tela de entrada automática sumia e deixava o pedido de senha no lugar, sem erro nenhum, quando a conta era reconhecida mas os dados do módulo não carregavam. Agora ela fica no ar e explica o que houve.",
           "O CRM mostrava o funil vazio quando o servidor recusava a leitura, como se não houvesse leads. Agora avisa que não conseguiu carregar e lembra que os dados continuam na planilha."
         ],

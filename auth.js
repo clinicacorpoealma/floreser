@@ -269,7 +269,8 @@
     /* --- o básico, sem depender da página ---
        O CRM escopa o box-sizing em .pt-fundo e o diálogo nasce fora dele:
        sem esta linha o cartão soma o padding à largura e estoura os 400 px. */
-    ".fs-login,.fs-login *,.fs-quem,.fs-quem *{box-sizing:border-box}",
+    ".fs-login,.fs-login *,.fs-quem,.fs-quem *,",
+    ".fs-retomada,.fs-retomada *{box-sizing:border-box}",
 
     /* --- avatar --- */
     ".fs-avatar{flex:0 0 auto;border-radius:50%;object-fit:cover;display:inline-flex;",
@@ -289,6 +290,7 @@
     ".fs-quem>button i{font-style:normal;font-size:9px;opacity:.7}",
     ".fs-quem>button .fs-nome{max-width:15ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
     ".fs-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:80;min-width:214px;",
+    "  font-family:'Montserrat',Calibri,system-ui,-apple-system,sans-serif;",
     "  padding:16px;border-radius:12px;text-align:left;",
     "  background:var(--fs-menu-fundo);border:1px solid var(--fs-menu-linha);",
     "  box-shadow:0 2px 4px rgba(20,30,28,.06), 0 16px 34px -18px rgba(20,30,28,.45);",
@@ -333,6 +335,9 @@
 
     ".fs-login .fs-cartao,.fs-retomada .fs-cartao{position:relative;width:min(400px,calc(100vw - 32px));",
     "  padding:42px 38px 32px;border-radius:16px;text-align:center;overflow:hidden;",
+    /* a fonte é declarada aqui, não herdada: o CRM não define família no
+       nível do documento, e o cartão saía em Times dentro dele */
+    "  font-family:'Montserrat',Calibri,system-ui,-apple-system,sans-serif;",
     "  background:var(--fs-fundo);color:var(--fs-texto);",
     "  border:1px solid var(--fs-borda-cartao);",
     "  box-shadow:0 1px 2px rgba(20,40,38,.10), 0 24px 60px var(--fs-sombra);",
@@ -358,7 +363,8 @@
     "  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}",
 
     ".fs-login .fs-marca img,.fs-retomada .fs-marca img{display:block;height:56px;width:auto;margin:0 auto 20px}",
-    ".fs-login h2,.fs-retomada h2{font-family:var(--serif,\'Cormorant Garamond\',Georgia,serif);font-weight:600;",
+    ".fs-login h2,.fs-retomada h2{font-family:\'Cormorant Garamond\',Georgia,\'Times New Roman\',serif;",
+    "  font-weight:600;",
     "  font-size:30px;line-height:1.1;color:var(--fs-titulo)}",
     ".fs-login .fs-sub-marca,.fs-retomada .fs-sub-marca{margin-top:7px;font-size:9.5px;font-weight:300;letter-spacing:.26em;",
     "  text-transform:uppercase;color:var(--fs-suave)}",
@@ -428,9 +434,18 @@
        canto: quem vê as duas telas reconhece a mesma casa. */
     ".fs-retomada{position:fixed;inset:0;z-index:2147482000;",
     "  display:flex;align-items:center;justify-content:center;padding:20px;",
-    "  background:var(--fs-fundo-portao);overflow:auto}",
-    ".fs-retomada::before{content:'';position:absolute;right:-140px;bottom:-170px;",
-    "  width:520px;height:520px;background:var(--fs-marca-dagua) no-repeat center/contain;",
+    /* A lótus do canto é desenhada 140px para fora, de propósito. Com
+       overflow:auto isso virava barra de rolagem de verdade — e ainda
+       empurrava o cartão alguns pixels para o lado. Corta na horizontal,
+       rola só na vertical, para o cartão alto continuar alcançável. */
+    "  background:var(--fs-fundo-portao);overflow-x:hidden;overflow-y:auto}",
+    /* A lótus aparece cortada pelo canto, como no portão — mas o corte é
+       feito pela própria caixa, que fica dentro da tela. Se ela sobrasse
+       para fora, viraria barra de rolagem de verdade, e a barra reservada
+       ainda empurrava o cartão alguns pixels para o lado. */
+    ".fs-retomada::before{content:'';position:absolute;right:0;bottom:0;",
+    "  width:380px;height:350px;background:var(--fs-marca-dagua) no-repeat;",
+    "  background-size:520px 520px;background-position:0 0;",
     "  opacity:.055;filter:brightness(0) invert(1);pointer-events:none}",
 
     ".fs-retomada .fs-cartao{padding:36px 38px 34px;",
@@ -465,7 +480,7 @@
     "@keyframes fs-respira{0%,100%{opacity:.4}50%{opacity:1}}",
 
     ".fs-retomada .fs-nome-retoma{margin-top:16px;",
-    "  font-family:var(--serif,'Cormorant Garamond',Georgia,serif);",
+    "  font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;",
     "  font-size:23px;line-height:1.15;color:var(--fs-texto)}",
     ".fs-retomada .fs-passo{margin-top:6px;font-size:13px;line-height:1.55;",
     "  color:var(--fs-suave);max-width:30ch;margin-inline:auto}",
@@ -755,13 +770,34 @@
      precisa de um componente só dele. */
 
   var telaRetomada = null;
+  var rolagemAntes = null;
+
+  /* Travar só o body não basta: em página que não define altura, quem rola é
+     o elemento raiz, e a barra aparece ao lado da tela de espera. Guardamos
+     os dois valores para devolver exatamente como estavam. */
+  function travarRolagem() {
+    if (rolagemAntes) return;
+    rolagemAntes = {
+      corpo: document.body.style.overflow,
+      raiz: document.documentElement.style.overflow,
+    };
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+  }
+
+  function soltarRolagem() {
+    if (!rolagemAntes) return;
+    document.body.style.overflow = rolagemAntes.corpo;
+    document.documentElement.style.overflow = rolagemAntes.raiz;
+    rolagemAntes = null;
+  }
 
   function encerrarRetomada() {
     if (telaRetomada && telaRetomada.parentNode) {
       telaRetomada.parentNode.removeChild(telaRetomada);
     }
     telaRetomada = null;
-    document.body.style.overflow = "";
+    soltarRolagem();
   }
 
   /* Só faz sentido para sessão de usuário individual. Quem entra pela senha
@@ -791,7 +827,7 @@
       "</div>";
 
     document.body.appendChild(telaRetomada);
-    document.body.style.overflow = "hidden";
+    travarRolagem();
     atualizarRetomada({ etapa: "entrando", modulo: modulo, quem: quem });
     return telaRetomada;
   }
