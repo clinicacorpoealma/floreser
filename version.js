@@ -22,6 +22,58 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.13.1",
+      codinome: "PARAPEITO",
+      data: "28/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "A página deixava de rolar depois de entrar com a conta. A tela de “entrando com sua conta” devolvia ao final uma trava de rolagem que o módulo já tinha soltado, e a pessoa ficava vendo tudo sem conseguir descer.",
+          "Nas Entradas, a barra de cima não cabia na tela do celular quando havia uma conta conectada: o botão “Nova entrada” saía pela direita e arrastava a página inteira para o lado. Agora a barra quebra em linha e o nome encolhe com reticências.",
+          "No painel do dia da Agenda, os cartões tinham largura mínima maior que a tela em aparelhos estreitos e empurravam a página para fora. O mesmo valia para categorias, máquinas, áreas e números do topo."
+        ],
+        "Melhorado": [
+          "Na Agenda, o menu de abas parou de ficar grudado no topo do celular. Ele ocupava quase metade da altura da tela enquanto se rolava; agora sobe junto com a página e devolve o espaço para o conteúdo.",
+          "O seletor de tema, que flutua no canto, não cobre mais o rodapé — inclusive o aviso de sincronização, que às vezes precisa ser tocado."
+        ],
+        "Técnico": [
+          "As telas compartilhadas seguram a rolagem por classe própria, não escrevendo no estilo do documento. Guardar e devolver aquele valor era o que travava a página quando duas telas se sobrepunham."
+        ]
+      }
+    },
+    {
+      versao: "2.13.0",
+      codinome: "VERTEDOURO",
+      data: "28/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "Quando duas pessoas alteram o CRM, a agenda ou as entradas ao mesmo tempo, o sistema compara as duas versões com a última que estava sincronizada e junta sozinho tudo o que não se cruzou.",
+          "Se as duas mexeram no mesmo campo, aparece uma tela para escolher qual valor fica — campo a campo, com os nomes por extenso e as datas em dia/mês/ano.",
+          "Dá para adiar a decisão: o trabalho continua guardado e o aviso fica no indicador. Ao tocar nele, a mesma tela volta com as escolhas que já estavam marcadas.",
+          "No CRM, cadastrar alguém com um WhatsApp que já existe abre um aviso com a ficha encontrada, e as opções de ver a ficha, cadastrar mesmo assim ou cancelar. O mesmo vale ao trocar o telefone de uma lead para o de outra.",
+          "O aviso também alcança quem está no arquivo e quem está na lixeira — nesse caso dizendo quantos dias faltam para a ficha expirar.",
+          "Ao importar planilha, o CRM deixa de fora as linhas cujo WhatsApp já existe, inclusive quando a repetição está dentro da própria planilha, e diz quantas entraram, quantas ficaram de fora e quem eram.",
+          "Nas entradas, um lançamento igual em dia, nome, procedimento e valor abre um aviso antes de registrar — o caso clássico de lançar a mesma sessão duas vezes."
+        ],
+        "Melhorado": [
+          "Os três módulos passam a mostrar o mesmo indicador, com as mesmas palavras: carregando, alterações pendentes, salvando, salvo há quanto tempo, sem conexão, não foi possível salvar, conflito e sessão expirada.",
+          "Passar o mouse pelo indicador mostra a hora exata da última sincronização.",
+          "Sem conexão e servidor que recusou a gravação deixaram de ser a mesma mensagem: agora dá para saber se o problema é a internet daqui ou a planilha de lá."
+        ],
+        "Corrigido": [
+          "Um conflito de revisão não recarrega mais a página em nenhum dos três módulos. Antes o aviso aparecia e a página recarregava na hora, jogando fora justamente a alteração que ainda não tinha subido.",
+          "Valores escritos de formas diferentes deixaram de virar conflito à toa: 350 e 350,00 são o mesmo valor, e campo em branco é campo em branco, esteja ele vazio ou ausente.",
+          "A agenda não bloqueia mais o cadastro de uma paciente por já existir alguém com o mesmo nome. Duas pessoas podem se chamar igual — agora a tela mostra a ficha encontrada e deixa você decidir.",
+          "Nomes com acento, com maiúsculas ou com espaço a mais passam a ser reconhecidos como o mesmo nome na hora de avisar de repetição."
+        ],
+        "Técnico": [
+          "Arquivo sync.js novo: comparação de três vias, tela de conflito, detector de cadastro repetido e indicador de estado, um só para os três módulos — já na casca do Alveare.",
+          "Enquanto um conflito está aberto o envio automático fica parado, e fechar a aba avisa também nesse caso, agora também nas entradas.",
+          "A última versão confirmada pelo servidor fica só na memória da página: nenhum dado da clínica passou a ser guardado em cache por causa disto.",
+          "A consulta que procura repetição na lixeira devolve apenas nome, motivo e prazo, e exige sessão válida do módulo — a lixeira em si continua sendo só do painel de manutenção."
+        ]
+      }
+    },
+    {
       versao: "2.12.3",
       codinome: "UMBRAL",
       data: "27/08/2026",

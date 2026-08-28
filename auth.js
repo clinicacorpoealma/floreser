@@ -289,6 +289,21 @@
     ".fs-quem>button:hover{background:var(--fs-quem-hover,rgba(127,127,127,.14))}",
     ".fs-quem>button i{font-style:normal;font-size:9px;opacity:.7}",
     ".fs-quem>button .fs-nome{max-width:15ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+
+    /* Em tela estreita a marca de quem entrou divide a barra com os botões
+       do módulo. Ela encolhe primeiro: o nome corta com reticências, e o
+       que precisa de toque continua inteiro. */
+    "@media (max-width:620px){",
+    "  .fs-quem{min-width:0;max-width:100%}",
+    "  .fs-quem>button{min-width:0;max-width:100%;padding:4px 8px 4px 4px}",
+    "  .fs-quem>button .fs-nome{max-width:9ch}",
+    "}",
+    "@media (max-width:400px){",
+    "  .fs-quem>button .fs-nome{max-width:7ch}",
+    "}",
+
+    /* enquanto uma tela nossa está por cima, o que está atrás não rola */
+    "html.fs-sem-rolagem,body.fs-sem-rolagem{overflow:hidden !important}",
     ".fs-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:80;min-width:214px;",
     "  font-family:'Montserrat',Calibri,system-ui,-apple-system,sans-serif;",
     "  padding:16px;border-radius:12px;text-align:left;",
@@ -632,7 +647,9 @@
     dlg.querySelector("#fs-login-senha").value = "";
     avisar("");
     if (dlg.open) dlg.close();
-    document.body.style.overflow = "";
+    /* solta só o que a caixa de entrar segurou; o portão do módulo, se
+       estiver aberto atrás, continua segurando o dele */
+    soltarRolagem();
   }
 
   async function enviar() {
@@ -694,7 +711,7 @@
 
     if (typeof dlg.showModal === "function") dlg.showModal();
     else dlg.setAttribute("open", "");
-    document.body.style.overflow = "hidden";
+    travarRolagem();
     dlg.querySelector("#fs-login-usuario").focus();
     return dlg;
   }
@@ -770,26 +787,27 @@
      precisa de um componente só dele. */
 
   var telaRetomada = null;
-  var rolagemAntes = null;
 
   /* Travar só o body não basta: em página que não define altura, quem rola é
-     o elemento raiz, e a barra aparece ao lado da tela de espera. Guardamos
-     os dois valores para devolver exatamente como estavam. */
+     o elemento raiz, e a barra aparece ao lado da tela de espera. Por isso os
+     dois levam a marca.
+
+     A trava é uma CLASSE, não style inline. Guardar e devolver o valor inline
+     parecia mais educado, mas era justamente o erro: os módulos escrevem no
+     mesmo atributo para segurar a rolagem atrás do próprio portão. Quando a
+     tela de retomada guardava esse "hidden" e devolvia depois de o módulo já
+     ter liberado, a página ficava travada — a pessoa via tudo e não conseguia
+     rolar nada. Com classe, cada um cuida do seu e ninguém sobrescreve ninguém. */
+  var MARCA_TRAVA = "fs-sem-rolagem";
+
   function travarRolagem() {
-    if (rolagemAntes) return;
-    rolagemAntes = {
-      corpo: document.body.style.overflow,
-      raiz: document.documentElement.style.overflow,
-    };
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
+    document.body.classList.add(MARCA_TRAVA);
+    document.documentElement.classList.add(MARCA_TRAVA);
   }
 
   function soltarRolagem() {
-    if (!rolagemAntes) return;
-    document.body.style.overflow = rolagemAntes.corpo;
-    document.documentElement.style.overflow = rolagemAntes.raiz;
-    rolagemAntes = null;
+    document.body.classList.remove(MARCA_TRAVA);
+    document.documentElement.classList.remove(MARCA_TRAVA);
   }
 
   function encerrarRetomada() {

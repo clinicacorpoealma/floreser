@@ -29,6 +29,7 @@
 <script src="../logs.js"></script>
 <script src="../pwa.js"></script>
 <script src="../auth.js"></script>
+<script src="../sync.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin
     src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -195,18 +196,22 @@
         });
         if (!r.ok) {
           if (r.erro === "conflito") {
-            alert(
-              "Os dados foram alterados em outro dispositivo enquanto você usava o CRM.\n\n" +
-              "A página será recarregada com a versão mais recente. Pode ser necessário refazer a última alteração."
-            );
-            location.reload();
+            /* Não recarrego: isso jogaria fora o que a pessoa acabou de
+               fazer. O erro leva junto o estado atual do servidor, e quem
+               chamou concilia as duas versões. */
+            var conflito = new Error("conflito");
+            conflito.conflito = true;
+            conflito.rev = r.rev;
+            conflito.dados = r.dados;
+            throw conflito;
           }
           if (r.erro === "sessao" || r.erro === "expirada" || r.erro === "inativo") esquecerToken();
-          if (r.erro === "sem_acesso") {
-            alert("Seu acesso ao CRM foi retirado. A página será recarregada.");
-            location.reload();
-          }
-          throw new Error(r.erro || "falha ao salvar");
+          /* Nem sessão vencida nem acesso retirado recarregam a página: o que
+             a pessoa acabou de escrever some junto. A tela avisa e o texto
+             continua aqui até ela entrar de novo. */
+          var falha = new Error(r.erro || "falha ao salvar");
+          falha.motivo = r.erro || "";
+          throw falha;
         }
         SESSAO.rev = r.rev;
         return { key: chave, value: valor, shared: false };
@@ -244,6 +249,43 @@
 
     const STORAGE_KEY = "crm-floreser-dados";
 
+    /* A última versão que o servidor confirmou. Numa disputa é ela que diz
+       o que foi mexido aqui e o que foi mexido lá. Vive só na memória. */
+    var BASE_CRM = null;
+    var tentativasDeMerge = 0;
+
+    const ESQUEMA_CRM = { listas: { leads: "id" } };
+
+    /* O que conta como cadastro repetido no CRM.
+
+       O WhatsApp é forte: número igual é quase sempre a mesma pessoa, e
+       dois cadastros com o mesmo número quebram a cadência — a mensagem
+       sai duas vezes para quem já respondeu.
+
+       O nome é fraco: Maria Silva existe muitas vezes. Avisa, nunca impede. */
+    const CRITERIOS_REPETIDO_CRM = [
+      { forca: "forte", texto: "mesmo WhatsApp",
+        campos: [{ campo: "whatsapp", como: "telefone" }] },
+      { forca: "fraca", texto: "mesmo nome",
+        campos: [{ campo: "nome", como: "nome" }] },
+    ];
+
+    const ROTULOS_CRM = {
+      campos: {
+        nome: "Nome", whatsapp: "WhatsApp", etapa: "Etapa do funil",
+        cadencia: "Cadência", ultimoContato: "Último contato", observacoes: "Observações",
+        interesse: "Interesse",
+        origem: "Origem", exCliente: "Ex-cliente", criadoEm: "Cadastrada em",
+        dtConversa: "1ª conversa", dtAgendamento: "Agendamento",
+        dtComparecimento: "Comparecimento", dtVenda: "Venda",
+        dtReprovado: "Reprovada em", historico: "Histórico",
+      },
+      valores: {
+        etapa: {}, cadencia: {}, origem: {},
+        exCliente: { true: "sim", false: "não" },
+      },
+    };
+
     /* ---- Cadências: da mais quente para a mais fria ---- */
     const CADENCIAS = [
       { id: "quente", nome: "Quente", padrao: 2 },
@@ -261,6 +303,13 @@
               null quer dizer que a etapa não carimba nada novo: o que já
               foi carimbado continua valendo.
        arquivo: sai do dia a dia, mas continua salvo                      */
+    /* preenche os rótulos do comparador com o que as tabelas já dizem */
+    function prepararRotulos() {
+      ETAPAS.forEach(function (e) { ROTULOS_CRM.valores.etapa[e.id] = e.nome; });
+      CADENCIAS.forEach(function (c) { ROTULOS_CRM.valores.cadencia[c.id] = c.nome; });
+      ORIGENS.forEach(function (o) { ROTULOS_CRM.valores.origem[o.id] = o.nome; });
+    }
+
     const ETAPAS = [
       { id: "nao_responde", nome: "Não responde", cadencias: ["quente", "morno", "frio", "muito_frio"], nivel: null },
       { id: "conversando", nome: "Conversando", cadencias: ["quente"], nivel: 1 },
@@ -378,8 +427,12 @@
       return atualizado;
     }
 
+    /* o indicador é o mesmo dos três módulos, montado fora do React */
+    var statusCRM = null;
+
     function CRMFloreSer() {
       const caixaQuem = React.useRef(null);
+      const caixaStatus = React.useRef(null);
 
       const [carregando, setCarregando] = useState(true);
       const [erro, setErro] = useState(null);
@@ -405,6 +458,31 @@
         /* depende de "carregando": o cabeçalho só existe depois da tela de espera */
       }, [carregando]);
 
+      /* o indicador nasce junto com o cabeçalho */
+      useEffect(() => {
+        if (!caixaStatus.current || statusCRM) return;
+        prepararRotulos();
+        statusCRM = FloreSerSync.criarStatus(caixaStatus.current, {});
+
+        /* Com conflito adiado, tocar no indicador traz a resolução de volta. */
+        const caixa = caixaStatus.current;
+        caixa.style.cursor = "pointer";
+        caixa.setAttribute("role", "button");
+        caixa.setAttribute("tabindex", "0");
+        const reabrir = () => {
+          if (statusCRM.estado() !== "conflito" || FloreSerSync.conflitoAberto()) return;
+          if (!FloreSerSync.reabrirConflito()) salvar();
+        };
+        caixa.addEventListener("click", reabrir);
+        caixa.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); reabrir(); }
+        });
+
+        /* o cabeçalho só existe depois da carga; se os dados já chegaram,
+           o estado certo é "salvo", não "carregando" */
+        if (!carregando) statusCRM.salvoAgora();
+      }, [carregando]);
+
       useEffect(() => {
         (async () => {
           try {
@@ -413,7 +491,10 @@
               const d = JSON.parse(res.value);
               if (d.dias) setDias((atual) => ({ ...atual, ...d.dias }));
               if (d.leads) setLeads(d.leads.map(migrar));
+              /* o que acabou de chegar é o que o servidor tem */
+              BASE_CRM = FloreSerSync.copiar(d);
             }
+            if (statusCRM) statusCRM.salvoAgora();
           } catch (e) {
             /* Aqui NÃO é primeiro uso: storage.get só lança quando o
                servidor recusou. Uma planilha vazia responde ok, com lista
@@ -446,28 +527,195 @@
         };
       }
 
+      /* A tela anda na hora e o envio vai atrás — mas o status só diz
+         "salvo" quando o servidor confirma. Se der conflito, as duas
+         versões são comparadas em vez de a página recarregar. */
       async function salvar(novosLeads, novosDias) {
         const lds = novosLeads ?? leads;
         const ds = novosDias ?? dias;
         if (novosLeads) setLeads(novosLeads);
         if (novosDias) setDias(novosDias);
+        await gravar({ leads: lds, dias: ds });
+      }
+
+      async function gravar(estado) {
+        if (statusCRM) statusCRM.definir("salvando");
         try {
-          await window.storage.set(STORAGE_KEY, JSON.stringify({ leads: lds, dias: ds }));
+          await window.storage.set(STORAGE_KEY, JSON.stringify(estado));
+          BASE_CRM = FloreSerSync.copiar(estado);
+          tentativasDeMerge = 0;
           setErro(null);
+          if (statusCRM) statusCRM.salvoAgora();
         } catch (e) {
-          setErro("Não consegui salvar. Verifique a conexão e tente de novo.");
+          if (e && e.conflito) { await conciliar(estado, e); return; }
+
+          if (e && e.motivo === "sem_acesso") {
+            if (statusCRM) statusCRM.definir("semAcesso");
+            setErro("Seu acesso ao CRM foi retirado. O que está na tela continua aqui, " +
+              "mas não sobe mais para a planilha — fale com quem administra o sistema.");
+            return;
+          }
+          if (e && (e.motivo === "sessao" || e.motivo === "expirada" || e.motivo === "inativo")) {
+            if (statusCRM) statusCRM.definir("expirado");
+            setErro("Sua sessão expirou. Copie o que ainda não foi salvo, recarregue a página e entre de novo.");
+            return;
+          }
+
+          /* rede caiu, ou o servidor recusou: são coisas diferentes */
+          const semRede = e instanceof TypeError;
+          if (statusCRM) statusCRM.definir(semRede ? "offline" : "erro");
+          setErro(semRede
+            ? "Sem conexão com o servidor. As alterações continuam aqui — tente de novo quando voltar."
+            : "O servidor recusou a gravação. As alterações continuam aqui — tente de novo.");
         }
+      }
+
+      async function conciliar(local, falha) {
+        const servidor = falha.dados;
+        if (!servidor) {
+          if (statusCRM) statusCRM.definir("conflito");
+          setErro("Outro aparelho alterou os leads. Recarregue para ver a versão mais recente.");
+          return;
+        }
+
+        const base = BASE_CRM || local;
+        const m = FloreSerSync.mesclar(base, local, servidor, ESQUEMA_CRM);
+        anotarSync("SYNC_CONFLITO_DETECTADO",
+          m.conflitos.length + " campo(s) em disputa, " + m.automaticos.length + " conciliado(s) sozinho");
+
+        if (!m.conflitos.length) {
+          anotarSync("SYNC_CONFLITO_AUTO_MESCLADO", m.automaticos.length + " alteração(ões)");
+          await aplicarMerge(m.estado, falha.rev);
+          return;
+        }
+
+        if (statusCRM) statusCRM.definir("conflito");
+        setErro(null);
+        FloreSerSync.abrirConflito({
+          conflitos: m.conflitos, automaticos: m.automaticos, rotulos: ROTULOS_CRM,
+          aviso: "Os leads foram alterados em outro aparelho enquanto você trabalhava. " +
+            "O que não se cruzou já foi juntado; escolha o que fica no que sobrou.",
+          aoResolver: async function (escolhas) {
+            const fim = FloreSerSync.aplicarEscolhas(m.estado, m.conflitos, escolhas, ESQUEMA_CRM);
+            anotarSync("SYNC_CONFLITO_RESOLVIDO_MANUAL",
+              escolhas.filter((e) => e === "local").length + " de " + escolhas.length +
+              " campo(s) ficaram com a versão deste aparelho");
+            await aplicarMerge(fim, falha.rev);
+          },
+          aoCancelar: function () {
+            if (statusCRM) statusCRM.definir("conflito");
+            setErro('Conflito guardado. Toque em "Conflito de alterações", no topo, para resolver.');
+          },
+        });
+      }
+
+      async function aplicarMerge(estado, rev) {
+        setLeads((estado.leads || []).map(migrar));
+        if (estado.dias) setDias((atual) => ({ ...atual, ...estado.dias }));
+        SESSAO.rev = rev;
+
+        tentativasDeMerge++;
+        if (tentativasDeMerge > 4) {
+          if (statusCRM) statusCRM.definir("conflito");
+          setErro("Os dados continuam sendo alterados por outra pessoa. Revise antes de salvar.");
+          return;
+        }
+        await gravar(estado);
+      }
+
+      function anotarSync(evento, mensagem) {
+        const r = window.FloreSerLogs && window.FloreSerLogs.registrar;
+        if (r) r(evento, { mensagem: "crm · " + mensagem });
       }
 
       function salvarLead(dados) {
         const preparado = aplicarMarcos({ ...dados, cadencia: cadenciaValida(dados.etapa, dados.cadencia) }, dados.etapa);
-        if (dados.id) {
-          salvar(leads.map((l) => (l.id === dados.id ? { ...l, ...preparado } : l)));
+        conferirRepetido(preparado, dados.id, () => gravarLead(preparado, dados.id));
+      }
+
+      function gravarLead(preparado, id) {
+        if (id) {
+          salvar(leads.map((l) => (l.id === id ? { ...l, ...preparado } : l)));
         } else {
           salvar([...leads, { ...preparado, id: novoId(), criadoEm: preparado.criadoEm || hojeISO() }]);
         }
         setEditando(null);
         setAberto(null);
+      }
+
+      /* O que já está guardado e parece com o que a pessoa acabou de digitar.
+         Vale tanto para cadastro novo quanto para edição — trocar o telefone
+         de alguém para o de outra lead é a mesma colisão, e ninguém repara
+         nela sem aviso. */
+      function repetidosLocais(candidato, id) {
+        return FloreSerSync.procurarRepetidos(candidato, leads, {
+          id: "id",
+          ignorarId: id,
+          criterios: CRITERIOS_REPETIDO_CRM,
+          situacao: (l) => (etapaPor(l.etapa).arquivo ? "está no arquivo" : ""),
+        });
+      }
+
+      /* A lixeira não vem para o navegador — quem lista é o painel de
+         manutenção. Então perguntamos ao servidor apenas se existe algo
+         parecido lá, e ele responde nome, motivo e prazo. Se a pergunta
+         falhar, o aviso segue com o que dá para conferir aqui: melhor um
+         aviso incompleto do que nenhum. */
+      async function repetidosNaLixeira(candidato) {
+        try {
+          const r = await chamarAPI({
+            acao: "repetido_na_lixeira", token: SESSAO.token, tipo: "crm",
+            whatsapp: candidato.whatsapp || "", nome: candidato.nome || "",
+          });
+          if (!r || !r.ok || !Array.isArray(r.achados)) return [];
+          return r.achados.map((a) => ({
+            registro: { nome: a.titulo },
+            forca: a.forca === "forte" ? "forte" : "fraca",
+            motivo: a.motivo,
+            situacao: "na lixeira · " + a.diasRestantes +
+              (a.diasRestantes === 1 ? " dia para expirar" : " dias para expirar"),
+            podeAbrir: false,
+          }));
+        } catch (e) {
+          return [];
+        }
+      }
+
+      async function conferirRepetido(candidato, id, seguir) {
+        const antes = id ? leads.find((l) => l.id === id) : null;
+        const zapNovo = FloreSerSync.telefone(candidato.whatsapp);
+        const zapAntes = FloreSerSync.telefone(antes && antes.whatsapp);
+        /* editar sem mexer no telefone nem no nome não precisa de conferência */
+        const mudouOQueImporta = !antes ||
+          zapNovo !== zapAntes ||
+          FloreSerSync.nomeChave(candidato.nome) !== FloreSerSync.nomeChave(antes.nome);
+        if (!mudouOQueImporta) { seguir(); return; }
+
+        const achados = repetidosLocais(candidato, id)
+          .concat(await repetidosNaLixeira(candidato));
+        if (!achados.length) { seguir(); return; }
+
+        const forte = achados.some((a) => a.forca === "forte");
+        anotarSync("REPETIDO_AVISADO",
+          achados.length + " parecido(s), " + (forte ? "com" : "sem") + " coincidência forte");
+
+        FloreSerSync.avisarRepetido({
+          achados: achados,
+          titulo: forte ? "Já existe um cadastro com esse WhatsApp" : "Já existe alguém com esse nome",
+          aviso: forte
+            ? "Dois cadastros com o mesmo número recebem a cadência duas vezes. Confira se não é a mesma pessoa."
+            : "Nome igual acontece — pode ser outra pessoa. Confira antes de seguir.",
+          textoSeguir: id ? "Salvar mesmo assim" : "Cadastrar mesmo assim",
+          rotulo: (l) => l.nome || "(sem nome)",
+          detalhe: (l) => {
+            if (!l.whatsapp) return "";
+            return "WhatsApp " + l.whatsapp +
+              (l.etapa ? " · " + etapaPor(l.etapa).nome : "");
+          },
+          aoVer: (l) => { setEditando(null); setAberto(l); },
+          aoSeguir: () => { anotarSync("REPETIDO_SEGUIU", "a pessoa optou por salvar assim mesmo"); seguir(); },
+          aoCancelar: () => { },
+        });
       }
 
       function mudarEtapa(id, etapaId) {
@@ -520,10 +768,36 @@
         }
       }
 
+      /* Planilha grande repete muito: a mesma pessoa em duas linhas, ou
+         alguém que já está no funil. Entram só as que sobram, e a tela diz
+         quantas ficaram de fora e por quê — sem perguntar linha a linha. */
       function importarLeads(novos) {
-        salvar([...leads, ...novos.map((n) => aplicarMarcos({ ...n, id: novoId() }, n.etapa))]);
+        const analise = FloreSerSync.analisarImportacao(novos, leads, {
+          id: "id",
+          criterios: [CRITERIOS_REPETIDO_CRM[0]],   /* na importação, só o forte */
+        });
+
+        const entram = analise.entram.map((n) => aplicarMarcos({ ...n, id: novoId() }, n.etapa));
+        if (entram.length) salvar([...leads, ...entram]);
+
         setImportando(false);
         setAba("leads");
+
+        if (!analise.repetidos.length) {
+          setRecado(entram.length === 1
+            ? "1 lead importado."
+            : entram.length + " leads importados.");
+        } else {
+          const fora = analise.repetidos.length;
+          anotarSync("IMPORTACAO_REPETIDOS",
+            fora + " linha(s) fora por WhatsApp repetido, " + entram.length + " importada(s)");
+          setRecado(
+            (entram.length === 1 ? "1 lead importado" : entram.length + " leads importados") +
+            " · " + (fora === 1 ? "1 linha ficou de fora" : fora + " linhas ficaram de fora") +
+            " por já existir cadastro com o mesmo WhatsApp: " +
+            analise.repetidos.slice(0, 5).map((r) => r.registro.nome || "(sem nome)").join(", ") +
+            (fora > 5 ? " e mais " + (fora - 5) + "." : "."));
+        }
       }
 
       const comSituacao = useMemo(() => leads.map((l) => ({ ...l, sit: situacao(l, dias) })), [leads, dias]);
@@ -663,6 +937,7 @@
                 <a href="../" style={{ marginLeft: "auto", fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--crm-topo-rotulo)", textDecoration: "none" }}>
                   ‹ Início
                 </a>
+                <span ref={caixaStatus} style={{ fontSize: 11, letterSpacing: "0.06em", color: "var(--crm-topo-tag)" }}></span>
                 <span ref={caixaQuem} style={{ display: "inline-flex" }}></span>
                 <button onClick={sairDoCRM} title="Encerrar a sessão neste aparelho"
                   hidden={ORIGEM_SESSAO.tipo === "usuario"}

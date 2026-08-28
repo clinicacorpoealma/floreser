@@ -254,7 +254,13 @@
     "  .tema-seletor{right:12px; bottom:12px; padding:2px}",
     "  .tema-seletor button{width:30px; height:30px}",
     "}",
-    "@media print{ .tema-seletor{display:none} }",
+    /* O seletor flutua no canto e não sai do lugar quando a página termina.
+       Sem folga ele fica em cima do rodapé — justamente onde mora o estado
+       da sincronização, que às vezes precisa ser tocado. Esta faixa vazia
+       vive no fim do documento e devolve o rodapé para quem o lê. */
+    ".tema-folga{height:52px;flex:none;pointer-events:none}",
+    "@media (max-width:620px){ .tema-folga{height:60px} }",
+    "@media print{ .tema-seletor,.tema-folga{display:none} }",
   ].join("\n");
 
   var folha = document.createElement("style");
@@ -316,6 +322,15 @@
     });
 
     document.body.appendChild(caixa);
+
+    /* a folga entra depois do seletor, sempre por último no documento */
+    if (!document.querySelector(".tema-folga")) {
+      var folga = document.createElement("div");
+      folga.className = "tema-folga";
+      folga.setAttribute("aria-hidden", "true");
+      document.body.appendChild(folga);
+    }
+
     marcarBotoes(escolha);
   }
 

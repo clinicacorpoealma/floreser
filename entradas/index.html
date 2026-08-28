@@ -24,6 +24,7 @@
 <script src="../logs.js"></script>
 <script src="../pwa.js"></script>
 <script src="../auth.js"></script>
+<script src="../sync.js"></script>
 
 <style>
 /* ============================================================
@@ -144,7 +145,10 @@ body::before{
   display:block;font-size:9.5px;letter-spacing:.24em;text-transform:uppercase;
   color:var(--text-3);font-weight:500;margin-top:3px;
 }
-.topbar-actions{display:flex;align-items:center;gap:10px}
+.topbar-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+/* O nome de quem entrou pode ser comprido. Sem isto ele não encolhe e
+   empurra "Nova entrada" para fora da tela, levando a página junto. */
+.topbar-actions>*{min-width:0}
 
 .save-status{
   display:inline-flex;align-items:center;gap:7px;
@@ -156,7 +160,9 @@ body::before{
 .save-status[data-state="saving"] .dot{background:var(--accent);animation:pulse 1.1s ease-in-out infinite}
 .save-status[data-state="dirty"] .dot{background:var(--m-boleto-dot)}
 .save-status[data-state="local"] .dot{background:var(--m-haver-dot)}
+.save-status[data-state="offline"] .dot{background:var(--m-haver-dot)}
 .save-status[data-state="error"] .dot{background:var(--danger)}
+.save-status[data-state="conflito"] .dot{background:var(--danger);animation:pulse 1.1s ease-in-out infinite}
 .save-status[data-state="expirado"] .dot{background:var(--danger)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
 
@@ -606,7 +612,7 @@ body.entrou .rodape{animation-delay:.24s}
   .shell{padding:0 14px 16px}
   .topbar-inner{padding:12px 14px;gap:10px}
   .brand-sub{display:none}
-  .topbar-actions{flex:1 1 100%;min-width:0;gap:8px}
+  .topbar-actions{flex:1 1 100%;min-width:0;gap:8px;justify-content:flex-start}
   .save-status{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;display:flex}
   .save-status #saveText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .btn{padding:8px 14px;font-size:12.5px}
@@ -1201,36 +1207,82 @@ body.entrou .rodape{animation-delay:.24s}
     SESSAO.rev = r.rev;
     const copia = readLocal();
     state = sanitize(r.dados || {});
+    /* o que acabou de chegar é o que o servidor tem */
+    BASE_ENTRADAS = { entradas: FloreSerSync.copiar(state.entradas) };
     /* a data do último backup é deste aparelho, não da planilha */
     if (copia && copia.backupEm) state.backupEm = copia.backupEm;
     writeLocal();
   }
 
-  /* --- indicador de salvamento --- */
-  const SAVE_TEXT = {
-    idle: "Carregando",
-    saving: "Salvando na planilha…",
-    saved: "Sincronizado",
-    error: "Sem conexão — vou tentar de novo",
-    expirado: "Sessão expirada"
+  /* --- indicador de salvamento ---
+     Os três módulos mostram o mesmo estado com as mesmas palavras: quem
+     monta e mantém o texto é o sync.js. Aqui fica só a tradução dos nomes
+     internos deste módulo para os de lá, e o data-state que a bolinha do
+     CSS usa para mudar de cor. */
+  const ESTADO_SINC = {
+    idle: "carregando", dirty: "pendente", saving: "salvando", saved: "salvo",
+    offline: "offline", error: "erro", conflito: "conflito", expirado: "expirado",
   };
-  const SAVE_TITLE = {
-    saving: "Enviando as alterações para a planilha do Google.",
-    saved: "Tudo o que está aqui já está guardado na planilha.",
-    error: "As alterações ficaram neste aparelho e sobem sozinhas assim que a internet voltar.",
-    expirado: "Recarregue a página e informe a senha para voltar a salvar."
-  };
+  let statusSinc = null, estadoAtual = "idle";
+
   function setStatus(s) {
     const box = el("saveStatus");
     if (!box) return;
+    estadoAtual = s;
     box.dataset.state = s;
-    el("saveText").textContent = SAVE_TEXT[s] || s;
-    box.title = SAVE_TITLE[s] || "";
+
+    if (!statusSinc) {
+      statusSinc = FloreSerSync.criarStatus(el("saveText"), {});
+      ligarStatusClicavel();
+    }
+    const estado = ESTADO_SINC[s] || "salvo";
+    if (estado === "salvo" && !statusSinc.salvoEm()) statusSinc.salvoAgora();
+    else statusSinc.definir(estado);
+  }
+
+  function marcarSalvo() {
+    const box = el("saveStatus");
+    if (box) box.dataset.state = "saved";
+    estadoAtual = "saved";
+    if (!statusSinc) { setStatus("saved"); return; }
+    statusSinc.salvoAgora();
+  }
+
+  /* Com conflito adiado, tocar no indicador traz a resolução de volta. */
+  function ligarStatusClicavel() {
+    const box = el("saveStatus");
+    if (!box || box.dataset.clicavel) return;
+    box.dataset.clicavel = "1";
+    box.style.cursor = "pointer";
+    box.setAttribute("role", "button");
+    box.setAttribute("tabindex", "0");
+    const abrir = () => {
+      if (estadoAtual !== "conflito" || FloreSerSync.conflitoAberto()) return;
+      if (!FloreSerSync.reabrirConflito()) {
+        /* sem nada guardado: uma gravação nova traz o conflito de volta */
+        conflitoPendente = false; precisaSalvar = true; enviar();
+      }
+    };
+    box.addEventListener("click", abrir);
+    box.addEventListener("keydown", ev => {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); abrir(); }
+    });
   }
 
   /* A tela responde na hora e o envio vai logo atrás, juntando alterações
      seguidas. Se a internet cair, continua tentando sozinho. */
   let precisaSalvar = false, emVoo = false, travado = false, tentativa = 0, timerEnvio = null;
+
+  /* A última versão que o servidor confirmou. Numa disputa é ela que separa
+     o que foi mexido aqui do que foi mexido lá. Só na memória. */
+  let BASE_ENTRADAS = null;
+  let conflitoPendente = false, tentativasDeMerge = 0;
+
+  const ESQUEMA_ENTRADAS = { listas: { entradas: "id" }, ignorar: ["backupEm", "updatedAt"] };
+  const ROTULOS_ENTRADAS = {
+    campos: { nome: "Nome", data: "Data", descricao: "Procedimento",
+      obs: "Observação", pagamentos: "Formas de pagamento", criadoEm: "Registrada em" },
+  };
 
   function touch() {
     state.updatedAt = Date.now();
@@ -1240,23 +1292,29 @@ body.entrou .rodape{animation-delay:.24s}
 
   function salvar() {
     if (travado) return;
+    /* com conflito aberto o envio para: mandar o estado em disputa por cima
+       seria justamente o que se quer evitar */
+    if (conflitoPendente) { precisaSalvar = true; setStatus("conflito"); return; }
     precisaSalvar = true;
-    setStatus(tentativa ? "error" : "saving");
+    setStatus(tentativa ? "offline" : "dirty");
     clearTimeout(timerEnvio);
     timerEnvio = setTimeout(enviar, 350);
   }
 
   async function enviar() {
-    if (travado || emVoo || !precisaSalvar) return;
+    if (travado || emVoo || !precisaSalvar || conflitoPendente) return;
     emVoo = true;
     precisaSalvar = false;
-    const instantaneo = { entradas: state.entradas };
+    setStatus("saving");
+    /* copia de verdade: se apontasse para o estado vivo, a BASE mudaria
+       junto com a tela e deixaria de servir de ponto de partida */
+    const instantaneo = { entradas: FloreSerSync.copiar(state.entradas) };
     try {
       const r = await api({
         acao: "salvar_entradas", token: SESSAO.token, rev: SESSAO.rev, dados: instantaneo
       });
       if (!r.ok) {
-        if (r.erro === "conflito") { conflito(); return; }
+        if (r.erro === "conflito") { conflito(r); return; }
         if (r.erro === "sem_acesso") {
           travado = true; setStatus("expirado");
           toast("Seu acesso a este módulo foi retirado. Recarregue a página.");
@@ -1271,15 +1329,23 @@ body.entrou .rodape{animation-delay:.24s}
         throw new Error(r.erro || "falha");
       }
       SESSAO.rev = r.rev;
-      tentativa = 0;
-      setStatus("saved");
+      tentativa = 0; tentativasDeMerge = 0;
+      BASE_ENTRADAS = instantaneo;
+      marcarSalvo();
     } catch (e) {
       precisaSalvar = true;
       tentativa++;
-      setStatus("error");
+      /* rede caída e servidor que recusou são coisas diferentes, e a pessoa
+         precisa saber qual das duas aconteceu */
+      const semRede = (e instanceof TypeError) || !navigator.onLine;
+      setStatus(semRede ? "offline" : "error");
       clearTimeout(timerEnvio);
       timerEnvio = setTimeout(enviar, Math.min(20000, 2000 * tentativa));
-      if (tentativa === 1) toast("Sem conexão com a planilha — vou tentar de novo.");
+      if (tentativa === 1) {
+        toast(semRede
+          ? "Sem conexão com a planilha — vou tentar de novo."
+          : "Não consegui salvar agora — vou tentar de novo.");
+      }
     } finally {
       emVoo = false;
       if (precisaSalvar && !travado && !tentativa) {
@@ -1289,11 +1355,77 @@ body.entrou .rodape{animation-delay:.24s}
     }
   }
 
-  function conflito() {
-    travado = true;
-    alert("As entradas foram alteradas em outro aparelho enquanto esta página estava aberta.\n\n" +
-      "A página vai recarregar com a versão mais recente. Pode ser preciso refazer a última alteração.");
-    location.reload();
+  /* O servidor recusou por revisão diferente e mandou o estado atual dele
+     junto. Comparamos as três versões: o que só um lado mexeu entra sozinho,
+     e só o que os dois mexeram vira pergunta. Nada recarrega, nada se perde. */
+  function conflito(resposta) {
+    const servidor = resposta && resposta.dados;
+    if (!servidor) {
+      conflitoPendente = true; setStatus("conflito");
+      toast("Outro aparelho alterou as entradas. Recarregue para ver a versão mais recente.");
+      return;
+    }
+
+    const local = { entradas: FloreSerSync.copiar(state.entradas) };
+    const base = BASE_ENTRADAS || local;
+    const m = FloreSerSync.mesclar(base, local, servidor, ESQUEMA_ENTRADAS);
+
+    anotarSync("SYNC_CONFLITO_DETECTADO",
+      m.conflitos.length + " campo(s) em disputa, " + m.automaticos.length + " conciliado(s) sozinho");
+
+    if (!m.conflitos.length) {
+      anotarSync("SYNC_CONFLITO_AUTO_MESCLADO", m.automaticos.length + " alteração(ões)");
+      aplicarMerge(m.estado, resposta.rev);
+      return;
+    }
+
+    conflitoPendente = true;
+    setStatus("conflito");
+    FloreSerSync.abrirConflito({
+      conflitos: m.conflitos, automaticos: m.automaticos, rotulos: ROTULOS_ENTRADAS,
+      aviso: "As entradas foram alteradas em outro aparelho enquanto você trabalhava. " +
+        "O que não se cruzou já foi juntado; escolha o que fica no que sobrou.",
+      aoResolver: function (escolhas) {
+        const fim = FloreSerSync.aplicarEscolhas(m.estado, m.conflitos, escolhas, ESQUEMA_ENTRADAS);
+        anotarSync("SYNC_CONFLITO_RESOLVIDO_MANUAL",
+          escolhas.filter(function (e) { return e === "local"; }).length +
+          " de " + escolhas.length + " campo(s) ficaram com a versão deste aparelho");
+        conflitoPendente = false;
+        aplicarMerge(fim, resposta.rev);
+      },
+      aoCancelar: function () {
+        setStatus("conflito");
+        toast('Conflito guardado. Toque em "Conflito de alterações", no topo, para resolver.');
+      },
+    });
+  }
+
+  function aplicarMerge(estado, rev) {
+    state.entradas = Array.isArray(estado.entradas) ? estado.entradas : [];
+    SESSAO.rev = rev;
+    writeLocal();
+    render();
+    renderBackupNote();
+    updateExportPreview();
+
+    tentativasDeMerge++;
+    if (tentativasDeMerge > 4) {
+      conflitoPendente = true; setStatus("conflito");
+      toast("Os dados continuam sendo alterados por outra pessoa. Revise antes de salvar.");
+      return;
+    }
+
+    conflitoPendente = false;
+    precisaSalvar = true;
+    setStatus("saving");
+    /* fora da pilha do envio atual, que ainda está com emVoo ligado */
+    clearTimeout(timerEnvio);
+    timerEnvio = setTimeout(enviar, 0);
+  }
+
+  function anotarSync(evento, mensagem) {
+    const r = window.FloreSerLogs && window.FloreSerLogs.registrar;
+    if (r) r(evento, { mensagem: "entradas · " + mensagem });
   }
 
   /* ==========================================================
@@ -1799,19 +1931,70 @@ body.entrou .rodape{animation-delay:.24s}
       pagamentos: pags
     };
 
-    if (editingId) {
-      const i = state.entradas.findIndex(e => e.id === editingId);
-      if (i >= 0) state.entradas[i] = Object.assign({}, state.entradas[i], payload);
-      toast("Entrada atualizada.");
-    } else {
-      state.entradas.push(Object.assign({ id: uid(), criadoEm: new Date().toISOString() }, payload));
-      toast("Entrada registrada.");
-    }
-    touch();
-    selectedDay = data;
-    openDays.add(data);
-    entryDialog.close();
-    render();
+    conferirEntradaRepetida(payload, editingId, () => {
+      if (editingId) {
+        const i = state.entradas.findIndex(e => e.id === editingId);
+        if (i >= 0) state.entradas[i] = Object.assign({}, state.entradas[i], payload);
+        toast("Entrada atualizada.");
+      } else {
+        state.entradas.push(Object.assign({ id: uid(), criadoEm: new Date().toISOString() }, payload));
+        toast("Entrada registrada.");
+      }
+      touch();
+      selectedDay = data;
+      openDays.add(data);
+      entryDialog.close();
+      render();
+    });
+  }
+
+  /* Aqui a régua é bem mais alta que no CRM. A mesma pessoa faz o mesmo
+     procedimento pelo mesmo preço todo mês, e duas sessões no mesmo dia
+     acontecem. Só o conjunto inteiro — dia, nome, procedimento e valor —
+     é indício de lançamento duplicado; nome igual sozinho não é nada. */
+  function conferirEntradaRepetida(payload, id, seguir) {
+    const soma = e => (e.pagamentos || []).reduce((t, p) => t + (Number(p.valor) || 0), 0);
+    const candidato = {
+      data: payload.data, nome: payload.nome,
+      descricao: payload.descricao, total: soma(payload),
+    };
+    /* sem procedimento escrito, o conjunto deixa de ser forte o bastante */
+    if (!candidato.descricao) { seguir(); return; }
+
+    const comparaveis = state.entradas.map(e => ({
+      id: e.id, data: e.data, nome: e.nome, descricao: e.descricao, total: soma(e),
+    }));
+
+    const achados = FloreSerSync.procurarRepetidos(candidato, comparaveis, {
+      id: "id",
+      ignorarId: id,
+      criterios: [{
+        forca: "forte", texto: "mesmo dia, nome, procedimento e valor",
+        campos: [
+          { campo: "data", como: "data" },
+          { campo: "nome", como: "nome" },
+          { campo: "descricao", como: "nome" },
+          { campo: "total", como: "numero" },
+        ],
+      }],
+    });
+    if (!achados.length) { seguir(); return; }
+
+    anotarSync("REPETIDO_AVISADO", achados.length + " entrada(s) idêntica(s) no mesmo dia");
+
+    FloreSerSync.avisarRepetido({
+      achados: achados,
+      coisa: "lançamento", coisaPlural: "lançamentos",
+      titulo: "Esta entrada já foi lançada",
+      aviso: "Existe um lançamento igual em tudo — dia, nome, procedimento e valor. " +
+        "Confira se não é o mesmo atendimento registrado duas vezes.",
+      textoSeguir: id ? "Salvar mesmo assim" : "Registrar mesmo assim",
+      rotulo: e => e.nome || "(sem nome)",
+      detalhe: e => (e.data || "").split("-").reverse().join("/") + " · " +
+        (e.descricao || "sem procedimento") + " · " + fmtBRL(e.total),
+      aoSeguir: () => { anotarSync("REPETIDO_SEGUIU", "a pessoa optou por registrar assim mesmo"); seguir(); },
+      aoCancelar: () => { },
+    });
   }
 
   /* Mover para a lixeira é operação do servidor: ele tira a entrada e as
@@ -2429,6 +2612,14 @@ body.entrou .rodape{animation-delay:.24s}
       if (guardado) retomar(guardado); else elSenha.focus();
     })();
   }
+
+  /* Fechar a aba com algo por enviar apagaria o trabalho: o navegador
+     pergunta antes. Conflito aberto também conta como pendência. */
+  window.addEventListener("beforeunload", ev => {
+    if (!travado && (precisaSalvar || emVoo || conflitoPendente)) {
+      ev.preventDefault(); ev.returnValue = "";
+    }
+  });
 
   boot();
 })();
