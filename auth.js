@@ -379,10 +379,17 @@
 
     /* A lótus no canto do cartão, quase invisível — o mesmo gesto do
        portão de cada módulo, na medida de um cartão. */
-    ".fs-login .fs-cartao::after{content:'';position:absolute;",
+    ".fs-login .fs-cartao::after{content:'';position:absolute;z-index:0;",
     "  right:-58px;bottom:-72px;width:230px;height:230px;",
     "  background:var(--fs-marca-dagua) no-repeat center/contain;",
     "  opacity:var(--fs-agua-forca);pointer-events:none}",
+
+    /* A lótus é fundo, e fundo fica atrás. Sem isto ela passava por cima
+       do botão de entrar: pseudo-elemento posicionado é pintado depois do
+       conteúdo que não tem posição própria, por mais discreto que seja o
+       desenho. Uma camada para o conteúdo resolve, e nenhum z-index alto
+       precisa entrar na conta. */
+    ".fs-login .fs-cartao>*,.fs-retomada .fs-cartao>*{position:relative;z-index:1}",
 
     /* Um fio de sage atravessa o topo do cartão: o mesmo detalhe do fio que
        separa a marca, agora costurando a borda. */

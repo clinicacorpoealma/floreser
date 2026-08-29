@@ -22,6 +22,16 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.14.3",
+      codinome: "PENUMBRA",
+      data: "29/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "Na tela de entrar com a conta, a lótus da marca aparecia por cima do botão Entrar e do Cancelar. Ela volta a ser o que sempre foi: uma marca-d'água discreta atrás do conteúdo."
+        ]
+      }
+    },
+    {
       versao: "2.14.2",
       codinome: "ORVALHADA",
       data: "29/08/2026",
