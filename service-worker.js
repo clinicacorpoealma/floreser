@@ -21,7 +21,7 @@
    morando só no version.js: é o número que faz o navegador saber que a
    casca mudou. Suba um degrau quando alterar a lista do PRECACHE. */
 const CACHE_PREFIXO = "alveare-casca-";
-const CACHE_ATUAL = CACHE_PREFIXO + "2";
+const CACHE_ATUAL = CACHE_PREFIXO + "3";
 
 /* A raiz do site, seja ela / ou /floreser/ */
 const RAIZ = new URL("./", self.registration.scope).pathname;
@@ -50,6 +50,8 @@ const PRECACHE = [
   RAIZ + "painel.js",
   RAIZ + "pwa.js",
   RAIZ + "sync.js",
+  RAIZ + "auditoria.js",
+  RAIZ + "busca.js",
 
   RAIZ + "logo.png",
   RAIZ + "favicon.png",

@@ -285,6 +285,7 @@
       '<button data-aba="acessos">Acessos</button>' +
       '<button data-aba="usuarios">Usu\u00e1rios</button>' +
       '<button data-aba="lixeira" id="aba-lixeira">Lixeira</button>' +
+      '<button data-aba="auditoria">Auditoria</button>' +
       '<button data-aba="sistema">Sistema</button>' +
       "</div>" +
       '<div class="janela-corpo" id="painel-corpo" tabindex="0"></div>';
@@ -308,6 +309,7 @@
     aba = qual;
     if (qual === "usuarios" && !usuarios.length) carregarUsuarios();
     if (qual === "lixeira") carregarLixeira();
+    if (qual === "auditoria") carregarAuditoria();
     if (qual === "sistema") pedirEstadoPWA();
     Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-aba]"), function (b) {
       b.className = b.getAttribute("data-aba") === qual ? "on" : "";
@@ -351,6 +353,7 @@
     else if (aba === "acessos") html += telaAcessos();
     else if (aba === "usuarios") html += telaUsuarios();
     else if (aba === "lixeira") html += telaLixeira();
+    else if (aba === "auditoria") html += telaAuditoria();
     else html += telaSistema();
 
     corpo.innerHTML = html;
@@ -358,6 +361,114 @@
     ligarEventos();
     if (aba === "usuarios") ligarEventosUsuarios();
     if (aba === "lixeira") ligarEventosLixeira();
+    if (aba === "auditoria") ligarEventosAuditoria();
+  }
+
+
+  /* ---------------------------------------------------- auditoria
+
+     A timeline dentro de cada ficha continua sendo a porta principal —
+     é lá que a pergunta nasce ("quem mexeu nesta paciente?"). Esta aba é
+     a visão de cima, para quando a pergunta é outra: "o que andou
+     acontecendo no sistema esta semana?".
+
+     Aqui também não se carrega a aba inteira: filtro e paginação. */
+
+  var auditoria = { eventos: [], temMais: false, varreuTudo: true, inicio: 0, carregando: false };
+  var filtroAud = { modulo: "", autor: "", busca: "", de: "", ate: "" };
+
+  var MODULO_NOME = { crm: "CRM", agenda: "Agenda", entradas: "Entradas" };
+
+  function carregarAuditoria(continuar) {
+    if (auditoria.carregando) return;
+    auditoria.carregando = true;
+    if (!continuar) { auditoria.eventos = []; auditoria.inicio = 0; }
+
+    chamar({
+      acao: "auditoria_geral", token: credencial(),
+      modulo: filtroAud.modulo, autor: filtroAud.autor, busca: filtroAud.busca,
+      de: filtroAud.de, ate: filtroAud.ate,
+      inicio: auditoria.inicio, quantos: 40,
+    }).then(function (r) {
+      auditoria.carregando = false;
+      if (!r || !r.ok) { recado = "Não foi possível carregar a auditoria."; desenhar(); return; }
+      auditoria.eventos = auditoria.eventos.concat(r.eventos || []);
+      auditoria.temMais = !!r.temMais;
+      /* falso quando a varredura parou no teto: pode haver mais atrás, e
+         dizer "é tudo" seria mentira */
+      auditoria.varreuTudo = r.varreuTudo !== false;
+      auditoria.inicio += 40;
+      desenhar();
+    }).catch(function () {
+      auditoria.carregando = false;
+      recado = "Não foi possível falar com o servidor.";
+      desenhar();
+    });
+  }
+
+  function telaAuditoria() {
+    var linhas = auditoria.eventos.map(function (e) {
+      var valores = "";
+      if (e.antes && e.depois) valores = esc(e.antes) + " → " + esc(e.depois);
+      else if (e.depois) valores = esc(e.depois);
+      else if (e.antes) valores = esc(e.antes);
+
+      return "<tr>" +
+        "<td class=\"mono\">" + esc(String(e.em || "").replace("T", " ")) + "</td>" +
+        "<td>" + esc(MODULO_NOME[e.modulo] || e.modulo) + "</td>" +
+        "<td>" + esc(e.autorNome || "") + "</td>" +
+        "<td>" + esc(e.acao || "") + "</td>" +
+        "<td>" + esc(e.campo || "") + "</td>" +
+        "<td>" + valores + "</td>" +
+        "<td class=\"mono\">" + esc(e.entidadeId || "") + "</td>" +
+        "</tr>";
+    }).join("");
+
+    return '<div class="bloco">' +
+      "<h3>Auditoria de negócio</h3>" +
+      '<p class="nota">Quem alterou o quê, e de que valor para qual. Isto não é o log ' +
+      "técnico da aba Logs: aqui só entram alterações de leads, pacientes e entradas.</p>" +
+
+      '<div class="filtros-aud" style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">' +
+      '<select id="aud-modulo"><option value="">Todos os módulos</option>' +
+      '<option value="crm"' + (filtroAud.modulo === "crm" ? " selected" : "") + ">CRM</option>" +
+      '<option value="agenda"' + (filtroAud.modulo === "agenda" ? " selected" : "") + ">Agenda</option>" +
+      '<option value="entradas"' + (filtroAud.modulo === "entradas" ? " selected" : "") + ">Entradas</option>" +
+      "</select>" +
+      '<input id="aud-autor" placeholder="Quem alterou" value="' + esc(filtroAud.autor) + '">' +
+      '<input id="aud-busca" placeholder="Buscar no conteúdo" value="' + esc(filtroAud.busca) + '">' +
+      '<input id="aud-de" type="date" value="' + esc(filtroAud.de) + '" aria-label="De">' +
+      '<input id="aud-ate" type="date" value="' + esc(filtroAud.ate) + '" aria-label="Até">' +
+      '<button id="aud-filtrar" class="btn-fino">Filtrar</button>' +
+      "</div>" +
+
+      (auditoria.eventos.length
+        ? '<table class="tabela"><thead><tr>' +
+          "<th>Quando</th><th>Módulo</th><th>Quem</th><th>Ação</th>" +
+          "<th>Campo</th><th>Valores</th><th>Registro</th>" +
+          "</tr></thead><tbody>" + linhas + "</tbody></table>" +
+          '<p class="nota">' + auditoria.eventos.length + " evento(s)" +
+          (auditoria.varreuTudo ? " — fim do registro." :
+            " — há mais para trás; use os filtros para chegar mais longe.") + "</p>" +
+          (auditoria.temMais ? '<button id="aud-mais" class="btn-fino">Ver mais</button>' : "")
+        : '<div class="vazio">Nenhum evento com estes filtros.</div>') +
+      "</div>";
+  }
+
+  function ligarEventosAuditoria() {
+    var b = document.getElementById("aud-filtrar");
+    if (b) {
+      b.addEventListener("click", function () {
+        filtroAud.modulo = (document.getElementById("aud-modulo") || {}).value || "";
+        filtroAud.autor = (document.getElementById("aud-autor") || {}).value || "";
+        filtroAud.busca = (document.getElementById("aud-busca") || {}).value || "";
+        filtroAud.de = (document.getElementById("aud-de") || {}).value || "";
+        filtroAud.ate = (document.getElementById("aud-ate") || {}).value || "";
+        carregarAuditoria(false);
+      });
+    }
+    var mais = document.getElementById("aud-mais");
+    if (mais) mais.addEventListener("click", function () { carregarAuditoria(true); });
   }
 
   /* ---------------------------------------------------- visão geral */

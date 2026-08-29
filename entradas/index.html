@@ -25,6 +25,7 @@
 <script src="../pwa.js"></script>
 <script src="../auth.js"></script>
 <script src="../sync.js"></script>
+<script src="../auditoria.js"></script>
 
 <style>
 /* ============================================================
@@ -149,6 +150,16 @@ body::before{
 /* O nome de quem entrou pode ser comprido. Sem isto ele não encolhe e
    empurra "Nova entrada" para fora da tela, levando a página junto. */
 .topbar-actions>*{min-width:0}
+
+.det-linha{display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border)}
+.det-linha:last-of-type{border-bottom:none}
+.det-rot{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text-3);min-width:104px;padding-top:2px}
+.det-val{flex:1;min-width:0;word-break:break-word}
+.det-sec{margin-top:22px}
+.det-sec-nome{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--text-3);padding-bottom:8px;margin-bottom:12px;
+  border-bottom:1px solid var(--border)}
 
 .save-status{
   display:inline-flex;align-items:center;gap:7px;
@@ -986,6 +997,20 @@ body.entrou .rodape{animation-delay:.24s}
 </dialog>
 
 <!-- ============ Diálogo: exportar ============ -->
+<dialog id="detalheDialog" aria-labelledby="detalheTitle">
+  <form method="dialog" class="dlg">
+    <header class="dlg-head">
+      <h2 id="detalheTitle">Entrada</h2>
+      <button type="submit" class="icon-btn" id="detalheClose" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+          stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <div class="dlg-body" id="detalheCorpo"></div>
+  </form>
+</dialog>
+
 <dialog id="exportDialog" aria-labelledby="exportTitle">
   <div class="sheet">
     <div class="sheet-head">
@@ -1911,6 +1936,82 @@ body.entrou .rodape{animation-delay:.24s}
     el("fNome").focus();
   }
 
+  /* Abrir uma entrada pela busca não é editar. Esta tela mostra o que
+     está guardado e o histórico de alterações — e não grava nada por ter
+     sido aberta. Para mudar alguma coisa, o editor de sempre. */
+  const detalheDialog = el("detalheDialog");
+  let auditoriaMontada = null;
+
+  function abrirDetalhe(id) {
+    const e = (state.entradas || []).find(x => x.id === id);
+    if (!e) return;
+
+    const total = (e.pagamentos || []).reduce((t, p) => t + (Number(p.valor) || 0), 0);
+    const formas = (e.pagamentos || []).map(p => {
+      const m = METODO_BY_ID[p.metodo];
+      const parc = Number(p.parcelas) || 1;
+      return (m ? m.label : p.metodo) + (parc > 1 ? " " + parc + "x" : "") +
+        " · " + fmtBRL(p.valor);
+    }).join("<br>");
+
+    el("detalheTitle").textContent = e.nome || "Entrada";
+    el("detalheCorpo").innerHTML =
+      '<div class="det-linha"><span class="det-rot">Data</span>' +
+      '<span class="det-val">' + esc(fmtDataLonga(e.data)) + "</span></div>" +
+      '<div class="det-linha"><span class="det-rot">Procedimento</span>' +
+      '<span class="det-val">' + esc(e.descricao || "—") + "</span></div>" +
+      '<div class="det-linha"><span class="det-rot">Valor</span>' +
+      '<span class="det-val num">' + fmtBRL(total) + "</span></div>" +
+      '<div class="det-linha"><span class="det-rot">Pagamento</span>' +
+      '<span class="det-val">' + (formas || "—") + "</span></div>" +
+      (e.obs ? '<div class="det-linha"><span class="det-rot">Observação</span>' +
+        '<span class="det-val">' + esc(e.obs) + "</span></div>" : "") +
+      '<div class="det-sec"><div class="det-sec-nome">Histórico de alterações</div>' +
+      '<div id="detalheHistorico"></div></div>';
+
+    if (detalheDialog.showModal) detalheDialog.showModal();
+    else detalheDialog.setAttribute("open", "");
+
+    if (window.FloreSerAuditoria) {
+      auditoriaMontada = FloreSerAuditoria.montar(el("detalheHistorico"), {
+        modulo: "entradas", entidade: "entrada", entidadeId: id,
+        api: corpo => api(Object.assign({ token: SESSAO.token }, corpo)),
+      });
+    }
+  }
+
+  function fmtDataLonga(iso) {
+    const p = String(iso || "").split("-");
+    if (p.length !== 3) return iso || "—";
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    return capitalize(d.toLocaleDateString("pt-BR",
+      { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
+  }
+
+  function pedidoDaBarra(chave) {
+    try {
+      const v = new URLSearchParams(location.search).get(chave);
+      return v ? String(v) : "";
+    } catch (e) { return ""; }
+  }
+
+  function limparBarra() {
+    /* sem isto, todo recarregamento reabriria a mesma ficha */
+    try { history.replaceState(null, "", location.pathname); } catch (e) { }
+  }
+
+  function abrirEntradaPedida() {
+    const id = pedidoDaBarra("entrada");
+    if (!id) return;
+    limparBarra();
+    const e = (state.entradas || []).find(x => x.id === id);
+    if (!e) { toast("A entrada deste link não existe mais."); return; }
+    selectedDay = e.data;
+    openDays.add(e.data);
+    render();
+    abrirDetalhe(id);
+  }
+
   function submitEntry(ev) {
     ev.preventDefault();
     const nome = canonicalName(el("fNome").value);
@@ -2350,6 +2451,14 @@ body.entrou .rodape{animation-delay:.24s}
     });
     el("paysList").addEventListener("change", syncPays);
 
+    /* clicar no corpo da entrada abre o detalhe; os botões de editar e
+       excluir continuam com o comportamento de sempre */
+    el("dayPanel").addEventListener("click", ev => {
+      if (ev.target.closest("[data-edit],[data-del]")) return;
+      const cartao = ev.target.closest(".entry[data-id]");
+      if (cartao) abrirDetalhe(cartao.getAttribute("data-id"));
+    });
+
     el("fValor").addEventListener("input", ev => maskMoney(ev.target));
 
     el("btnExport").addEventListener("click", () => {
@@ -2560,6 +2669,7 @@ body.entrou .rodape{animation-delay:.24s}
     document.body.classList.add("entrou");
     setStatus("saved");
     render();
+    setTimeout(abrirEntradaPedida, 0);
     renderBackupNote();
     if (origemSessao === "usuario" && window.FloreSerAuth) {
       window.FloreSerAuth.montarIdentidade(el("quemEsta"), function () { location.reload(); });

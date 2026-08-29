@@ -22,6 +22,52 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.14.1",
+      codinome: "AZIMUTE",
+      data: "29/08/2026",
+      mudancas: {
+        "Performance": [
+          "Abrir uma ficha com histórico deixou de puxar a aba de auditoria inteira. Agora quem procura é a própria planilha, e só as linhas daquela ficha vêm para cá — cerca de quinhentas células em vez de duzentas e oitenta mil, na planilha cheia.",
+          "A aba Auditoria do painel de manutenção passou a ler de trás para a frente, em blocos, parando assim que a página enche. Sem filtro, isso é uma leitura curta em vez da aba toda.",
+          "Excluir um registro definitivamente também deixou de varrer a aba: as linhas são localizadas direto e apagadas em faixas."
+        ],
+        "Melhorado": [
+          "Quando um filtro do painel percorre muitos registros sem completar a página, a tela avisa que há mais para trás em vez de dar a entender que aquilo é tudo."
+        ],
+        "Removido": [
+          "Arquivo sessao.js, que estava no repositório sem nenhuma página carregá-lo desde que foi criado."
+        ]
+      }
+    },
+    {
+      versao: "2.14.0",
+      codinome: "VIGA",
+      data: "29/08/2026",
+      mudancas: {
+        "Adicionado": [
+          "Histórico de alterações nas fichas do CRM, da Agenda e das Entradas: quem mudou cada informação, quando, e de qual valor para qual.",
+          "Integração entre CRM e Agenda: ao marcar uma lead como Agendado, dá para criar a paciente na Agenda ou vincular a uma que já existe, sem sair do CRM.",
+          "Busca global no portal, para encontrar leads, pacientes e entradas sem abrir cada módulo — e abrir a ficha direto do resultado.",
+          "As Entradas ganharam uma tela de detalhe: dá para ver o lançamento inteiro e o histórico dele sem entrar no editor.",
+          "O painel de manutenção ganhou a aba Auditoria, com filtro por módulo, por quem alterou, por período e por conteúdo."
+        ],
+        "Melhorado": [
+          "A ficha da paciente agora guarda WhatsApp e origem, e mostra quando ela veio de uma lead do CRM.",
+          "Com telefone na Agenda, o aviso de cadastro repetido passa a reconhecer a mesma pessoa pelo número, e não só pelo nome.",
+          "Quando uma sessão é registrada para uma paciente vinculada, a lead correspondente avança para Em aberto e recebe a data de comparecimento — sem nunca voltar atrás no funil.",
+          "Na ficha da paciente, o histórico do tratamento e o histórico de alterações ficam em seções separadas, porque respondem perguntas diferentes."
+        ],
+        "Técnico": [
+          "A auditoria de negócio é uma aba nova e separada dos logs de diagnóstico: a aba Logs continua sendo erro, rede, sessão e segurança.",
+          "Quem alterou é decidido pelo servidor, nunca pelo navegador. Com senha compartilhada o registro fica como Acesso compartilhado do módulo.",
+          "Gravação recusada por conflito, sessão ou falta de acesso não gera histórico: só o que foi realmente aceito entra.",
+          "A integração entre os dois módulos é uma operação só no servidor, e atualiza as revisões dos dois — assim outro computador aberto percebe a mudança e entra no mecanismo de conflito de sempre.",
+          "A busca acontece no servidor e devolve só título, subtítulo e identificador; o portal não carrega os bancos dos módulos para pesquisar.",
+          "Excluir definitivamente pela lixeira apaga também o histórico detalhado daquele registro — a exclusão não pode ser falsa."
+        ]
+      }
+    },
+    {
       versao: "2.13.2",
       codinome: "TRAVESSA",
       data: "28/08/2026",

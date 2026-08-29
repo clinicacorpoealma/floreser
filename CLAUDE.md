@@ -16,6 +16,9 @@ cada módulo mora numa pasta, para o endereço não mostrar `.html`:
 | `tema.js` | tema claro/escuro/automático: paleta, seletor e preferência local |
 | `auth.js` | conta de usuário: tela de entrar, sessão de 30 dias, avatar e menu |
 | `painel.js` | painel de manutenção do portal (entrada discreta + senha no servidor) |
+| `sync.js` | conciliação de conflitos, detector de cadastro repetido e indicador de estado |
+| `auditoria.js` | histórico de alterações mostrado dentro de cada ficha |
+| `busca.js` | busca global do portal, por cima dos três módulos |
 | `pwa.js` | camada do aplicativo: registra o Service Worker, oferece instalar, avisa de versão nova e de conexão |
 | `service-worker.js` | cache da casca do sistema; **um só**, na raiz, para todo o Alveare |
 | `manifest.webmanifest` | identidade do aplicativo instalado: nome Alveare, ícones, atalhos |
@@ -27,6 +30,11 @@ Os arquivos compartilhados ficam **sempre na raiz**. Como as páginas dos módul
 estão um nível abaixo, elas os chamam com `../` — `../logo.png`, `../tema.js`.
 Página nova dentro de pasta segue a mesma regra, e a volta para o portal é
 `href="../"`, nunca `index.html`.
+
+A **auditoria de negócio** vive na aba `Auditoria` e responde "quem mudou esta
+ficha, o quê, quando". Ela é separada do **log técnico** das abas `Logs` e
+`Sessoes`, que continua sendo erro, rede, sessão e segurança. Não misture os
+dois: a pergunta de quem usa a clínica não é a de quem conserta o sistema.
 
 Os três sistemas guardam dados numa planilha do Google através de um Apps Script
 publicado como app da Web. O código do Apps Script **não vive neste repositório** —
@@ -82,7 +90,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE.
 
 ### Changelog
 

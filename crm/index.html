@@ -30,6 +30,7 @@
 <script src="../pwa.js"></script>
 <script src="../auth.js"></script>
 <script src="../sync.js"></script>
+<script src="../auditoria.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin
     src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -258,6 +259,18 @@
 
     const STORAGE_KEY = "crm-floreser-dados";
 
+    function pedidoDaBarra(chave) {
+      try {
+        const v = new URLSearchParams(location.search).get(chave);
+        return v ? String(v) : "";
+      } catch (e) { return ""; }
+    }
+
+    function limparBarra() {
+      /* sem isto, todo recarregamento reabriria a mesma ficha */
+      try { history.replaceState(null, "", location.pathname); } catch (e) { }
+    }
+
     /* A última versão que o servidor confirmou. Numa disputa é ela que diz
        o que foi mexido aqui e o que foi mexido lá. Vive só na memória. */
     var BASE_CRM = null;
@@ -453,6 +466,8 @@
       const [filtroEtapa, setFiltroEtapa] = useState("todas");
       const [busca, setBusca] = useState("");
       const [editando, setEditando] = useState(null);
+      /* a conversa da integração com a Agenda: null, ou o que falta decidir */
+      const [integrando, setIntegrando] = useState(null);
       const [aberto, setAberto] = useState(null);
       const [importando, setImportando] = useState(false);
       const [faixaAberta, setFaixaAberta] = useState(null);
@@ -496,14 +511,26 @@
         (async () => {
           try {
             const res = await window.storage.get(STORAGE_KEY);
+            let d = null;
             if (res && res.value) {
-              const d = JSON.parse(res.value);
+              d = JSON.parse(res.value);
               if (d.dias) setDias((atual) => ({ ...atual, ...d.dias }));
               if (d.leads) setLeads(d.leads.map(migrar));
               /* o que acabou de chegar é o que o servidor tem */
               BASE_CRM = FloreSerSync.copiar(d);
             }
             if (statusCRM) statusCRM.salvoAgora();
+
+            /* A busca do portal manda o id na barra. Só o id: nome e
+               telefone não têm o que fazer ali, e token nenhum jamais.
+               Vale para lead arquivada também — a ficha é a mesma. */
+            const pedida = pedidoDaBarra("lead");
+            if (pedida) {
+              limparBarra();
+              const achada = (d && d.leads ? d.leads.map(migrar) : []).find((l) => l.id === pedida);
+              if (achada) setAberto(achada);
+              else setRecado("O lead deste link não está mais no CRM.");
+            }
           } catch (e) {
             /* Aqui NÃO é primeiro uso: storage.get só lança quando o
                servidor recusou. Uma planilha vazia responde ok, com lista
@@ -732,6 +759,96 @@
           if (l.id !== id) return l;
           return aplicarMarcos({ ...l, etapa: etapaId, cadencia: cadenciaValida(etapaId, l.cadencia) }, etapaId);
         }));
+
+        /* Marcar como Agendado é o momento em que a lead vira paciente na
+           vida real. O sistema oferece fazer isso na Agenda também — mas
+           só oferece: quem quiser mexer só no CRM segue em frente. */
+        if (etapaId === "agendado") convidarParaAgenda(leads.find((l) => l.id === id));
+      }
+
+      /* A integração grava nos dois módulos, então exige as duas permissões.
+         Aqui só se decide o que mostrar; quem confere de verdade é o
+         servidor, que recusa a operação de quem não tem as duas. */
+      function podeIntegrar() {
+        const auth = window.FloreSerAuth;
+        if (!auth || !auth.token()) return false;      /* senha compartilhada não serve */
+        return auth.possuiPermissao("crm") && auth.possuiPermissao("agenda");
+      }
+
+      function convidarParaAgenda(lead) {
+        if (!lead) return;
+        if (!podeIntegrar()) {
+          /* botão que só falharia não ajuda ninguém */
+          const auth = window.FloreSerAuth;
+          if (auth && auth.token() && !auth.possuiPermissao("agenda")) {
+            setRecado("Entre com uma conta com acesso à Agenda para integrar este cadastro.");
+          }
+          return;
+        }
+        setIntegrando({ etapa: "convite", lead: lead });
+      }
+
+      /* A chamada é uma só, e o servidor faz tudo de uma vez: encontra ou
+         cria a paciente, prende o vínculo, atualiza os dois módulos e sobe
+         as duas revisões. Fazer em dois pedidos deixaria a porta aberta
+         para o CRM mudar e a Agenda não. */
+      async function integrarNaAgenda(pedido) {
+        setIntegrando((a) => ({ ...a, etapa: "enviando" }));
+        try {
+          const r = await chamarAPI(Object.assign({
+            acao: "crm_agenda_agendar", token: SESSAO.token,
+          }, pedido));
+
+          if (!r || !r.ok) {
+            setIntegrando((a) => ({ ...a, etapa: "erro",
+              mensagem: r && r.erro === "sem_acesso"
+                ? "Sua conta não tem acesso aos dois módulos."
+                : "Não foi possível concluir agora. Tente de novo." }));
+            return;
+          }
+
+          if (r.precisaDecidir) {
+            setIntegrando((a) => ({ ...a, etapa: "parecidas", parecidas: r.parecidas,
+              pedido: pedido }));
+            return;
+          }
+
+          if (r.jaVinculada) {
+            setIntegrando((a) => ({ ...a, etapa: "jaVinculada",
+              pacienteId: r.pacienteId, pacienteNome: r.pacienteNome }));
+            return;
+          }
+
+          /* o servidor mexeu nos dois lados: o CRM daqui precisa recarregar
+             para não gravar por cima com a versão antiga */
+          if (typeof r.crmRev === "number") SESSAO.rev = r.crmRev;
+          await recarregarDoServidor();
+
+          setIntegrando(null);
+          setRecado((r.criado ? "Paciente criada e vinculada" : "Paciente vinculada") +
+            " na Agenda: " + r.pacienteNome + ".");
+        } catch (e) {
+          setIntegrando((a) => ({ ...a, etapa: "erro",
+            mensagem: "Sem conexão com o servidor. Tente de novo." }));
+        }
+      }
+
+      /* Depois de o servidor mexer no CRM por fora, a tela precisa da versão
+         dele — senão o próximo salvamento daqui desfaria a integração. */
+      async function recarregarDoServidor() {
+        try {
+          const res = await window.storage.get(STORAGE_KEY);
+          if (res && res.value) {
+            const d = JSON.parse(res.value);
+            if (d.leads) setLeads(d.leads.map(migrar));
+            if (d.dias) setDias((atual) => ({ ...atual, ...d.dias }));
+            BASE_CRM = FloreSerSync.copiar(d);
+            if (statusCRM) statusCRM.salvoAgora();
+          }
+        } catch (e) {
+          setErro("A integração foi feita, mas não consegui recarregar os leads. " +
+            "Recarregue a página para ver o resultado.");
+        }
       }
 
       function mudarCadencia(id, cadenciaId) {
@@ -1205,6 +1322,8 @@
                 aoMudarCadencia={(c) => mudarCadencia(aberto.id, c)}
                 aoAlternarEx={() => alternarExCliente(aberto.id)}
                 aoExcluir={(motivo) => moverLeadParaLixeira(aberto.id, motivo)}
+                podeAgenda={podeIntegrar()}
+                aoIntegrar={() => convidarParaAgenda(comSituacao.find((l) => l.id === aberto.id) || aberto)}
               />
             </Modal>
           )}
@@ -1212,6 +1331,14 @@
           {importando && (
             <Modal aoFechar={() => setImportando(false)}>
               <ImportarPlanilha aoImportar={importarLeads} aoCancelar={() => setImportando(false)} />
+            </Modal>
+          )}
+
+          {integrando && (
+            <Modal aoFechar={() => setIntegrando(null)}>
+              <TelaIntegracao estado={integrando}
+                aoFechar={() => setIntegrando(null)}
+                aoEnviar={integrarNaAgenda} />
             </Modal>
           )}
 
@@ -1396,7 +1523,7 @@
     }
 
     /* ==== Detalhe ==== */
-    function DetalheLead({ lead, aoEditar, aoContatar, aoMudarEtapa, aoMudarCadencia, aoAlternarEx, aoExcluir }) {
+    function DetalheLead({ lead, aoEditar, aoContatar, aoMudarEtapa, aoMudarCadencia, aoAlternarEx, aoExcluir, aoIntegrar, podeAgenda }) {
       const [confirmando, setConfirmando] = useState(false);
       const [motivo, setMotivo] = useState("");
       const etapa = etapaPor(lead.etapa);
@@ -1471,6 +1598,15 @@
             )}
           </div>
 
+      {podeAgenda && (
+            <button onClick={aoIntegrar}
+              style={{ marginTop: 4, width: "100%", border: "1.5px solid var(--crm-borda-media)", background: "none", color: CORES.teal, borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              Vincular à Agenda
+            </button>
+          )}
+
+      <HistoricoDaLead leadId={lead.id} />
+
       {confirmando && (
             <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 10, background: "var(--crm-superficie-2)" }}>
               <div style={{ fontWeight: 600, fontSize: 14 }}>Mover {lead.nome} para a lixeira?</div>
@@ -1496,6 +1632,29 @@
               </div>
             </div>
           )}
+        </div>
+      );
+    }
+
+    /* A timeline é a mesma dos três módulos, montada fora do React porque
+       quem desenha é o auditoria.js. O efeito só corre quando o id muda. */
+    function HistoricoDaLead({ leadId }) {
+      const caixa = React.useRef(null);
+
+      useEffect(() => {
+        if (!caixa.current || !window.FloreSerAuditoria) return;
+        FloreSerAuditoria.montar(caixa.current, {
+          modulo: "crm", entidade: "lead", entidadeId: leadId,
+          api: (corpo) => chamarAPI(Object.assign({ token: SESSAO.token }, corpo)),
+        });
+      }, [leadId]);
+
+      return (
+        <div style={{ marginTop: 22 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: CORES.suave, paddingBottom: 8, marginBottom: 12, borderBottom: "1px solid var(--crm-borda-media)" }}>
+            Histórico
+          </div>
+          <div ref={caixa}></div>
         </div>
       );
     }
@@ -1784,6 +1943,152 @@
     }
 
     /* ==== Modal ==== */
+    /* ================================================================
+       A conversa da integração com a Agenda
+       ----------------------------------------------------------------
+       Quatro momentos: o convite, o formulário, a lista de pacientes
+       parecidas e o aviso de que já existe vínculo. Nenhum deles obriga
+       nada — "Só atualizar CRM" é sempre uma saída.
+       ================================================================ */
+    function TelaIntegracao({ estado, aoFechar, aoEnviar }) {
+      const lead = estado.lead || {};
+      const [area, setArea] = useState("facial");
+      const [data, setData] = useState(hojeISO());
+      const [freq, setFreq] = useState(21);
+
+      const rot = { fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: CORES.suave };
+      const campo = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--crm-borda-forte)", fontSize: 14, background: CORES.branco, color: CORES.texto, marginTop: 4 };
+      const botao = { border: "none", borderRadius: 8, padding: "11px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+      const secundario = { ...botao, border: "1.5px solid var(--crm-borda-media)", background: "none", color: CORES.texto };
+      const principal = { ...botao, background: CORES.teal, color: "var(--crm-sobre-verde)" };
+
+      if (estado.etapa === "enviando") {
+        return <p style={{ fontSize: 14, color: CORES.suaveForte }}>Integrando…</p>;
+      }
+
+      if (estado.etapa === "erro") {
+        return (
+          <div>
+            <p style={{ fontSize: 14, color: CORES.atrasado, marginTop: 0 }}>{estado.mensagem}</p>
+            <button onClick={aoFechar} style={secundario}>Fechar</button>
+          </div>
+        );
+      }
+
+      if (estado.etapa === "jaVinculada") {
+        return (
+          <div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 24, fontWeight: 600, margin: "0 0 8px" }}>
+              Já existe vínculo
+            </h3>
+            <p style={{ fontSize: 14, color: CORES.suaveForte, lineHeight: 1.5 }}>
+              Esta lead já está vinculada a <b>{estado.pacienteNome}</b> na Agenda.
+            </p>
+            <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+              <a href={"../agenda/?paciente=" + encodeURIComponent(estado.pacienteId)}
+                style={{ ...principal, textDecoration: "none", display: "inline-block" }}>
+                Abrir na Agenda
+              </a>
+              <button onClick={aoFechar} style={secundario}>Fechar</button>
+            </div>
+          </div>
+        );
+      }
+
+      if (estado.etapa === "parecidas") {
+        return (
+          <div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 24, fontWeight: 600, margin: "0 0 8px" }}>
+              Possível paciente já cadastrada
+            </h3>
+            <p style={{ fontSize: 13.5, color: CORES.suaveForte, lineHeight: 1.5 }}>
+              Antes de criar outra ficha, veja se não é a mesma pessoa.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "14px 0" }}>
+              {(estado.parecidas || []).map((p) => (
+                <div key={p.id} style={{ border: "1px solid var(--crm-borda-media)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 19 }}>
+                    {p.nome}{p.arquivada ? " · arquivada" : ""}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: CORES.suave, marginTop: 2 }}>
+                    {p.motivo}{p.whatsapp ? " · " + p.whatsapp : ""}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                    <a href={"../agenda/?paciente=" + encodeURIComponent(p.id)}
+                      style={{ ...secundario, textDecoration: "none", display: "inline-block", fontSize: 12 }}>
+                      Ver ficha
+                    </a>
+                    <button style={{ ...principal, fontSize: 12 }}
+                      onClick={() => aoEnviar({ ...estado.pedido, confirmarPacienteId: p.id })}>
+                      Vincular a esta paciente
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button style={secundario}
+                onClick={() => aoEnviar({ ...estado.pedido, criarMesmoAssim: true })}>
+                Criar outra
+              </button>
+              <button onClick={aoFechar} style={secundario}>Cancelar</button>
+            </div>
+          </div>
+        );
+      }
+
+      /* o convite e o formulário, na mesma tela */
+      return (
+        <div>
+          <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 24, fontWeight: 600, margin: "0 0 8px" }}>
+            Criar o agendamento na Agenda?
+          </h3>
+          <p style={{ fontSize: 13.5, color: CORES.suaveForte, lineHeight: 1.5, margin: "0 0 14px" }}>
+            {lead.nome} foi marcada como Agendado. Dá para criar ou vincular a ficha dela
+            na Agenda agora — ou seguir só com o CRM.
+          </p>
+
+          <dl style={{ margin: "0 0 16px", fontSize: 14, lineHeight: 1.7 }}>
+            <Linha rotulo="Nome" valor={lead.nome || "—"} />
+            <Linha rotulo="WhatsApp" valor={lead.whatsapp || "—"} />
+            <Linha rotulo="Origem" valor={origemPor(lead.origem)?.nome || "—"} />
+          </dl>
+
+          <label style={{ display: "block", marginBottom: 12 }}>
+            <span style={rot}>Área</span>
+            {/* nada de adivinhar a área pelo texto do interesse: quem sabe é quem atende */}
+            <select value={area} onChange={(e) => setArea(e.target.value)} style={campo}>
+              <option value="facial">Facial</option>
+              <option value="corporal">Corporal</option>
+              <option value="capilar">Capilar</option>
+            </select>
+          </label>
+
+          <label style={{ display: "block", marginBottom: 12 }}>
+            <span style={rot}>Data do atendimento</span>
+            <input type="date" value={data} onChange={(e) => setData(e.target.value)} style={campo} />
+          </label>
+
+          <label style={{ display: "block", marginBottom: 16 }}>
+            <span style={rot}>Ciclo de retorno</span>
+            <select value={freq} onChange={(e) => setFreq(Number(e.target.value))} style={campo}>
+              {[7, 15, 21, 30, 45, 60, 90].map((d) => (
+                <option key={d} value={d}>{d} dias</option>
+              ))}
+            </select>
+          </label>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button style={principal}
+              onClick={() => aoEnviar({ leadId: lead.id, area: area, data: data, freq: freq })}>
+              Criar e agendar
+            </button>
+            <button onClick={aoFechar} style={secundario}>Só atualizar CRM</button>
+          </div>
+        </div>
+      );
+    }
+
     function Modal({ children, aoFechar }) {
       return (
         <div onClick={aoFechar}
