@@ -22,6 +22,20 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.14.2",
+      codinome: "ORVALHADA",
+      data: "29/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "A busca do portal não acompanhava o tema escuro: o painel de resultados ficava claro no meio da página escura, e o nome de quem foi encontrado saía em cinza-escuro sobre creme.",
+          "O campo de busca mostrava dois botões de limpar — o do sistema e o do navegador —, e só um deles limpava de verdade. Ficou um."
+        ],
+        "Técnico": [
+          "A busca passou a ter paleta própria, como as telas de conflito e de histórico já tinham. Antes ela usava as cores do portal e duas delas não existiam com aquele nome, então caía numa cor clara fixa em qualquer tema."
+        ]
+      }
+    },
+    {
       versao: "2.14.1",
       codinome: "AZIMUTE",
       data: "29/08/2026",

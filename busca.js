@@ -29,51 +29,81 @@
     entradas: { nome: "Entradas", href: "entradas/", chave: "entrada" },
   };
 
+  /* Paleta própria, não emprestada.
+
+     A primeira versão usava as variáveis do portal e caía num fallback
+     claro quando alguma não existisse. Duas não existiam — o portal
+     chama o texto de --carvao, não de --texto —, e o painel ficava creme
+     no meio de uma página escura. Emprestar variável de outra folha é
+     apostar que ela vai existir em toda página que um dia carregar este
+     arquivo; declarar as próprias custa dez linhas e não erra. */
+
   var ESTILO = [
+    ":root{",
+    "  --bu-fundo:#FFFFFF; --bu-texto:#2D2D2D; --bu-suave:#6E655C;",
+    "  --bu-teal:#3B6E6A; --bu-linha:#E2DED7; --bu-realce:#F5F0EB;",
+    "  --bu-selo:#E7EEEB; --bu-selo-texto:#2E5754; --bu-alerta:#A8452F;",
+    "  --bu-sombra:0 1px 2px rgba(20,40,38,.08), 0 22px 50px -26px rgba(10,20,18,.35);",
+    "}",
+    ':root[data-tema="escuro"]{',
+    "  --bu-fundo:#1E2927; --bu-texto:#E9E3DB; --bu-suave:#B4ADA3;",
+    "  --bu-teal:#7FB8B2; --bu-linha:#33403E; --bu-realce:#26332F;",
+    "  --bu-selo:#2A514D; --bu-selo-texto:#DCEAE7; --bu-alerta:#E79B82;",
+    "  --bu-sombra:0 1px 2px rgba(0,0,0,.3), 0 22px 50px -26px rgba(0,0,0,.7);",
+    "}",
+
     ".bg-caixa,.bg-caixa *{box-sizing:border-box}",
     ".bg-caixa{position:relative;width:100%;max-width:560px;margin:0 auto}",
 
     ".bg-campo{display:flex;align-items:center;gap:10px;width:100%;",
     "  padding:13px 16px;border-radius:999px;",
-    "  border:1px solid var(--linha,#E2DED7);background:var(--branco,#fff);",
+    "  border:1px solid var(--bu-linha);background-color:var(--bu-fundo);",
     "  transition:border-color .18s ease, box-shadow .18s ease}",
-    ".bg-caixa.bg-aberta .bg-campo{border-color:var(--teal,#3B6E6A);",
+    ".bg-caixa.bg-aberta .bg-campo{border-color:var(--bu-teal);",
     "  box-shadow:0 1px 2px rgba(20,40,38,.06), 0 10px 30px -18px rgba(20,40,38,.5)}",
-    ".bg-campo svg{flex:none;color:var(--taupe,#A39384)}",
+    ".bg-campo svg{flex:none;color:var(--bu-suave)}",
     ".bg-campo input{flex:1 1 auto;min-width:0;border:none;background:none;",
-    "  font:inherit;font-size:14px;color:var(--texto,#2D2D2D);outline:none}",
-    ".bg-campo input::placeholder{color:var(--taupe,#A39384)}",
+    "  font:inherit;font-size:14px;color:var(--bu-texto);outline:none}",
+    ".bg-campo input::placeholder{color:var(--bu-suave)}",
+
+    /* o navegador põe o próprio X no campo de busca; com o nosso ao lado
+       ficavam dois, e só um deles limpava de verdade */
+    ".bg-campo input::-webkit-search-cancel-button,",
+    ".bg-campo input::-webkit-search-decoration{-webkit-appearance:none;appearance:none}",
+
     ".bg-limpar{border:none;background:none;cursor:pointer;padding:2px 4px;",
-    "  color:var(--taupe,#A39384);font:inherit;line-height:1;display:none}",
+    "  color:var(--bu-suave);font:inherit;line-height:1;display:none}",
     ".bg-caixa.bg-cheia .bg-limpar{display:block}",
-    ".bg-limpar:hover{color:var(--teal,#3B6E6A)}",
+    ".bg-limpar:hover{color:var(--bu-teal)}",
+    ".bg-limpar:focus-visible{outline:2px solid var(--bu-teal);outline-offset:2px;border-radius:50%}",
 
     ".bg-painel{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:80;",
-    "  background:var(--branco,#fff);border:1px solid var(--linha,#E2DED7);",
+    "  background-color:var(--bu-fundo);border:1px solid var(--bu-linha);",
     "  border-radius:14px;overflow:hidden;display:none;",
-    "  box-shadow:0 1px 2px rgba(20,40,38,.08), 0 22px 50px -26px rgba(10,20,18,.55);",
+    "  box-shadow:var(--bu-sombra);",
     "  max-height:min(62vh,460px);overflow-y:auto}",
     ".bg-caixa.bg-aberta .bg-painel{display:block}",
 
     ".bg-grupo{padding:6px 0}",
-    ".bg-grupo + .bg-grupo{border-top:1px solid var(--linha,#E2DED7)}",
+    ".bg-grupo + .bg-grupo{border-top:1px solid var(--bu-linha)}",
     ".bg-grupo-nome{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;",
-    "  color:var(--taupe,#A39384);padding:9px 18px 6px}",
+    "  color:var(--bu-suave);padding:9px 18px 6px}",
 
     ".bg-item{display:block;width:100%;text-align:left;border:none;background:none;",
-    "  font:inherit;cursor:pointer;padding:9px 18px;color:var(--texto,#2D2D2D);",
+    "  font:inherit;cursor:pointer;padding:9px 18px;color:var(--bu-texto);",
     "  text-decoration:none;transition:background .14s ease}",
-    ".bg-item:hover,.bg-item.bg-alvo{background:var(--fundo-1,#F5F0EB)}",
-    ".bg-item:focus-visible{outline:2px solid var(--teal,#3B6E6A);outline-offset:-2px}",
+    ".bg-item:hover,.bg-item.bg-alvo{background-color:var(--bu-realce)}",
+    ".bg-item:focus-visible{outline:2px solid var(--bu-teal);outline-offset:-2px}",
     ".bg-titulo{font-family:'Cormorant Garamond',Georgia,serif;font-size:17px;",
-    "  line-height:1.2;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}",
-    ".bg-sub{font-size:11.5px;color:var(--taupe,#A39384);margin-top:2px}",
+    "  line-height:1.2;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;",
+    "  color:var(--bu-texto)}",
+    ".bg-sub{font-size:11.5px;color:var(--bu-suave);margin-top:2px;display:block}",
     ".bg-selo{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;",
-    "  padding:2px 7px;border-radius:999px;background:var(--sage,#C9D3CA);",
-    "  color:var(--teal-deep,#2E5754);font-family:'Montserrat',sans-serif}",
+    "  padding:2px 7px;border-radius:999px;background:var(--bu-selo);",
+    "  color:var(--bu-selo-texto);font-family:'Montserrat',sans-serif}",
 
-    ".bg-recado{padding:16px 18px;font-size:12.5px;color:var(--taupe,#A39384);line-height:1.5}",
-    ".bg-recado.bg-ruim{color:var(--alerta,#A8452F)}",
+    ".bg-recado{padding:16px 18px;font-size:12.5px;color:var(--bu-suave);line-height:1.5}",
+    ".bg-recado.bg-ruim{color:var(--bu-alerta)}",
 
     "@media (max-width:620px){",
     "  .bg-caixa{max-width:none}",
