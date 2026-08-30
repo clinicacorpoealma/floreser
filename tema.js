@@ -341,35 +341,88 @@
   }
 
   /* ---------- a folga do canto ----------
-     Ela existe para o seletor não cobrir o fim da página. Só que "o fim da
-     página" só está escondido quando a página rola: se tudo cabe na tela,
-     o seletor flutua sobre espaço vazio e não atrapalha ninguém — e uma
-     faixa fixa ali embaixo criava barra de rolagem à toa.
+     Ela existe por um motivo estreito: o seletor flutua no canto inferior
+     direito e, quando a página está rolada até o fim, pode cobrir o que
+     estiver ali — no rodapé da Agenda, por exemplo, mora o estado da
+     sincronização, que às vezes precisa ser tocado.
 
-     A conta é sempre feita DESCONTANDO a própria folga, senão ela se
-     justificaria sozinha: aplicar a faixa aumenta o documento, o que faria
-     a medição seguinte concluir que a faixa é necessária. */
+     Duas condições, as duas medidas, nenhuma chutada:
+
+     1. A página precisa rolar. Se tudo cabe na tela, não há fim escondido
+        para proteger — o seletor paira sobre espaço vazio. Reservar altura
+        aqui só criava barra de rolagem onde não havia nada para rolar.
+
+     2. O rodapé precisa alcançar o canto onde o seletor está. Em tela
+        larga o rodapé é centralizado e termina bem antes dele: não se
+        tocam, e a folga seria puro desperdício. Em tela estreita o rodapé
+        ocupa tudo, e aí sim.
+
+     A altura do documento é sempre medida DESCONTANDO a própria folga.
+     Sem isso ela se justificaria sozinha: aplicar a faixa aumenta o
+     documento, e a medição seguinte concluiria que a faixa é necessária. */
 
   var folga = null;
 
+  /* o que termina a página — o rodapé, se houver um */
+  function fimDaPagina() {
+    var rodape = document.querySelector("footer, .rodape, .foot");
+    if (rodape && rodape.offsetHeight) return rodape;
+
+    var filhos = document.body.children;
+    for (var i = filhos.length - 1; i >= 0; i--) {
+      var e = filhos[i];
+      if (e === folga || e === caixa) continue;
+      if (e.offsetHeight > 0) return e;
+    }
+    return null;
+  }
+
+  function precisaDeFolga() {
+    var raiz = document.documentElement;
+    if (raiz.scrollHeight - folga.offsetHeight <= raiz.clientHeight) return false;
+
+    if (!caixa) return true;
+    var fim = fimDaPagina();
+    if (!fim) return true;
+
+    /* o seletor cobre alguma coisa, ou passa ao lado? */
+    return fim.getBoundingClientRect().right > caixa.getBoundingClientRect().left;
+  }
+
   function ajustarFolga() {
     if (!folga) return;
-    var raiz = document.documentElement;
-    var semAFaixa = raiz.scrollHeight - folga.offsetHeight;
-    var precisa = semAFaixa > raiz.clientHeight;
-    var altura = precisa ? "" : "0px";
+    var altura = precisaDeFolga() ? "" : "0px";
     if (folga.style.height !== altura) folga.style.height = altura;
+  }
+
+  /* O ajuste é barato, mas não a ponto de rodar a cada nó que muda: uma
+     pausa curta junta a enxurrada de alterações numa conta só. */
+  var esperaAjuste = null;
+  function pedirAjuste() {
+    clearTimeout(esperaAjuste);
+    esperaAjuste = setTimeout(ajustarFolga, 120);
   }
 
   function vigiarFolga() {
     ajustarFolga();
-    global.addEventListener("resize", ajustarFolga);
+    global.addEventListener("resize", pedirAjuste);
 
-    /* o conteúdo muda sozinho — uma lista que carrega, uma ficha que abre */
     if (typeof ResizeObserver === "function") {
       try {
-        new ResizeObserver(ajustarFolga).observe(document.body);
+        /* o documento inteiro, não só o body: em página que define altura,
+           o body não muda quando o conteúdo cresce por dentro */
+        new ResizeObserver(pedirAjuste).observe(document.documentElement);
       } catch (e) { /* segue com o resize, que já cobre o essencial */ }
+    }
+
+    /* Os módulos trocam de tela depois de carregar — o portão sai, o app
+       entra, uma aba vira outra. Nada disso muda o tamanho da janela, então
+       sem olhar o DOM a medida ficaria a do primeiro instante. */
+    if (typeof MutationObserver === "function") {
+      try {
+        new MutationObserver(pedirAjuste)
+          .observe(document.body, { childList: true, subtree: true });
+      } catch (e) { }
     }
 
     /* A primeira medição sai antes de Cormorant e Montserrat chegarem, e

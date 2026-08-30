@@ -276,11 +276,15 @@
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 40px 0;
+      /* O portal é uma tela de escolha: o certo é caber sem rolar. Quando a
+         busca aparece, ela acrescenta cinquenta pixels — e era isso que
+         empurrava a página para fora da janela e criava barra de rolagem
+         logo depois de entrar. O respiro daqui paga essa conta. */
+      padding: 30px 0;
     }
 
     .faixa-busca {
-      margin: 0 auto 34px;
+      margin: 0 auto 24px;
       max-width: 560px;
       width: 100%;
     }

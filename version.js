@@ -22,6 +22,20 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.14.6",
+      codinome: "REMANSO",
+      data: "30/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "No computador, entrar com a conta fazia aparecer uma barra de rolagem: a busca ocupa cinquenta pixels a mais que o convite que estava ali antes, e isso bastava para o portal passar da altura da janela. O portal ficou um pouco mais compacto e volta a caber inteiro.",
+          "O espaço reservado para o seletor de tema não cobrir o rodapé só existe agora quando o seletor de fato alcança alguma coisa. Nas telas largas o rodapé é centralizado e termina bem antes dele — ali o espaço era pura sobra, e ainda dobrava a rolagem quando a página passava por pouco da janela."
+        ],
+        "Técnico": [
+          "A medida é refeita quando a janela muda de tamanho, quando as fontes terminam de carregar e quando o módulo troca de tela — o portão sair e o sistema entrar não mexe no tamanho da janela, então antes a conta ficava a do primeiro instante."
+        ]
+      }
+    },
+    {
       versao: "2.14.5",
       codinome: "ENSEADA",
       data: "30/08/2026",
