@@ -406,53 +406,95 @@
     });
   }
 
+  /* O verbo por extenso. Guardo a ação em código na planilha, mas quem
+     lê a tela quer o português — e "registrou contato" diz o que
+     "ultimoContato alterado" não diz. */
+  var ACAO_NOME = {
+    criou: "criou", criou_detalhe: "criou", criou_do_crm: "criou pelo CRM",
+    alterou: "alterou", contato: "registrou contato", removeu: "removeu",
+    lixeira: "moveu para a lixeira", restaurou: "restaurou",
+    arquivou: "arquivou", restaurou_ficha: "reativou",
+    adicionou: "adicionou", retirou: "retirou",
+    agendou: "agendou", desmarcou: "desmarcou",
+    integrou: "integrou à Agenda", vinculou: "vinculou",
+  };
+
   function telaAuditoria() {
     var linhas = auditoria.eventos.map(function (e) {
-      var valores = "";
-      if (e.antes && e.depois) valores = esc(e.antes) + " → " + esc(e.depois);
-      else if (e.depois) valores = esc(e.depois);
-      else if (e.antes) valores = esc(e.antes);
+      var valores = "\u2014";
+      if (e.antes && e.depois) {
+        valores = '<span class="aud-de">' + esc(e.antes) + "</span>" +
+          '<span class="aud-seta">\u2192</span>' + esc(e.depois);
+      } else if (e.depois) {
+        valores = esc(e.depois);
+      } else if (e.antes) {
+        valores = '<span class="aud-de">' + esc(e.antes) + "</span>";
+      }
+
+      var quando = String(e.em || "").replace("T", " ");
 
       return "<tr>" +
-        "<td class=\"mono\">" + esc(String(e.em || "").replace("T", " ")) + "</td>" +
-        "<td>" + esc(MODULO_NOME[e.modulo] || e.modulo) + "</td>" +
-        "<td>" + esc(e.autorNome || "") + "</td>" +
-        "<td>" + esc(e.acao || "") + "</td>" +
-        "<td>" + esc(e.campo || "") + "</td>" +
-        "<td>" + valores + "</td>" +
-        "<td class=\"mono\">" + esc(e.entidadeId || "") + "</td>" +
+        '<td class="quando" data-rotulo="Quando">' + esc(quando) + "</td>" +
+        '<td data-rotulo="Módulo"><span class="aud-modulo">' +
+        esc(MODULO_NOME[e.modulo] || e.modulo) + "</span></td>" +
+        '<td data-rotulo="Quem"><span class="aud-quem">' +
+        esc(e.autorNome || "—") + "</span>" +
+        '<br><span class="aud-acao">' + esc(ACAO_NOME[e.acao] || e.acao || "") +
+        "</span></td>" +
+        '<td data-rotulo="Campo">' + esc(e.campo || "—") + "</td>" +
+        '<td class="aud-valores" data-rotulo="De que para qual">' + valores + "</td>" +
+        '<td class="quando" data-rotulo="Registro">' + esc(e.entidadeId || "") + "</td>" +
         "</tr>";
     }).join("");
 
-    return '<div class="bloco">' +
-      "<h3>Auditoria de negócio</h3>" +
-      '<p class="nota">Quem alterou o quê, e de que valor para qual. Isto não é o log ' +
-      "técnico da aba Logs: aqui só entram alterações de leads, pacientes e entradas.</p>" +
+    function opcao(valor, rotulo) {
+      return '<option value="' + valor + '"' +
+        (filtroAud.modulo === valor ? " selected" : "") + ">" + rotulo + "</option>";
+    }
 
-      '<div class="filtros-aud" style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">' +
-      '<select id="aud-modulo"><option value="">Todos os módulos</option>' +
-      '<option value="crm"' + (filtroAud.modulo === "crm" ? " selected" : "") + ">CRM</option>" +
-      '<option value="agenda"' + (filtroAud.modulo === "agenda" ? " selected" : "") + ">Agenda</option>" +
-      '<option value="entradas"' + (filtroAud.modulo === "entradas" ? " selected" : "") + ">Entradas</option>" +
-      "</select>" +
-      '<input id="aud-autor" placeholder="Quem alterou" value="' + esc(filtroAud.autor) + '">' +
-      '<input id="aud-busca" placeholder="Buscar no conteúdo" value="' + esc(filtroAud.busca) + '">' +
-      '<input id="aud-de" type="date" value="' + esc(filtroAud.de) + '" aria-label="De">' +
-      '<input id="aud-ate" type="date" value="' + esc(filtroAud.ate) + '" aria-label="Até">' +
-      '<button id="aud-filtrar" class="btn-fino">Filtrar</button>' +
+    return '<div class="aud-topo">' +
+      "<h3>Auditoria de negócio</h3>" +
+      "<p>Quem alterou o quê, e de que valor para qual. Isto não é o log técnico da " +
+      "aba Logs: aqui só entram alterações de leads, pacientes e entradas.</p>" +
+      "</div>" +
+
+      '<div class="aud-filtros">' +
+      '<label class="aud-campo"><span>Módulo</span>' +
+      '<select id="aud-modulo">' + opcao("", "Todos") + opcao("crm", "CRM") +
+      opcao("agenda", "Agenda") + opcao("entradas", "Entradas") + "</select></label>" +
+
+      '<label class="aud-campo aud-largo"><span>Quem alterou</span>' +
+      '<input id="aud-autor" placeholder="Nome de quem mexeu" value="' +
+      esc(filtroAud.autor) + '"></label>' +
+
+      '<label class="aud-campo aud-largo"><span>No conteúdo</span>' +
+      '<input id="aud-busca" placeholder="Campo, valor ou registro" value="' +
+      esc(filtroAud.busca) + '"></label>' +
+
+      '<label class="aud-campo aud-data"><span>De</span>' +
+      '<input id="aud-de" type="date" value="' + esc(filtroAud.de) + '"></label>' +
+
+      '<label class="aud-campo aud-data"><span>Até</span>' +
+      '<input id="aud-ate" type="date" value="' + esc(filtroAud.ate) + '"></label>' +
+
+      '<button id="aud-filtrar" class="aud-filtrar">Filtrar</button>' +
       "</div>" +
 
       (auditoria.eventos.length
-        ? '<table class="tabela"><thead><tr>' +
-          "<th>Quando</th><th>Módulo</th><th>Quem</th><th>Ação</th>" +
-          "<th>Campo</th><th>Valores</th><th>Registro</th>" +
+        ? '<table class="tabela aud-tabela"><thead><tr>' +
+          "<th>Quando</th><th>Módulo</th><th>Quem</th>" +
+          "<th>Campo</th><th>De que para qual</th><th>Registro</th>" +
           "</tr></thead><tbody>" + linhas + "</tbody></table>" +
-          '<p class="nota">' + auditoria.eventos.length + " evento(s)" +
-          (auditoria.varreuTudo ? " — fim do registro." :
-            " — há mais para trás; use os filtros para chegar mais longe.") + "</p>" +
-          (auditoria.temMais ? '<button id="aud-mais" class="btn-fino">Ver mais</button>' : "")
-        : '<div class="vazio">Nenhum evento com estes filtros.</div>') +
-      "</div>";
+          '<div class="aud-rodape"><span>' + auditoria.eventos.length + " evento(s)" +
+          (auditoria.varreuTudo ? " \u00b7 fim do registro" :
+            " \u00b7 há mais para trás; estreite os filtros para alcançar") + "</span>" +
+          (auditoria.temMais ? '<button id="aud-mais" class="btn-fino">Ver mais</button>' : "") +
+          "</div>"
+        : '<div class="vazio">' +
+          (filtroAud.modulo || filtroAud.autor || filtroAud.busca || filtroAud.de || filtroAud.ate
+            ? "Nenhum evento com estes filtros."
+            : "Nada registrado ainda. As alterações a partir de agora aparecem aqui.") +
+          "</div>");
   }
 
   function ligarEventosAuditoria() {

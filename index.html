@@ -31,6 +31,10 @@
       --sage: #C9D3CA;
       --creme: #F5F0EB;
       --taupe: #A39384;
+      /* O CLAUDE.md avisa: taupe sobre creme não alcança contraste de
+         leitura em texto pequeno — dá 2,63. Este é o mesmo matiz, escuro
+         o bastante para rótulo e texto de apoio: 5,34 sobre o creme. */
+      --taupe-forte: #6F6053;
       --carvao: #2D2D2D;
       --branco: #FFFFFF;
       --linha: #E2DED7;
@@ -62,6 +66,8 @@
     /* ---------- Tema escuro: só o que é próprio desta página ----------
        O resto das cores vem das variáveis da marca, trocadas em tema.js. */
     :root[data-tema="escuro"] {
+      /* no escuro o taupe já contrasta bem (6,31), então o forte é ele mesmo */
+      --taupe-forte: #A39B90;
       --nivel-info-bg: #22403D;
       --nivel-warning-bg: #3A3122;
       --nivel-warning-fg: #D8B98A;
@@ -1026,7 +1032,9 @@
       font-size: 9px;
       letter-spacing: .16em;
       text-transform: uppercase;
-      color: var(--taupe);
+      /* 9px em taupe sobre creme dava 2,63 — o cabeçalho de todas as
+         tabelas do painel, não só o da auditoria */
+      color: var(--taupe-forte);
       border-bottom: 1px solid var(--linha);
       white-space: nowrap;
     }
@@ -1299,6 +1307,188 @@
       line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
+    }
+
+    /* ---------------------------------------------------------------
+       Auditoria de negócio
+
+       O manual pede Cormorant nos títulos, Montserrat no texto, e a
+       proporção de sempre: muito neutro, teal no que ancora, taupe e
+       sage no apoio. Aqui o teal aparece no título, no fio que separa e
+       no botão que age — nada mais, para a tabela continuar sendo o
+       assunto da tela.
+       --------------------------------------------------------------- */
+
+    .aud-topo {
+      margin-bottom: 22px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--linha);
+    }
+
+    .aud-topo h3 {
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: 25px;
+      line-height: 1.15;
+      color: var(--teal);
+      margin: 0;
+    }
+
+    .aud-topo p {
+      margin: 7px 0 0;
+      font-size: 12.5px;
+      line-height: 1.6;
+      font-weight: 300;
+      color: var(--taupe-forte);
+      max-width: 62ch;
+    }
+
+    /* os filtros, com rótulo em cima de cada campo */
+    .aud-filtros {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+      margin-bottom: 20px;
+    }
+
+    .aud-campo {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .aud-campo > span {
+      font-size: 9px;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--taupe-forte);
+    }
+
+    .aud-campo input,
+    .aud-campo select {
+      padding: 8px 11px;
+      border: 1px solid var(--linha);
+      border-radius: 8px;
+      background: var(--branco);
+      font-family: var(--sans);
+      font-weight: 300;
+      font-size: 12.5px;
+      color: var(--carvao);
+      transition: border-color .18s ease;
+    }
+
+    .aud-campo input:focus,
+    .aud-campo select:focus {
+      outline: none;
+      border-color: var(--teal);
+    }
+
+    .aud-campo.aud-largo { flex: 1 1 190px; }
+    .aud-campo.aud-largo input { width: 100%; }
+    .aud-campo.aud-data input { width: 150px; }
+
+    /* O único CTA da tela: teal preenchido, como o manual pede para botão
+       de ação. O par é --teal-fundo com --sobre-teal, que o tema mantém
+       coerente nos dois modos; usar --teal aqui daria teal claro com texto
+       claro no escuro, e o rótulo sumia. */
+    .aud-filtrar {
+      padding: 9px 20px;
+      border: none;
+      border-radius: 8px;
+      background: var(--teal-fundo);
+      color: var(--sobre-teal);
+      font-family: var(--sans);
+      font-weight: 500;
+      font-size: 10px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background .18s ease;
+    }
+
+    .aud-filtrar:hover { background: var(--teal-fundo-hover); }
+    .aud-filtrar:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+    /* a pastilha do módulo: sage de apoio, sem competir com o conteúdo */
+    .aud-modulo {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--nivel-info-bg);
+      color: var(--teal-deep);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    /* de que valor para qual — o antes recolhido, o depois em evidência */
+    .aud-de {
+      color: var(--taupe-forte);
+      text-decoration: line-through;
+      text-decoration-color: var(--sage);
+    }
+
+    .aud-seta {
+      color: var(--taupe-forte);
+      margin: 0 5px;
+    }
+
+    .aud-quem {
+      font-weight: 500;
+    }
+
+    .aud-acao {
+      font-size: 11.5px;
+      color: var(--taupe-forte);
+    }
+
+    .tabela td.aud-valores {
+      min-width: 190px;
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    .aud-rodape {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11.5px;
+      font-weight: 300;
+      color: var(--taupe-forte);
+    }
+
+    /* Abaixo de 720px o painel esconde o cabeçalho e empilha as células:
+       cada linha vira um bloco. Numa tabela de log isso basta, porque o
+       conteúdo se explica; aqui não — "Cadência" e "Quente → Morno" um
+       embaixo do outro, sem rótulo, viram adivinhação. Então o rótulo
+       aparece junto do valor, e só nesse modo. */
+    @media (max-width: 720px) {
+      .aud-tabela td::before {
+        content: attr(data-rotulo);
+        display: block;
+        font-size: 9px;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: var(--taupe-forte);
+        margin-bottom: 2px;
+      }
+
+      .aud-tabela td:empty { display: none; }
+      .aud-tabela tr { padding: 12px 0; }
+    }
+
+    @media (max-width: 620px) {
+      .aud-topo h3 { font-size: 22px; }
+      .aud-campo.aud-largo { flex: 1 1 100%; }
+      .aud-campo.aud-data { flex: 1 1 46%; }
+      .aud-campo.aud-data input { width: 100%; }
+      .aud-filtrar { width: 100%; }
     }
 
     .vazio {

@@ -22,6 +22,23 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.14.4",
+      codinome: "SOLSTÍCIO",
+      data: "30/08/2026",
+      mudancas: {
+        "Visual": [
+          "A aba Auditoria do painel de manutenção ganhou o acabamento do manual de marca: título em Cormorant Garamond, texto em Montserrat leve, e o teal só onde ancora — no título, no fio que separa e no botão de filtrar.",
+          "Os filtros deixaram de ser campos crus do navegador: cada um tem rótulo próprio, borda suave e realce em teal ao receber o foco.",
+          "Na tabela, o módulo virou uma pastilha discreta, quem alterou aparece com a ação logo abaixo, e o valor anterior fica recolhido ao lado do novo — a mesma leitura do histórico dentro das fichas.",
+          "No celular, onde a tabela vira blocos empilhados, cada informação passa a mostrar o próprio rótulo. Antes ficavam campo e valor um sob o outro, sem dizer qual era qual."
+        ],
+        "Corrigido": [
+          "O botão de filtrar ficava com o texto quase invisível no tema escuro.",
+          "Rótulos e textos de apoio em taupe sobre creme não alcançavam contraste de leitura no tamanho em que aparecem. Vale para o cabeçalho de todas as tabelas do painel, não só o da auditoria."
+        ]
+      }
+    },
+    {
       versao: "2.14.3",
       codinome: "PENUMBRA",
       data: "29/08/2026",
