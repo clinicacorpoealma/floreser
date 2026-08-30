@@ -22,6 +22,17 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.14.5",
+      codinome: "ENSEADA",
+      data: "30/08/2026",
+      mudancas: {
+        "Corrigido": [
+          "No computador, o portal criava uma barra de rolagem sem ter o que rolar: sobrava uma faixa vazia no fim da página. Era o espaço reservado para o seletor de tema não cobrir o rodapé — só que numa página que já cabe inteira na tela não há nada escondido para proteger, e a faixa era pura sobra.",
+          "Esse espaço agora só existe quando a página realmente rola. Nas telas onde o conteúdo passa da altura da janela, o rodapé continua livre do seletor como antes."
+        ]
+      }
+    },
+    {
       versao: "2.14.4",
       codinome: "SOLSTÍCIO",
       data: "30/08/2026",

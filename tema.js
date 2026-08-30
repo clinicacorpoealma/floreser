@@ -256,8 +256,13 @@
     "}",
     /* O seletor flutua no canto e não sai do lugar quando a página termina.
        Sem folga ele fica em cima do rodapé — justamente onde mora o estado
-       da sincronização, que às vezes precisa ser tocado. Esta faixa vazia
-       vive no fim do documento e devolve o rodapé para quem o lê. */
+       da sincronização, que às vezes precisa ser tocado.
+
+       Mas a folga só faz sentido em página que rola: ali o rodapé chega ao
+       fim da tela e passaria por baixo do seletor. Numa página que já cabe
+       inteira, não há nada escondido para proteger — e a faixa fixa só
+       criava barra de rolagem onde não havia. Quem decide é o ajuste lá
+       embaixo; aqui fica só a medida. */
     ".tema-folga{height:52px;flex:none;pointer-events:none}",
     "@media (max-width:620px){ .tema-folga{height:60px} }",
     "@media print{ .tema-seletor,.tema-folga{display:none} }",
@@ -325,13 +330,55 @@
 
     /* a folga entra depois do seletor, sempre por último no documento */
     if (!document.querySelector(".tema-folga")) {
-      var folga = document.createElement("div");
+      folga = document.createElement("div");
       folga.className = "tema-folga";
       folga.setAttribute("aria-hidden", "true");
       document.body.appendChild(folga);
+      vigiarFolga();
     }
 
     marcarBotoes(escolha);
+  }
+
+  /* ---------- a folga do canto ----------
+     Ela existe para o seletor não cobrir o fim da página. Só que "o fim da
+     página" só está escondido quando a página rola: se tudo cabe na tela,
+     o seletor flutua sobre espaço vazio e não atrapalha ninguém — e uma
+     faixa fixa ali embaixo criava barra de rolagem à toa.
+
+     A conta é sempre feita DESCONTANDO a própria folga, senão ela se
+     justificaria sozinha: aplicar a faixa aumenta o documento, o que faria
+     a medição seguinte concluir que a faixa é necessária. */
+
+  var folga = null;
+
+  function ajustarFolga() {
+    if (!folga) return;
+    var raiz = document.documentElement;
+    var semAFaixa = raiz.scrollHeight - folga.offsetHeight;
+    var precisa = semAFaixa > raiz.clientHeight;
+    var altura = precisa ? "" : "0px";
+    if (folga.style.height !== altura) folga.style.height = altura;
+  }
+
+  function vigiarFolga() {
+    ajustarFolga();
+    global.addEventListener("resize", ajustarFolga);
+
+    /* o conteúdo muda sozinho — uma lista que carrega, uma ficha que abre */
+    if (typeof ResizeObserver === "function") {
+      try {
+        new ResizeObserver(ajustarFolga).observe(document.body);
+      } catch (e) { /* segue com o resize, que já cobre o essencial */ }
+    }
+
+    /* A primeira medição sai antes de Cormorant e Montserrat chegarem, e
+       texto em fonte de reserva ocupa outra altura. Quando as fontes
+       assentam, a conta é refeita. */
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(ajustarFolga).catch(function () { });
+    }
+    global.addEventListener("load", ajustarFolga);
   }
 
   if (document.readyState === "loading") {
