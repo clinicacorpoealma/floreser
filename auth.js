@@ -270,6 +270,13 @@
     "  --fs-erro-bg:#F6EBE4; --fs-fio:#C9D3CA; --fs-sombra:rgba(20,40,38,.30);",
     "  --fs-fundo-portao:#12201E; --fs-borda-cartao:rgba(59,110,106,.10);",
     "  --fs-agua-forca:.05;",
+    /* A retomada não é o portão. O portão é a porta da rua e é teal
+       profundo nos dois temas, como manda a marca. A retomada é um
+       instante entre duas telas claras — piscar um quase-preto no meio
+       do caminho e voltar para o claro machuca os olhos. Ela ganha um
+       fundo por tema: no claro, um creme um passo mais fundo que o
+       cartão, para o cartão ainda se destacar. */
+    "  --fs-retoma-fundo:#C9D3CA; --fs-retoma-agua:brightness(0);",
     "  --fs-anel:rgba(90,148,144,.16); --fs-realce:#5A9490; --fs-hover-suave:#EDF3F1;",
     "}",
     ':root[data-tema="escuro"]{',
@@ -281,6 +288,7 @@
     "  --fs-erro-bg:#3A241D; --fs-fio:#3C5A56; --fs-sombra:rgba(0,0,0,.55);",
     "  --fs-fundo-portao:#0B1413; --fs-borda-cartao:rgba(255,255,255,.06);",
     "  --fs-agua-forca:.07;",
+    "  --fs-retoma-fundo:#0B1413; --fs-retoma-agua:brightness(0) invert(1);",
     "  --fs-anel:rgba(127,184,178,.20); --fs-realce:#93C6C0; --fs-hover-suave:#26332F;",
     "}",
 
@@ -478,7 +486,7 @@
        overflow:auto isso virava barra de rolagem de verdade — e ainda
        empurrava o cartão alguns pixels para o lado. Corta na horizontal,
        rola só na vertical, para o cartão alto continuar alcançável. */
-    "  background:var(--fs-fundo-portao);overflow-x:hidden;overflow-y:auto}",
+    "  background:var(--fs-retoma-fundo);overflow-x:hidden;overflow-y:auto}",
     /* A lótus aparece cortada pelo canto, como no portão — mas o corte é
        feito pela própria caixa, que fica dentro da tela. Se ela sobrasse
        para fora, viraria barra de rolagem de verdade, e a barra reservada
@@ -486,7 +494,7 @@
     ".fs-retomada::before{content:'';position:absolute;right:0;bottom:0;",
     "  width:380px;height:350px;background:var(--fs-marca-dagua) no-repeat;",
     "  background-size:520px 520px;background-position:0 0;",
-    "  opacity:.055;filter:brightness(0) invert(1);pointer-events:none}",
+    "  opacity:.055;filter:var(--fs-retoma-agua);pointer-events:none}",
 
     ".fs-retomada .fs-cartao{padding:36px 38px 34px;",
     "  animation:fs-surge .42s cubic-bezier(.2,.8,.2,1) both}",

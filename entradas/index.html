@@ -1292,7 +1292,10 @@ body.entrou .rodape{animation-delay:.24s}
     const abrir = () => {
       if (estadoAtual !== "conflito" || FloreSerSync.conflitoAberto()) return;
       if (!FloreSerSync.reabrirConflito()) {
-        /* sem nada guardado: uma gravação nova traz o conflito de volta */
+        /* Sem nada guardado: uma gravação nova traz o conflito de volta.
+           O contador de merges zera junto — ele trava vaivém automático,
+           e este toque é uma pessoa decidindo tentar de novo. */
+        tentativasDeMerge = 0;
         conflitoPendente = false; precisaSalvar = true; enviar();
       }
     };
@@ -1364,7 +1367,12 @@ body.entrou .rodape{animation-delay:.24s}
       SESSAO.rev = r.rev;
       tentativa = 0; tentativasDeMerge = 0;
       BASE_ENTRADAS = instantaneo;
-      marcarSalvo();
+      /* "Salvo" só vale se nada entrou na fila enquanto esta gravação
+         voava. Quem lança várias entradas seguidas mexe na próxima antes
+         de a anterior voltar; dizer "salvo" ali é convidar a pessoa a
+         fechar a aba com alteração ainda por subir. */
+      if (precisaSalvar) setStatus("dirty");
+      else marcarSalvo();
     } catch (e) {
       precisaSalvar = true;
       tentativa++;
@@ -1381,7 +1389,7 @@ body.entrou .rodape{animation-delay:.24s}
       }
     } finally {
       emVoo = false;
-      if (precisaSalvar && !travado && !tentativa) {
+      if (precisaSalvar && !travado && !tentativa && !conflitoPendente) {
         clearTimeout(timerEnvio);
         timerEnvio = setTimeout(enviar, 200);
       }

@@ -239,8 +239,12 @@
       color: var(--teal);
     }
 
+    /* --teal-fundo é a superfície teal CHEIA, para quando o texto por
+       cima é --sobre-teal. Aqui o texto é --teal: os dois davam a mesma
+       cor no tema claro e o botão sumia dentro do próprio realce. O
+       passar do mouse quer um véu, não um preenchimento. */
     .canto-conta .fs-quem>button:hover {
-      background: var(--teal-fundo);
+      background: var(--fs-hover-suave, rgba(59, 110, 106, .10));
     }
 
     /* Cartão sem permissão: continua clicável — quem quiser entra pela

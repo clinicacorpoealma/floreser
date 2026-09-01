@@ -49,14 +49,25 @@
   --sans:'Montserrat',Calibri,system-ui,sans-serif;
   --sombra:0 1px 2px rgba(45,45,45,.04),0 8px 24px rgba(59,110,106,.06);
 
-  /* superfícies pálidas que antes eram valores soltos pelo arquivo */
-  --fundo-1:var(--fundo-1);
-  --fundo-2:var(--fundo-2);
-  --fundo-3:var(--fundo-3);
-  --fundo-teal:var(--fundo-teal);
-  --fundo-teal-2:var(--fundo-teal-2);
-  --linha-forte:var(--linha-forte);
-  --texto-2:var(--texto-2);
+  /* Superfícies pálidas que antes eram valores soltos pelo arquivo.
+
+     Estes sete valores estavam escritos como --fundo-1:var(--fundo-1), o que
+     é um ciclo: a variável se define por si mesma. O navegador descarta a
+     declaração inteira, e todo var(--fundo-1) virava "unset" — fundo
+     transparente, borda sem estilo, cor herdada do pai. O tema escuro
+     escapava porque redeclara os sete lá embaixo com valores de verdade;
+     só o tema claro ficava sem. Estes são os valores originais, os mesmos
+     que estavam soltos pelo arquivo antes de virarem variável. */
+  --fundo-1:#FCFBF9;      /* campo, linha em foco, caixa de área */
+  --fundo-2:#FCFAF8;      /* cabeçalho de tabela, topo do dia, pé do formulário */
+  --fundo-3:#F1EEE9;      /* divisória entre linhas */
+  --fundo-teal:#F5F9F8;   /* item marcado */
+  --fundo-teal-2:#F7FAF9; /* sessão no calendário, área de arrastar */
+  --linha-forte:#7C7267;  /* texto de vazio: o "—" e o dia sem agendamento */
+  --texto-2:#5c5c5c;      /* texto secundário */
+
+  /* o campo em foco clareia um degrau — em cada tema para o seu lado */
+  --campo-foco:#FFFFFF;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
@@ -224,8 +235,10 @@ label .opt{color:var(--taupe);font-weight:400;letter-spacing:.08em;text-transfor
 input[type=text],input[type=date],input[type=number],select,textarea{
   padding:11px 13px;border:1px solid var(--linha);border-radius:2px;background:var(--fundo-1);
   font-size:14px;font-weight:300;transition:.16s;width:100%}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal-light);background:#fff;
-  box-shadow:0 0 0 3px rgba(90,148,144,.1)}
+/* o campo em foco clareia; no tema escuro, clarear é subir um degrau de
+   escuro, não virar branco — texto claro sobre branco não se lê */
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal-light);
+  background:var(--campo-foco);box-shadow:0 0 0 3px rgba(90,148,144,.1)}
 textarea{resize:vertical;min-height:88px;line-height:1.55}
 .hintx{font-size:11.5px;font-weight:300;color:var(--taupe);line-height:1.5}
 .radios{display:flex;gap:10px;flex-wrap:wrap}
@@ -272,7 +285,7 @@ textarea{resize:vertical;min-height:88px;line-height:1.55}
 .swatch:hover{transform:scale(1.08)}
 .swatch.on{border-color:var(--carvao)}
 input[type=color]{width:44px;height:34px;padding:2px;border:1px solid var(--linha);border-radius:2px;
-  background:#fff;cursor:pointer}
+  background:var(--branco);cursor:pointer}
 
 /* ---------- AREAS DE TRATAMENTO ---------- */
 .areas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:12px;align-items:start}
@@ -455,8 +468,9 @@ footer{border-top:1px solid var(--linha);padding:26px 0;background:var(--branco)
   --fundo-3:#243130;
   --fundo-teal:#1B2A28;
   --fundo-teal-2:#1A2726;
-  --linha-forte:#485754;
+  --linha-forte:#8B9894;
   --texto-2:#B4ADA3;
+  --campo-foco:#243130;
   --sombra:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.3);
 }
 :root[data-tema="escuro"] #portao .cartao{background:var(--fundo-1);border:1px solid var(--linha)}
@@ -1103,10 +1117,20 @@ function salvar(){
   timerEnvio=setTimeout(enviar,350);
 }
 
+/* Uma gravação leva a agenda inteira e demora o que a rede demorar. Quem
+   edita rápido mexe em outra ficha antes de a anterior voltar — e é aí que
+   o rodapé mentia: ele dizia "salvo" no instante em que a resposta chegava,
+   sem olhar se algo novo tinha entrado na fila enquanto isso. A pessoa via
+   "salvo", fechava a aba e levava um susto com o aviso do navegador.
+
+   Agora o envio anuncia que está no ar, e "salvo" só aparece quando não
+   sobrou nada para mandar. */
 async function enviar(){
   if(travado||emVoo||!precisaSalvar||conflitoPendente) return;
   emVoo=true; precisaSalvar=false;
+  sinc='salvando'; statusRodape();
   const instantaneo=JSON.parse(JSON.stringify(state));
+  let deuCerto=false;
   try{
     const r=await api({acao:'salvar_agenda',token:SESSAO.token,rev:SESSAO.rev,dados:instantaneo});
     if(!r.ok){
@@ -1119,10 +1143,13 @@ async function enviar(){
         toast('Sua sessão expirou. Recarregue a página e informe a senha.',true); return; }
       throw new Error(r.erro||'falha');
     }
-    SESSAO.rev=r.rev; tentativa=0; sinc='ok'; tentativasDeMerge=0;
+    SESSAO.rev=r.rev; tentativa=0; tentativasDeMerge=0; deuCerto=true;
     /* só agora o que está na tela virou o que o servidor tem */
     BASE=instantaneo;
-    if(statusSinc) statusSinc.salvoAgora();
+    /* mas "o que o servidor tem" só é "o que está na tela" se nada entrou
+       na fila enquanto esta gravação voava */
+    if(precisaSalvar){ sinc='pendente'; }
+    else { sinc='ok'; if(statusSinc) statusSinc.salvoAgora(); }
   }catch(e){
     precisaSalvar=true; tentativa++; sinc='offline';
     clearTimeout(timerEnvio);
@@ -1131,7 +1158,14 @@ async function enviar(){
   }finally{
     emVoo=false;
     statusRodape();
-    if(precisaSalvar&&!travado&&sinc==='ok'){ clearTimeout(timerEnvio); timerEnvio=setTimeout(enviar,200); }
+    /* Quem reagenda é o resultado desta gravação, não a cor do rodapé. A
+       condição antiga era sinc==='ok', e ela deixou de valer no momento em
+       que "salvo" passou a depender da fila: com alteração pendente o
+       estado é 'pendente', e o reenvio nunca teria saído. Erro e conflito
+       têm caminho próprio e não passam por aqui. */
+    if(deuCerto&&precisaSalvar&&!travado&&!conflitoPendente){
+      clearTimeout(timerEnvio); timerEnvio=setTimeout(enviar,200);
+    }
   }
 }
 
@@ -1243,7 +1277,12 @@ function statusRodape(){
     el.addEventListener('click',function(){
       if(sinc!=='conflito'||FloreSerSync.conflitoAberto()) return;
       if(!FloreSerSync.reabrirConflito()){
-        /* sem nada guardado: uma gravação nova traz o conflito de volta */
+        /* Sem nada guardado: uma gravação nova traz o conflito de volta.
+           O contador de merges também zera — ele existe para travar um
+           vaivém automático, e este toque é uma pessoa decidindo tentar
+           outra vez. Sem zerar, a tentativa seguinte esbarraria no limite
+           e o rodapé viraria um botão que não faz nada. */
+        tentativasDeMerge=0;
         precisaSalvar=true; conflitoPendente=false; enviar();
       }
     });

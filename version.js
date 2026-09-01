@@ -22,6 +22,26 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "2.14.7",
+      codinome: "CLAREIRA",
+      data: "01/09/2026",
+      mudancas: {
+        "Corrigido": [
+          "No tema escuro, o campo que você estava preenchendo na ficha da paciente ficava branco ao receber o cursor, com o texto claro por cima — praticamente ilegível. Agora ele clareia um degrau dentro do próprio escuro, e o nome se lê enquanto se digita.",
+          "No tema claro, passar o mouse sobre a sua conta pintava o botão inteiro de verde, na mesma cor do texto — o nome sumia dentro do realce. O realce virou um véu leve, e o nome continua visível.",
+          "A tela de “Entrando com sua conta” era escura nos dois temas. Vindo de um portal claro, ela piscava um quase-preto no meio do caminho. Agora tem versão clara, em sage sobre o cartão creme.",
+          "Na agenda, sete cores do tema claro estavam escritas de um jeito que o navegador descartava. O resultado eram tabelas sem linha divisória, cabeçalhos e rodapés de formulário sem fundo, e itens marcados sem o realce em teal. Todos voltaram."
+        ],
+        "Melhorado": [
+          "Quem edita várias fichas em sequência via o rodapé dizer “Salvo agora” enquanto ainda havia alteração por subir: a mensagem olhava só para a gravação que tinha acabado de voltar, não para a fila. Agora o rodapé mostra “Salvando” enquanto o envio está no ar, “Alterações pendentes” enquanto sobrar algo, e “Salvo agora” só quando a fila esvazia. Vale para a Agenda e para as Entradas.",
+          "O texto de vazio da agenda — o travessão das colunas em branco e o aviso de dia sem agendamento — estava claro demais para ser lido. Ganhou contraste nos dois temas."
+        ],
+        "Técnico": [
+          "Com conflito adiado, tocar no rodapé para tentar de novo passou a zerar o contador de mesclagens automáticas. Sem isso, depois de várias rodadas seguidas o toque não fazia mais nada."
+        ]
+      }
+    },
+    {
       versao: "2.14.6",
       codinome: "REMANSO",
       data: "30/08/2026",
