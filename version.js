@@ -22,6 +22,23 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "3.0.0",
+      codinome: "ALICERCE",
+      data: "02/09/2026",
+      mudancas: {
+        "Técnico": [
+          "A estrutura interna do sistema foi reorganizada: o visual e o comportamento de cada tela passaram a ter arquivos próprios, em vez de tudo dentro do mesmo documento. Nada mudou para quem usa — as mesmas telas, os mesmos dados, os mesmos acessos, os mesmos links.",
+          "No CRM, a tela em si continua no mesmo arquivo de sempre: ele é montado por uma biblioteca que precisa buscar o código pela rede quando ele mora à parte, e isso impedia o CRM de abrir direto do computador, sem servidor. O visual e a parte de conexão dele foram separados assim mesmo.",
+          "A Agenda carregava dentro do próprio documento as seis fontes da marca em código, mais uma cópia inteira da biblioteca de planilhas. Os dois saíram para arquivos próprios. A Agenda continua funcionando sem internet, com as mesmas fontes de sempre.",
+          "A biblioteca de planilhas passou a ser uma só, guardada no próprio sistema, usada tanto pela Agenda quanto pelo CRM. Antes a Agenda tinha a sua embutida e o CRM buscava outra igual num servidor de fora. Conferi que é exatamente a mesma versão e o mesmo conteúdo — agora a importação do CRM também funciona sem internet.",
+          "O aplicativo instalado aprendeu a guardar os arquivos novos, para continuar abrindo offline como antes."
+        ],
+        "Melhorado": [
+          "Alterar o sistema ficou mais seguro: quem for mexer no visual mexe só no arquivo do visual, e quem for mexer no funcionamento mexe só no do funcionamento. Um erro de um lado não alcança mais o outro."
+        ]
+      }
+    },
+    {
       versao: "2.14.7",
       codinome: "CLAREIRA",
       data: "01/09/2026",

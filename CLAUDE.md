@@ -4,15 +4,22 @@ Site estático servido pelo GitHub Pages, sem build. O portal fica na raiz e
 cada módulo mora numa pasta, para o endereço não mostrar `.html`:
 `/`, `/crm/`, `/agenda/`, `/entradas/`.
 
+## Onde cada coisa mora
+
+**Uma responsabilidade por arquivo, e três camadas separadas:** o HTML diz o
+que a página *é*, o CSS diz como ela *se parece*, o JS diz como ela *se
+comporta*. Nenhum dos três volta a morar dentro do outro.
+
+### O portal e os arquivos compartilhados, na raiz
+
 | Arquivo | Papel |
 |---|---|
-| `index.html` | portal: três quadrados (CRM, Agendamentos e Entradas), versão e histórico |
-| `crm/index.html` | CRM comercial (React + Babel via CDN), funil e cadências |
-| `agenda/index.html` | agenda das pacientes (JS puro, fontes e SheetJS embutidos) |
-| `entradas/index.html` | entradas por dia, formas de pagamento, filtros e exportação (JS puro) |
+| `index.html` | portal: estrutura dos três quadrados (CRM, Agendamentos e Entradas), do rodapé e das duas janelas |
+| `portal.css` | apresentação do portal, incluindo o painel de manutenção |
+| `portal.js` | comportamento do portal: data, histórico de versões, janela Sobre, faixa da busca |
 | `crm.html` `agenda.html` `entradas.html` | atalhos de uma linha para os endereços antigos |
 | `version.js` | **fonte única** de versão, codinome e changelog |
-| `logs.js` | registro técnico compartilhado pelas páginas |
+| `logs.js` | registro técnico e `FloreSerRede.postar` — a camada de rede compartilhada |
 | `tema.js` | tema claro/escuro/automático: paleta, seletor e preferência local |
 | `auth.js` | conta de usuário: tela de entrar, sessão de 30 dias, avatar e menu |
 | `painel.js` | painel de manutenção do portal (entrada discreta + senha no servidor) |
@@ -26,10 +33,78 @@ cada módulo mora numa pasta, para o endereço não mostrar `.html`:
 | `icons/` | ícones do aplicativo, gerados a partir de `logo.png` |
 | `logo.png` / `favicon.png` | marca |
 
+### Cada módulo, na sua pasta
+
+| Arquivo | Papel |
+|---|---|
+| `crm/index.html` | casca do CRM, as bibliotecas e a aplicação React em JSX — que fica aqui dentro de propósito, ver abaixo |
+| `crm/crm.css` | paleta `--crm-*` dos dois temas e o portão de entrada `.pt-*` |
+| `crm/crm-core.js` | infraestrutura: endereço da API, sessão, `chamarAPI`, `window.storage` |
+| `agenda/index.html` | estrutura da Agenda |
+| `agenda/agenda.css` | as seis `@font-face` locais e toda a apresentação da Agenda |
+| `agenda/agenda.js` | comportamento da Agenda |
+| `entradas/index.html` | estrutura das Entradas |
+| `entradas/entradas.css` | apresentação das Entradas |
+| `entradas/entradas.js` | comportamento das Entradas |
+
+### Terceiros e recursos
+
+| Pasta | Papel |
+|---|---|
+| `vendor/` | bibliotecas de terceiros, **intocadas**: `xlsx.full.min.js` (SheetJS 0.18.5), usado pela Agenda e pelo CRM |
+| `assets/fonts/` | as seis WOFF2 da marca — Cormorant Garamond 600/700 e Montserrat 300/400/500/600 |
+
+### As regras
+
 Os arquivos compartilhados ficam **sempre na raiz**. Como as páginas dos módulos
-estão um nível abaixo, elas os chamam com `../` — `../logo.png`, `../tema.js`.
-Página nova dentro de pasta segue a mesma regra, e a volta para o portal é
-`href="../"`, nunca `index.html`.
+estão um nível abaixo, elas os chamam com `../` — `../logo.png`, `../tema.js`,
+`../vendor/xlsx.full.min.js`. Página nova dentro de pasta segue a mesma regra, e
+a volta para o portal é `href="../"`, nunca `index.html`.
+
+**Código compartilhado vai para a raiz; código exclusivo de um módulo fica na
+pasta dele.** Um arquivo compartilhado novo só se justifica quando a
+responsabilidade é mesmo de todos — não crie um `utils.js` para juntar funções
+sem parentesco.
+
+**Ao mudar alguma coisa:** o visual está no `.css` do módulo, a lógica no `.js`,
+a estrutura no `index.html`. Não devolva CSS nem JavaScript para dentro do HTML,
+e não gere markup estrutural por `innerHTML` só para encurtar o HTML — markup que
+é estrutura pertence ao HTML.
+
+**Não edite nada dentro de `vendor/`.** Aquilo é a biblioteca original, byte a
+byte, com o cabeçalho de licença. Atualizar uma biblioteca é outra tarefa, com
+teste próprio.
+
+O projeto continua **sem build**: HTML, CSS e JavaScript clássicos, globais
+controlados (`window.FLORESER`, `window.FloreSerAuth`, `window.FloreSerSync`,
+`window.FloreSerAuditoria`, `window.FloreSerBusca`, `window.FloreSerRede`) e o
+Babel Standalone só no CRM. Sem npm, sem bundler, sem ES modules. Publicar
+continua sendo enviar os arquivos ao GitHub.
+
+**A ordem dos `<script>` importa** e não é alfabética: `tema.js` primeiro, no
+`<head>`, para o tema já estar carimbado antes da primeira pintura; depois
+`version.js`, `logs.js`, `pwa.js`, `auth.js` e, nos módulos, `sync.js` e
+`auditoria.js`; o script do próprio módulo por último, no fim do `<body>`, com o
+markup já montado. Nenhum deles leva `defer` ou `async` — a única exceção é o
+`painel.js`, que sempre teve `defer`. Não acrescente esses atributos sem
+verificar quem depende de quem.
+
+### O CRM é a exceção, e por um motivo concreto
+
+**O JSX do CRM mora dentro do `crm/index.html`, e deve continuar lá.** Não o
+mova para um arquivo próprio.
+
+O Babel Standalone compila `<script type="text/babel">` no navegador. Quando
+esse script tem `src`, o Babel busca o arquivo por `XMLHttpRequest` — e o Chrome
+bloqueia XHR entre arquivos locais. O resultado é o CRM abrindo em branco por
+`file://`, enquanto os outros três módulos abrem normalmente. Servido por HTTP
+funciona; do disco, não. Como abrir do disco faz parte do jeito de trabalhar
+aqui, o JSX fica inline: assim não há busca nenhuma para ser bloqueada.
+
+O `crm.css` e o `crm-core.js` continuam separados porque entram por `<link>` e
+por `<script src>` comuns, e essas duas tags o `file://` permite. O
+`crm-core.js` é um script **clássico** de propósito: precisa rodar antes do
+bloco compilado, e o Babel não deve compilar o que não precisa ser compilado.
 
 A **auditoria de negócio** vive na aba `Auditoria` e responde "quem mudou esta
 ficha, o quê, quando". Ela é separada do **log técnico** das abas `Logs` e
@@ -90,7 +165,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE.
 
 ### Changelog
 
@@ -148,10 +223,15 @@ sistema operacional passará a ver um aplicativo novo.
 
 ### O que entra no cache e o que nunca entra
 
-O Service Worker guarda a **casca**: HTML das quatro páginas, os scripts da
-raiz, a marca, os ícones e a `offline.html`. Guarda também, por endereço
-exato, as quatro bibliotecas que o CRM carrega do cdnjs (React, ReactDOM,
-Babel e SheetJS) — sem elas o CRM não desenha nada offline.
+O Service Worker guarda a **casca**: o HTML das quatro páginas, os scripts da
+raiz, o `.css` e o `.js` de cada módulo, o `vendor/xlsx.full.min.js`, as seis
+fontes de `assets/fonts/`, a marca, os ícones e a `offline.html`. Guarda também,
+por endereço exato, as três bibliotecas que o CRM ainda carrega do cdnjs —
+React, ReactDOM e Babel —, sem as quais ele não desenha nada offline.
+
+**Sempre que criar um arquivo local novo de que a interface dependa, ponha ele
+no `PRECACHE` e suba o `CACHE_ATUAL`.** Um `.css` esquecido ali significa a
+página abrindo sem estilo na primeira visita sem rede.
 
 **Nunca** entram no cache: qualquer chamada ao Apps Script, qualquer `POST`,
 qualquer endereço de fora que não seja uma dessas bibliotecas ou as fontes do

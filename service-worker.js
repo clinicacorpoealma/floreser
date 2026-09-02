@@ -21,7 +21,7 @@
    morando só no version.js: é o número que faz o navegador saber que a
    casca mudou. Suba um degrau quando alterar a lista do PRECACHE. */
 const CACHE_PREFIXO = "alveare-casca-";
-const CACHE_ATUAL = CACHE_PREFIXO + "3";
+const CACHE_ATUAL = CACHE_PREFIXO + "4";
 
 /* A raiz do site, seja ela / ou /floreser/ */
 const RAIZ = new URL("./", self.registration.scope).pathname;
@@ -43,6 +43,7 @@ const PRECACHE = [
   RAIZ + "agenda.html",
   RAIZ + "entradas.html",
 
+  /* os compartilhados, da raiz */
   RAIZ + "version.js",
   RAIZ + "logs.js",
   RAIZ + "tema.js",
@@ -52,6 +53,32 @@ const PRECACHE = [
   RAIZ + "sync.js",
   RAIZ + "auditoria.js",
   RAIZ + "busca.js",
+
+  /* o portal */
+  RAIZ + "portal.css",
+  RAIZ + "portal.js",
+
+  /* cada módulo, com o seu par de arquivos */
+  RAIZ + "crm/crm.css",
+  RAIZ + "crm/crm-core.js",
+  RAIZ + "agenda/agenda.css",
+  RAIZ + "agenda/agenda.js",
+  RAIZ + "entradas/entradas.css",
+  RAIZ + "entradas/entradas.js",
+
+  /* Biblioteca de terceiros, local. Antes ela vinha embutida no HTML da
+     Agenda e do cdnjs no CRM; agora é um arquivo só, que os dois usam. */
+  RAIZ + "vendor/xlsx.full.min.js",
+
+  /* As fontes da marca. Estavam em base64 dentro do HTML da Agenda, então
+     nunca precisaram de rede; agora que são arquivos, precisam entrar aqui
+     para a Agenda continuar desenhando igual sem conexão. */
+  RAIZ + "assets/fonts/cormorant-garamond-600.woff2",
+  RAIZ + "assets/fonts/cormorant-garamond-700.woff2",
+  RAIZ + "assets/fonts/montserrat-300.woff2",
+  RAIZ + "assets/fonts/montserrat-400.woff2",
+  RAIZ + "assets/fonts/montserrat-500.woff2",
+  RAIZ + "assets/fonts/montserrat-600.woff2",
 
   RAIZ + "logo.png",
   RAIZ + "favicon.png",
@@ -64,14 +91,17 @@ const PRECACHE = [
   RAIZ + "icons/apple-touch-icon.png",
 ];
 
-/* Bibliotecas que o CRM carrega de fora (React, Babel, SheetJS). Sem elas
-   o CRM não desenha nada, então vale guardar — mas só estas, por endereço
-   exato, e nunca outra coisa que venha do mesmo servidor. */
+/* Bibliotecas que o CRM ainda carrega de fora: React, ReactDOM e o Babel,
+   que compila o JSX do crm.js no próprio navegador. Sem elas o CRM não
+   desenha nada, então vale guardar — mas só estas, por endereço exato, e
+   nunca outra coisa que venha do mesmo servidor.
+
+   O SheetJS saiu desta lista: ele agora é local, em vendor/, e entra pelo
+   PRECACHE junto com o resto da casca. */
 const BIBLIOTECAS = [
   "https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
 ];
 
 /* Fontes da web: guardar ajuda, faltar não atrapalha — as páginas têm
