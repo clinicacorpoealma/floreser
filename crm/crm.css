@@ -1,13 +1,14 @@
 /* =====================================================================
    FloreSer · Corpo e Alma — apresentação do CRM
    ---------------------------------------------------------------------
-   Duas partes, nesta ordem, que é a mesma de antes:
+   Três partes, nesta ordem:
 
      1. a paleta --crm-* dos dois temas, que morava no <style> do <head>
      2. o portão de entrada .pt-*, que morava num <style> dentro do JSX
+     3. o resumo do dia na aba Follow-ups, .crm-resumo-*
 
-   O terceiro lugar onde havia CSS — o <style> do componente da aplicação —
-   continua no crm.js, e de propósito. Ele tem regras globais ("*",
+   O outro lugar onde há CSS — o <style> do componente da aplicação —
+   continua dentro do JSX, no crm/index.html, e de propósito. Ele tem regras globais ("*",
    "input, select, textarea, button") cujo alcance hoje é limitado no tempo:
    só existem enquanto a aplicação está montada, e aplicação e portão nunca
    aparecem juntos. Trazê-las para cá faria valerem também no portão — medi:
@@ -19,7 +20,7 @@
    famílias por <link>, então ele é uma segunda garantia, não a única. Fica no
    topo porque @import só vale antes de qualquer regra.
 
-   O comportamento está em crm-core.js e crm.js.
+   O comportamento está em crm-core.js e no JSX do crm/index.html.
    ===================================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Montserrat:wght@300;400;500;600&display=swap');
@@ -244,4 +245,37 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .pt-cartao, .pt-erro { animation: none; }
   .pt-entrar.carregando::after { animation: none; }
+}
+
+/* ---------- 3. resumo do dia, na aba Follow-ups ---------- */
+
+/* Dois números lado a lado: o que já foi feito hoje e o que ainda falta.
+   Discreto de propósito — é um lembrete ao pé do título, não um painel.
+   A sombra vem de .painel-claro, a mesma dos outros cartões do CRM. */
+.crm-resumo-dia {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  margin: 0 0 18px;
+}
+.crm-resumo-item {
+  /* 150 px por item: no celular estreito eles empilham em vez de apertar */
+  flex: 1 1 150px; min-width: 0;
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 11px 15px; border-radius: 12px;
+  background: var(--crm-branco); border: 1px solid var(--crm-borda);
+}
+.crm-resumo-numero {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 30px; font-weight: 600; line-height: 1;
+  color: var(--crm-texto);
+  /* A Cormorant desenha algarismos de estilo antigo, e neles o zero é um
+     "o" minúsculo: "o follow-ups pendentes". Num contador isso atrapalha a
+     leitura — aqui os algarismos ficam alinhados, na altura das maiúsculas. */
+  font-variant-numeric: lining-nums tabular-nums;
+}
+/* o que foi feito leva o verde da marca; a frase ao lado diz o que é, então
+   a cor nunca é a única pista */
+.crm-resumo-feitos .crm-resumo-numero { color: var(--crm-verde); }
+.crm-resumo-rotulo {
+  font-size: 12.5px; line-height: 1.3;
+  color: var(--crm-suave-forte);
 }

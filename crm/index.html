@@ -99,7 +99,9 @@
     var BASE_CRM = null;
     var tentativasDeMerge = 0;
 
-    const ESQUEMA_CRM = { listas: { leads: "id" } };
+    /* contatos é lista por id, como leads: dois aparelhos registrando ao
+       mesmo tempo somam, em vez de um apagar o evento do outro */
+    const ESQUEMA_CRM = { listas: { leads: "id", contatos: "id" } };
 
     /* O que conta como cadastro repetido no CRM.
 
@@ -184,8 +186,11 @@
     const cadenciaPor = (id) => CADENCIAS.find((c) => c.id === id);
 
     /* ---- Datas ---- */
-    function hojeISO() {
-      const d = new Date();
+    /* O dia no relógio de quem está usando, nunca em UTC: um contato feito
+       às 22h não pode cair no dia seguinte. "quando" é opcional — serve para
+       o evento de contato tirar data e hora do MESMO instante. */
+    function hojeISO(quando) {
+      const d = quando || new Date();
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     }
     function paraData(iso) {
@@ -218,6 +223,58 @@
     }
     function novoId() {
       return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
+    /* ---- Contatos registrados ----
+       Cada toque em "Contatei" vira um evento com id próprio, guardado junto
+       com os dados do CRM. É dele que sai "quantos contatos foram feitos
+       hoje" — e não de ultimoContato, que nasce preenchido num cadastro
+       novo, vem pronto numa importação e pode ser editado à mão.
+
+       O id precisa ser único entre aparelhos que registram no mesmo
+       segundo: o relógio sozinho não garante, então vão junto 48 bits
+       sorteados pelo próprio navegador. */
+    function novoIdContato(quando) {
+      const d = quando || new Date();
+      let sorte = "";
+      try {
+        sorte = Array.from(window.crypto.getRandomValues(new Uint8Array(6)),
+          (b) => b.toString(16).padStart(2, "0")).join("");
+      } catch (e) {
+        sorte = (Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)).slice(0, 12);
+      }
+      return "contato_" + hojeISO(d).replace(/-/g, "") + "_" + d.getTime().toString(36) + sorte;
+    }
+
+    /* data e hora locais, com o fuso escrito: 2026-09-16T20:31:42-03:00 */
+    function momentoLocal(quando) {
+      const d = quando || new Date();
+      const dois = (n) => String(n).padStart(2, "0");
+      const fuso = -d.getTimezoneOffset();
+      const sinal = fuso >= 0 ? "+" : "-";
+      const abs = Math.abs(fuso);
+      return `${hojeISO(d)}T${dois(d.getHours())}:${dois(d.getMinutes())}:${dois(d.getSeconds())}` +
+        `${sinal}${dois(Math.floor(abs / 60))}:${dois(abs % 60)}`;
+    }
+
+    /* Aceita o que vier do servidor — inclusive nada, que é o caso de todo
+       CRM criado antes desta funcionalidade — e devolve sempre a mesma forma.
+       Nada é reconstruído a partir de ultimoContato: contato que não foi
+       registrado pelo botão não é inventado. */
+    function normalizarContatos(lista) {
+      if (!Array.isArray(lista)) return [];
+      return lista
+        .filter((c) => c && c.id && c.leadId && /^\d{4}-\d{2}-\d{2}$/.test(String(c.data || "")))
+        .map((c) => ({
+          id: String(c.id),
+          leadId: String(c.leadId),
+          data: String(c.data),
+          criadoEm: String(c.criadoEm || ""),
+        }));
+    }
+
+    function plural(n, um, varios) {
+      return n === 1 ? um : varios;
     }
 
     const NOMES_MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -283,6 +340,16 @@
       const [erro, setErro] = useState(null);
       const [leads, setLeads] = useState([]);
       const [dias, setDias] = useState(() => CADENCIAS.reduce((a, c) => ({ ...a, [c.id]: c.padrao }), {}));
+      const [contatos, setContatos] = useState([]);
+      /* O valor mais novo da lista, sem esperar o React redesenhar: dois
+         registros no mesmo instante não podem partir da mesma lista velha,
+         senão o segundo apagaria o primeiro antes de sair do navegador. */
+      const contatosRef = React.useRef([]);
+      /* registro em andamento, por lead: segura o duplo clique acidental */
+      const contatoEmCurso = React.useRef({});
+      /* o dia de hoje, conferido de minuto em minuto: a meia-noite zera a
+         contagem mesmo com a página aberta desde ontem */
+      const [dia, setDia] = useState(() => hojeISO());
       const [aba, setAba] = useState("funil");
       const [periodo, setPeriodo] = useState("semana");
       const [mesRef, setMesRef] = useState(() => hojeISO().slice(0, 7));
@@ -330,6 +397,25 @@
         if (!carregando) statusCRM.salvoAgora();
       }, [carregando]);
 
+      function definirContatos(lista) {
+        contatosRef.current = lista;
+        setContatos(lista);
+      }
+
+      useEffect(() => {
+        const conferir = () => {
+          const agora = hojeISO();
+          setDia((anterior) => (anterior === agora ? anterior : agora));
+        };
+        const relogio = setInterval(conferir, 60000);
+        /* aba que volta do fundo confere na hora, sem esperar o minuto */
+        document.addEventListener("visibilitychange", conferir);
+        return () => {
+          clearInterval(relogio);
+          document.removeEventListener("visibilitychange", conferir);
+        };
+      }, []);
+
       useEffect(() => {
         (async () => {
           try {
@@ -337,8 +423,13 @@
             let d = null;
             if (res && res.value) {
               d = JSON.parse(res.value);
+              /* CRM de antes desta funcionalidade não tem contatos: vira lista
+                 vazia só em memória. Nada é gravado por ter aberto a página —
+                 a forma nova sobe junto com a próxima alteração de verdade. */
+              d.contatos = normalizarContatos(d.contatos);
               if (d.dias) setDias((atual) => ({ ...atual, ...d.dias }));
               if (d.leads) setLeads(d.leads.map(migrar));
+              definirContatos(d.contatos);
               /* o que acabou de chegar é o que o servidor tem */
               BASE_CRM = FloreSerSync.copiar(d);
             }
@@ -390,11 +481,23 @@
          "salvo" quando o servidor confirma. Se der conflito, as duas
          versões são comparadas em vez de a página recarregar. */
       async function salvar(novosLeads, novosDias) {
-        const lds = novosLeads ?? leads;
-        const ds = novosDias ?? dias;
-        if (novosLeads) setLeads(novosLeads);
-        if (novosDias) setDias(novosDias);
-        await gravar({ leads: lds, dias: ds });
+        await salvarEstado({ leads: novosLeads, dias: novosDias });
+      }
+
+      /* O estado do CRM tem três partes — leads, dias e contatos — e uma
+         alteração pode mexer em mais de uma. Tudo o que muda junto vai numa
+         gravação só: o lead com o último contato novo e o evento que conta o
+         contato nunca sobem separados, então não existe "atualizou o lead mas
+         não contou" nem o contrário. O que não foi informado segue como está. */
+      async function salvarEstado(mudancas) {
+        const m = mudancas || {};
+        const lds = m.leads ?? leads;
+        const ds = m.dias ?? dias;
+        const cts = m.contatos ?? contatosRef.current;
+        if (m.leads) setLeads(m.leads);
+        if (m.dias) setDias(m.dias);
+        if (m.contatos) definirContatos(m.contatos);
+        await gravar({ leads: lds, dias: ds, contatos: cts });
       }
 
       async function gravar(estado) {
@@ -438,12 +541,28 @@
         }
 
         const base = BASE_CRM || local;
+
+        /* Um Apps Script que ainda não conhece os contatos responde sem essa
+           lista. Ele não pode ter apagado o que nunca guardou — então, para o
+           merge, é como se não tivesse mexido neles. Tratar a ausência como
+           lista vazia faria os contatos daqui sumirem no primeiro conflito. */
+        servidor.contatos = Array.isArray(servidor.contatos)
+          ? normalizarContatos(servidor.contatos)
+          : ((base && base.contatos) || []);
+
         const m = FloreSerSync.mesclar(base, local, servidor, ESQUEMA_CRM);
+
+        /* Contato registrado nunca vira pergunta: tem id único e não é editado
+           depois. Fica fora da contagem de "conciliados sozinho", que é sobre
+           as fichas — senão um conflito numa etapa anunciaria dez conciliações
+           só porque alguém registrou dez contatos em outro aparelho. */
+        const automaticosDasFichas = m.automaticos.filter((a) => a.lista !== "contatos");
+
         anotarSync("SYNC_CONFLITO_DETECTADO",
-          m.conflitos.length + " campo(s) em disputa, " + m.automaticos.length + " conciliado(s) sozinho");
+          m.conflitos.length + " campo(s) em disputa, " + automaticosDasFichas.length + " conciliado(s) sozinho");
 
         if (!m.conflitos.length) {
-          anotarSync("SYNC_CONFLITO_AUTO_MESCLADO", m.automaticos.length + " alteração(ões)");
+          anotarSync("SYNC_CONFLITO_AUTO_MESCLADO", automaticosDasFichas.length + " alteração(ões)");
           await aplicarMerge(m.estado, falha.rev);
           return;
         }
@@ -451,7 +570,7 @@
         if (statusCRM) statusCRM.definir("conflito");
         setErro(null);
         FloreSerSync.abrirConflito({
-          conflitos: m.conflitos, automaticos: m.automaticos, rotulos: ROTULOS_CRM,
+          conflitos: m.conflitos, automaticos: automaticosDasFichas, rotulos: ROTULOS_CRM,
           aviso: "Os leads foram alterados em outro aparelho enquanto você trabalhava. " +
             "O que não se cruzou já foi juntado; escolha o que fica no que sobrou.",
           aoResolver: async function (escolhas) {
@@ -471,6 +590,9 @@
       async function aplicarMerge(estado, rev) {
         setLeads((estado.leads || []).map(migrar));
         if (estado.dias) setDias((atual) => ({ ...atual, ...estado.dias }));
+        /* o merge já juntou os contatos dos dois lados: os daqui e os de lá */
+        estado.contatos = normalizarContatos(estado.contatos);
+        definirContatos(estado.contatos);
         SESSAO.rev = rev;
 
         tentativasDeMerge++;
@@ -663,8 +785,10 @@
           const res = await window.storage.get(STORAGE_KEY);
           if (res && res.value) {
             const d = JSON.parse(res.value);
+            d.contatos = normalizarContatos(d.contatos);
             if (d.leads) setLeads(d.leads.map(migrar));
             if (d.dias) setDias((atual) => ({ ...atual, ...d.dias }));
+            definirContatos(d.contatos);
             BASE_CRM = FloreSerSync.copiar(d);
             if (statusCRM) statusCRM.salvoAgora();
           }
@@ -682,11 +806,38 @@
         salvar(leads.map((l) => (l.id === id ? { ...l, exCliente: !l.exCliente } : l)));
       }
 
-      /* registra contato e esfria um degrau, dentro do limite da etapa */
+      /* Registra contato e esfria um degrau, dentro do limite da etapa — como
+         sempre fez. Agora também deixa um evento do contato, que é o que a
+         contagem do dia soma. As duas coisas saem na mesma gravação.
+
+         Esta é a ÚNICA origem de evento de contato. Criar lead, importar,
+         editar o último contato à mão, mudar etapa ou cadência, abrir o
+         WhatsApp, restaurar da lixeira, sincronizar e resolver conflito não
+         passam por aqui — e por isso não contam. */
       function registrarContato(id) {
-        salvar(leads.map((l) =>
-          l.id === id ? { ...l, ultimoContato: hojeISO(), cadencia: proximaCadencia(l.etapa, l.cadencia) } : l
-        ));
+        /* Dois cliques colados chegariam antes de a tela redesenhar e virariam
+           dois contatos. Enquanto o registro deste lead está sendo gravado, o
+           segundo toque é ignorado; terminado, registrar de novo no mesmo dia
+           continua valendo — é outro contato de verdade. */
+        if (contatoEmCurso.current[id]) return;
+        contatoEmCurso.current[id] = true;
+
+        const agora = new Date();
+        const evento = {
+          id: novoIdContato(agora),
+          leadId: id,
+          data: hojeISO(agora),
+          criadoEm: momentoLocal(agora),
+        };
+
+        salvarEstado({
+          leads: leads.map((l) =>
+            l.id === id ? { ...l, ultimoContato: hojeISO(agora), cadencia: proximaCadencia(l.etapa, l.cadencia) } : l
+          ),
+          contatos: [...contatosRef.current, evento],
+        }).finally(() => {
+          delete contatoEmCurso.current[id];
+        });
       }
 
       /* Mover para a lixeira é operação do servidor: ele tira o lead da aba,
@@ -749,13 +900,24 @@
         }
       }
 
-      const comSituacao = useMemo(() => leads.map((l) => ({ ...l, sit: situacao(l, dias) })), [leads, dias]);
+      /* "dia" entra nas dependências só para a lista ser recalculada à
+         meia-noite com a página aberta — a regra de quem fica pendente é a
+         mesma de sempre. Sem isto, o resumo zeraria os contatos do dia novo
+         e continuaria mostrando os pendentes de ontem. */
+      const comSituacao = useMemo(() => leads.map((l) => ({ ...l, sit: situacao(l, dias) })), [leads, dias, dia]);
       const ativos = comSituacao.filter((l) => !etapaPor(l.etapa).arquivo);
       const arquivados = comSituacao.filter((l) => etapaPor(l.etapa).arquivo);
 
       const pendentes = ativos
         .filter((l) => l.sit.tipo === "atrasado" || l.sit.tipo === "hoje")
         .sort((a, b) => b.sit.atraso - a.sit.atraso);
+
+      /* Cada evento é um contato: a mesma lead contatada duas vezes hoje soma
+         dois. Contatos de ontem continuam guardados; só não entram aqui. */
+      const contatosHoje = useMemo(
+        () => contatos.filter((c) => c.data === dia).length,
+        [contatos, dia]
+      );
 
       const filtrados = ativos
         .filter((l) => filtroEtapa === "todas" || l.etapa === filtroEtapa)
@@ -1020,6 +1182,7 @@
                 <p style={{ fontSize: 13, color: CORES.suave, margin: "0 0 18px" }}>
                   Ao registrar o contato, o lead esfria um degrau — dentro do limite que a etapa permite.
                 </p>
+                <ResumoDoDia feitos={contatosHoje} pendentes={pendentes.length} />
                 {pendentes.length === 0 ? (
                   <Vazio titulo="Tudo em dia" texto="Nenhum lead aguardando contato agora." />
                 ) : (
@@ -1293,6 +1456,28 @@
           <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: CORES.suave }}>{rotulo}</div>
           <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 34, fontWeight: 600, color: CORES.texto, lineHeight: 1.1, marginTop: 2 }}>{valor}</div>
           <div style={{ fontSize: 12, color: CORES.verde }}>{nota}</div>
+        </div>
+      );
+    }
+
+    /* O que já foi feito hoje ao lado do que ainda falta. O número nunca
+       aparece sozinho — a frase inteira está no texto, para quem lê a tela
+       e para quem ouve. Zero também aparece: dia sem contato é informação. */
+    function ResumoDoDia({ feitos, pendentes }) {
+      return (
+        <div className="crm-resumo-dia" aria-live="polite" aria-atomic="true">
+          <div className="crm-resumo-item crm-resumo-feitos painel-claro">
+            <span className="crm-resumo-numero">{feitos}</span>
+            <span className="crm-resumo-rotulo">
+              {plural(feitos, "contato feito hoje", "contatos feitos hoje")}
+            </span>
+          </div>
+          <div className="crm-resumo-item painel-claro">
+            <span className="crm-resumo-numero">{pendentes}</span>
+            <span className="crm-resumo-rotulo">
+              {plural(pendentes, "follow-up pendente", "follow-ups pendentes")}
+            </span>
+          </div>
         </div>
       );
     }

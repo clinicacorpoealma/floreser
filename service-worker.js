@@ -19,9 +19,13 @@
 
 /* Identificador técnico do cache. Não é a versão do sistema, que continua
    morando só no version.js: é o número que faz o navegador saber que a
-   casca mudou. Suba um degrau quando alterar a lista do PRECACHE. */
+   casca mudou. Suba um degrau quando alterar a lista do PRECACHE — e
+   também quando mudar o conteúdo de um .css ou .js da casca de que o HTML
+   novo dependa. A página vem da rede, mas o CSS vem guardado: sem subir o
+   número, a primeira abertura depois de publicar juntaria HTML novo com
+   CSS velho. */
 const CACHE_PREFIXO = "alveare-casca-";
-const CACHE_ATUAL = CACHE_PREFIXO + "4";
+const CACHE_ATUAL = CACHE_PREFIXO + "5";
 
 /* A raiz do site, seja ela / ou /floreser/ */
 const RAIZ = new URL("./", self.registration.scope).pathname;

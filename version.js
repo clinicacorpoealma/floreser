@@ -22,6 +22,22 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "3.1.0",
+      codinome: "CULTIVO",
+      data: "16/09/2026",
+      mudancas: {
+        "Adicionado": [
+          "A aba Follow-ups do CRM agora mostra quantos contatos foram feitos hoje, ao lado de quantos follow-ups ainda estão pendentes. O número sobe na hora em que você toca em “Contatei”.",
+          "Só conta o contato registrado pelo botão. Cadastrar um lead novo, importar uma planilha, corrigir a data do último contato à mão, mudar etapa ou cadência e abrir o WhatsApp não aumentam o número — nenhuma dessas coisas é um contato feito.",
+          "Cada toque é um contato: falar duas vezes com a mesma pessoa no mesmo dia conta dois. À meia-noite a contagem recomeça do zero, mesmo com o CRM aberto desde a véspera."
+        ],
+        "Técnico": [
+          "Os contatos ficam guardados na planilha, numa aba nova chamada Leads_Contatos, com quem registrou e quando. O total aparece igual em qualquer computador e continua certo depois de recarregar a página.",
+          "Dois computadores registrando contato ao mesmo tempo somam os dois, e a aba nunca apaga um contato registrado — nem quando o lead vai para a lixeira. Os contatos começam a ser contados a partir desta versão; os anteriores não são reconstruídos."
+        ]
+      }
+    },
+    {
       versao: "3.0.0",
       codinome: "ALICERCE",
       data: "02/09/2026",

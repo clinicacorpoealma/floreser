@@ -38,7 +38,7 @@ comporta*. Nenhum dos três volta a morar dentro do outro.
 | Arquivo | Papel |
 |---|---|
 | `crm/index.html` | casca do CRM, as bibliotecas e a aplicação React em JSX — que fica aqui dentro de propósito, ver abaixo |
-| `crm/crm.css` | paleta `--crm-*` dos dois temas e o portão de entrada `.pt-*` |
+| `crm/crm.css` | paleta `--crm-*` dos dois temas, o portão de entrada `.pt-*` e o resumo do dia `.crm-resumo-*` |
 | `crm/crm-core.js` | infraestrutura: endereço da API, sessão, `chamarAPI`, `window.storage` |
 | `agenda/index.html` | estrutura da Agenda |
 | `agenda/agenda.css` | as seis `@font-face` locais e toda a apresentação da Agenda |
@@ -106,6 +106,28 @@ por `<script src>` comuns, e essas duas tags o `file://` permite. O
 `crm-core.js` é um script **clássico** de propósito: precisa rodar antes do
 bloco compilado, e o Babel não deve compilar o que não precisa ser compilado.
 
+### O estado do CRM
+
+O CRM grava três partes juntas: `leads`, `dias` (intervalos das cadências) e
+`contatos`. Na conciliação de conflitos, `leads` e `contatos` são listas por id
+(`ESQUEMA_CRM`): dois aparelhos que acrescentam itens diferentes somam os dois.
+Toda lista nova com id próprio precisa entrar ali — fora dela, a lista inteira
+vira um campo só e um aparelho sobrescreve o outro.
+
+`contatos` são eventos `{ id, leadId, data, criadoEm }`, um por toque em
+"Contatei". **A única origem é `registrarContato`**, e é daí que sai "contatos
+feitos hoje". Não calcule isso por `ultimoContato`: lead novo nasce com ele
+preenchido, importação traz a data pronta, e dá para editar à mão. `data` é o dia
+local de `hojeISO()`, nunca `toISOString()`.
+
+No Apps Script, os contatos moram na aba `Leads_Contatos`, que **só cresce**: o
+servidor acrescenta ids que não conhece, nunca apaga, e carimba o autor pelo
+`autorizar()`. Eles não passam pelo `gravarCRM` nem pela auditoria da ficha, e
+não saem na exclusão definitiva do lead — não guardam nome, telefone nem valor.
+A leitura devolve só os últimos 62 dias. **Publique o Apps Script antes do site,
+ou junto:** um servidor antigo descarta a lista, e a contagem volta a zero a cada
+recarregamento.
+
 A **auditoria de negócio** vive na aba `Auditoria` e responde "quem mudou esta
 ficha, o quê, quando". Ela é separada do **log técnico** das abas `Logs` e
 `Sessoes`, que continua sendo erro, rede, sessão e segurança. Não misture os
@@ -165,7 +187,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO.
 
 ### Changelog
 
@@ -250,9 +272,11 @@ Suba os arquivos como sempre. Quem já tem o Alveare instalado recebe o aviso
 recarrega uma vez e pronto. Ninguém precisa limpar cache nem apertar Ctrl+F5.
 
 Se você mudar a **lista de arquivos** do precache no `service-worker.js`, suba
-o número em `CACHE_ATUAL` (`alveare-casca-1` → `alveare-casca-2`). Esse número
-é técnico e não aparece para ninguém: a versão que a tela mostra continua
-saindo só do `version.js`.
+o número em `CACHE_ATUAL` (`alveare-casca-1` → `alveare-casca-2`). Suba também
+quando mudar o **conteúdo** de um `.css` ou `.js` da casca: a página vem da rede,
+mas o CSS vem guardado, e sem o número novo a primeira abertura depois de
+publicar junta HTML novo com CSS velho. Esse número é técnico e não aparece para
+ninguém: a versão que a tela mostra continua saindo só do `version.js`.
 
 ### Testar
 
