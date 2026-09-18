@@ -167,13 +167,77 @@ async function carregar(){
   /* primeira vez: registra a data de inicio e as maquinas que ja vem cadastradas */
   if(primeiraVez) salvar();
 }
+/* ---------- Intervalos ----------
+   Semanal, 15 e 30 dias são os atalhos de sempre; qualquer outro número
+   inteiro de 1 a 365 é um intervalo personalizado, e vale do mesmo jeito.
+   Antes só os três atalhos passavam, e um ciclo de 21 dias vindo do CRM
+   virava 7 sem ninguém perceber. */
+const INTERVALOS=[{dias:7,nome:'Semanal'},{dias:15,nome:'A cada 15 dias'},{dias:30,nome:'A cada 30 dias'}];
+const INTERVALO_MAX=365;
+function intervaloValido(n){ return Number.isInteger(n)&&n>=1&&n<=INTERVALO_MAX; }
+/* lê o que foi digitado: só aceita um inteiro de verdade — "2,5", "abc",
+   "0" e "-5" voltam null */
+function lerIntervalo(txt){
+  const s=String(txt==null?'':txt).trim();
+  if(!/^\d{1,3}$/.test(s)) return null;
+  const n=+s; return intervaloValido(n)?n:null;
+}
+
+/* ---------- Série de atendimentos ----------
+   agendamento é sempre o PRÓXIMO atendimento marcado — é dele que o painel,
+   os follow-ups e a integração com o CRM falam. Os seguintes de uma série
+   ficam em proximos, em ordem e sem repetir. Qualquer mudança passa por
+   aqui para essa regra continuar valendo: o próximo é sempre o mais cedo. */
+function arrumarSerie(c){
+  if(!c) return c;
+  const vistos={};
+  if(c.agendamento) vistos[c.agendamento.data]=true;
+  let lista=(Array.isArray(c.proximos)?c.proximos:[]).filter(d=>{
+    if(!D.ok(d)||vistos[d]) return false;
+    vistos[d]=true; return true;
+  }).sort();
+  if(!c.agendamento&&lista.length){
+    c.agendamento={data:lista.shift(),temFollowUp:false};
+  } else if(c.agendamento&&lista.length&&lista[0]<c.agendamento.data){
+    lista.push(c.agendamento.data); lista.sort();
+    const primeiro=lista.shift();
+    lista=lista.filter(d=>d!==primeiro);
+    c.agendamento={data:primeiro,temFollowUp:false};
+  }
+  c.proximos=lista;
+  return c;
+}
+/* todas as datas marcadas de uma área, a próxima primeiro */
+function marcadas(c){
+  if(!c||!c.agendamento) return [];
+  return [c.agendamento.data].concat(c.proximos||[]);
+}
+/* "a cada 10 dias", se as datas seguem um passo só; senão, nada */
+function passoDaSerie(datas){
+  if(datas.length<2) return null;
+  const n=D.dif(datas[0],datas[1]);
+  for(let i=2;i<datas.length;i++) if(D.dif(datas[i-1],datas[i])!==n) return null;
+  return n>0?n:null;
+}
+/* A série inteira, a partir da primeira data: cada uma é o dia do
+   calendário "n dias depois" da anterior — nunca milissegundos somados,
+   que horário de verão e fuso desalinham. */
+function datasDaSerie(inicio,quantidade,passo){
+  const out=[];
+  for(let i=0;i<quantidade;i++) out.push(D.add(inicio,i*passo));
+  return out;
+}
+
 function normCiclo(c){
   if(!c) return null;
-  return {freq:[7,15,30].indexOf(+c.freq)>=0?+c.freq:7,
+  const freq=Math.round(+c.freq);
+  return arrumarSerie({freq:intervaloValido(freq)?freq:7,
     ultimo:D.ok(c.ultimo)?c.ultimo:null,
-    agendamento:(c.agendamento&&D.ok(c.agendamento.data))?c.agendamento:null,
+    agendamento:(c.agendamento&&D.ok(c.agendamento.data))
+      ?{data:c.agendamento.data,temFollowUp:!!c.agendamento.temFollowUp}:null,
+    proximos:Array.isArray(c.proximos)?c.proximos.slice():[],
     adiadaPara:D.ok(c.adiadaPara)?c.adiadaPara:null,
-    naoRespondeu:+c.naoRespondeu||0};
+    naoRespondeu:+c.naoRespondeu||0});
 }
 function normalizar(p){
   p.id=p.id||uid();
@@ -205,7 +269,7 @@ function normalizar(p){
   return p;
 }
 function novoCiclo(freq,ultimo){
-  return {freq:freq,ultimo:ultimo||null,agendamento:null,adiadaPara:null,naoRespondeu:0};
+  return {freq:freq,ultimo:ultimo||null,agendamento:null,proximos:[],adiadaPara:null,naoRespondeu:0};
 }
 /* ---------- Gravação na planilha ----------
    A tela responde na hora e o envio acontece logo atrás, agrupando
@@ -492,16 +556,23 @@ function resolver(p,k,hoje){
   if(c.ultimo && hoje>prazo) r.atraso=D.dif(prazo,hoje);
   return r;
 }
-/* Fecha automaticamente ciclos cuja sessão já passou */
+/* Fecha automaticamente ciclos cuja sessão já passou. Numa série, cada data
+   que passou vira uma sessão, e a seguinte assume como próximo atendimento.
+
+   Atenção: isto é o relógio, não uma confirmação de presença. Por isso a
+   "sessão" daqui nunca é tratada como comparecimento no CRM — lá, quem diz
+   se a pessoa veio ou faltou é o Comercial 2. */
 function maturar(){
   const hoje=D.hoje(); let mudou=false;
   state.pacientes.forEach(p=>{
     AREAK.forEach(k=>{
       const c=ciclo(p,k); if(!c) return;
-      if(c.agendamento && c.agendamento.data<hoje){
+      let guarda=0;
+      while(c.agendamento && c.agendamento.data<hoje && guarda++<400){
         c.ultimo=c.agendamento.data;
         p.historico.push({tipo:'sessao',area:k,data:c.agendamento.data,em:hoje});
         c.agendamento=null; c.adiadaPara=null; c.naoRespondeu=0;
+        arrumarSerie(c);
         mudou=true;
       }
       if(c.adiadaPara && c.adiadaPara<hoje){ c.adiadaPara=null; mudou=true; }
@@ -732,6 +803,10 @@ function cardSessao(o,hoje){
       linha(I.cal(13),'<b>'+D.br(ag.data)+'</b> · '+D.dow(ag.data)+' · '+relativo(ag.data,hoje))+
       (fu?linha(I.bell(13),'Follow-up em '+D.br(fu.data)+' · '+relativo(fu.data,hoje))
          :linha(I.info(13),'Sem follow-up definido'))+
+      ((c.proximos||[]).length
+        ? linha(I.loop(13),'Depois: mais '+c.proximos.length+(c.proximos.length===1?' atendimento':' atendimentos')+
+            ', até '+D.br(c.proximos[c.proximos.length-1]))
+        : '')+
     '</div>'+
     (p.obs?'<div class="card-obs">'+esc(p.obs)+'</div>':'')+
     '<div class="card-acts">'+
@@ -912,6 +987,9 @@ function renderDash(){
             (r.cond?' · adiado':(ciclo(p,k).adiadaPara===d?' · não respondeu':'')),'',a.cor);
         else if((r.estado==='agendado'||r.estado==='sessao_hoje')&&r.prazo===d)
           chips+=chip(p.id,p.nome,a.nome+' · sessão marcada','ses',a.cor);
+        /* os atendimentos seguintes de uma série também têm dia */
+        if((ciclo(p,k).proximos||[]).indexOf(d)>=0)
+          chips+=chip(p.id,p.nome,a.nome+' · sessão da série','ses',a.cor);
       });
     });
     fuPendentes().forEach(f=>{
@@ -1095,9 +1173,19 @@ function formPaciente(p){
     const c=ed?ciclo(p,a.k):null;
     const on=!!c || (!ed&&a.k==='facial');
     const f=c?c.freq:15;
-    const rad=[7,15,30].map(n=>'<label class="'+(f===n?'on':'')+'" data-freq="'+n+'">'+
-      '<input type="radio" name="freq-'+a.k+'" value="'+n+'"'+(f===n?' checked':'')+
-      '><b>'+n+'</b>dias</label>').join('');
+    /* os três atalhos de sempre, e "outro" para qualquer intervalo de 1 a
+       365 dias — um ciclo de 21 dias abre aqui já marcado como outro, 21 */
+    const outro=INTERVALOS.every(o=>o.dias!==f);
+    const rad=INTERVALOS.map(o=>'<label class="'+(f===o.dias?'on':'')+'" data-freq="'+o.dias+'">'+
+      '<input type="radio" name="freq-'+a.k+'" value="'+o.dias+'"'+(f===o.dias?' checked':'')+
+      '><b>'+o.dias+'</b>dias</label>').join('')+
+      '<label class="'+(outro?'on':'')+'" data-freq="outro" title="Intervalo personalizado">'+
+      '<input type="radio" name="freq-'+a.k+'" value="outro"'+(outro?' checked':'')+
+      '><b data-rot>'+(outro?f:'…')+'</b>outro</label>';
+    const campoOutro='<div class="dias-campo" data-outro="'+a.k+'"'+(outro?'':' hidden')+'>'+
+      '<label for="f-freq-'+a.k+'">Personalizado: a cada</label>'+
+      '<input type="number" id="f-freq-'+a.k+'" min="1" max="'+INTERVALO_MAX+'" step="1" inputmode="numeric" value="'+
+      (outro?f:'')+'"><span>dias</span></div>';
     return '<div class="area-box'+(on?' on':'')+'" data-k="'+a.k+'">'+
       '<label class="area-top"><input type="checkbox" data-ak="'+a.k+'"'+(on?' checked':'')+'>'+
         '<span class="ai" style="background:'+a.cor+'">'+a.ic(15)+'</span>'+
@@ -1105,7 +1193,7 @@ function formPaciente(p){
       '<div class="area-cfg"'+(on?'':' style="display:none"')+'>'+
         '<div class="fgrid">'+
           '<div class="field full"><label style="font-size:9.5px">Ela vem a cada</label>'+
-            '<div class="radios" data-rk="'+a.k+'">'+rad+'</div></div>'+
+            '<div class="radios" data-rk="'+a.k+'">'+rad+'</div>'+campoOutro+'</div>'+
           '<div class="field full"><label style="font-size:9.5px" for="f-ult-'+a.k+
             '">Último atendimento '+a.nome.toLowerCase()+' <span class="opt">(opcional)</span></label>'+
             '<input type="date" id="f-ult-'+a.k+'" value="'+((c&&c.ultimo)||'')+'">'+
@@ -1200,9 +1288,19 @@ function renderCond(){
 function ligarForm(){
   renderCond();
   document.querySelectorAll('#f-areas .radios').forEach(fr=>{
+    const k=fr.dataset.rk;
+    const campo=document.querySelector('#f-areas .dias-campo[data-outro="'+k+'"]');
+    const num=document.getElementById('f-freq-'+k);
     fr.querySelectorAll('label').forEach(l=>l.addEventListener('click',()=>{
       fr.querySelectorAll('label').forEach(x=>x.classList.remove('on')); l.classList.add('on');
+      const outro=l.dataset.freq==='outro';
+      if(campo) campo.hidden=!outro;
+      if(outro&&num) setTimeout(()=>num.focus(),0);
     }));
+    if(num) num.addEventListener('input',()=>{
+      const rot=fr.querySelector('[data-rot]');
+      if(rot) rot.textContent=lerIntervalo(num.value)||'…';
+    });
   });
   document.querySelectorAll('#f-areas input[data-ak]').forEach(cb=>{
     cb.addEventListener('change',()=>{
@@ -1234,14 +1332,17 @@ function salvarPaciente(){
   for(const a of AREAS){
     const cb=document.querySelector('#f-areas input[data-ak="'+a.k+'"]');
     if(!cb||!cb.checked) continue;
-    const freq=+document.querySelector('#f-areas .radios[data-rk="'+a.k+'"] label.on').dataset.freq;
+    const escolha=document.querySelector('#f-areas .radios[data-rk="'+a.k+'"] label.on').dataset.freq;
+    const freq=escolha==='outro'?lerIntervalo(document.getElementById('f-freq-'+a.k).value):+escolha;
+    if(!freq){ toast('O intervalo '+a.nome.toLowerCase()+' precisa ser um número inteiro de 1 a '+
+      INTERVALO_MAX+' dias.',true); document.getElementById('f-freq-'+a.k).focus(); return; }
     const ult=document.getElementById('f-ult-'+a.k).value||null;
     if(ult&&ult>hoje){ toast('O último atendimento '+a.nome.toLowerCase()+
       ' não pode estar no futuro.',true); return; }
     const ant=antigo?ciclo(antigo,a.k):null;
     ciclos[a.k]= ant
-      ? {freq:freq,ultimo:ult,agendamento:ant.agendamento,adiadaPara:ant.adiadaPara,
-         naoRespondeu:ant.naoRespondeu}
+      ? {freq:freq,ultimo:ult,agendamento:ant.agendamento,proximos:(ant.proximos||[]).slice(),
+         adiadaPara:ant.adiadaPara,naoRespondeu:ant.naoRespondeu}
       : novoCiclo(freq,ult);
   }
   const catId=document.getElementById('f-cat').value||null;
@@ -1585,95 +1686,317 @@ function cabecaModal(titulo,sub){
     '<button class="x" data-act="fechar">'+I.x(20)+'</button></div>';
 }
 
-/* ---------- Agendar ---------- */
-function modalAgendar(id,k){
+/* ---------- Agendar ----------
+   Uma tela, quatro jeitos de abrir:
+     novo     nada marcado nesta área: o primeiro atendimento e, se quiser,
+              os seguintes da série
+     mais     já há atendimentos: acrescenta outros depois do último
+     alterar  muda só o PRÓXIMO atendimento, e o follow-up dele
+     sessao   muda ou tira UMA data da série
+   A série não é uma regra viva, é uma lista de datas: mudar uma nunca
+   arrasta as outras. */
+const SERIE_MAX=60;
+
+function modalAgendar(id,k,modo,alvo){
   const p=pac(id); if(!p) return;
   const c=ciclo(p,k); if(!c) return;
-  const hoje=D.hoje(), r=resolver(p,k,hoje), a=area(k);
   const atual=c.agendamento;
+  modo=modo||(atual?'alterar':'novo');
+  if(modo==='alterar'&&!atual) modo='novo';
+  if(modo==='mais'&&!atual) modo='novo';
+  if(modo==='sessao'){ modalDataDaSerie(p,k,alvo); return; }
+
+  const hoje=D.hoje(), r=resolver(p,k,hoje), a=area(k);
+  const ja=marcadas(c);
+  const serie=modo==='novo'||modo==='mais';
+  const comFU=modo!=='mais';
+  const passo=passoDaSerie(ja)||c.freq;
+  const atalho=INTERVALOS.some(o=>o.dias===passo);
   const fuAtual=state.followups.find(f=>f.pacienteId===p.id&&f.area===k&&!f.feito);
-  const sugerida=atual?atual.data:(r.prazo&&r.prazo>=hoje?r.prazo:hoje);
-  const temFU=!!(atual&&fuAtual);
+  const sugerida=modo==='alterar'?atual.data
+    :modo==='mais'?D.add(ja[ja.length-1],passo)
+    :(r.prazo&&r.prazo>=hoje?r.prazo:hoje);
+  const temFU=modo==='alterar'&&!!fuAtual;
   const fuData=fuAtual?fuAtual.data:D.add(sugerida,2);
-  abrir(cabecaModal((atual?'Alterar agendamento':'Agendado para dia…'),
-      esc(p.nome)+' &middot; '+a.nome+' &middot; ciclo de '+c.freq+' dias')+
+  const titulo=modo==='alterar'?'Alterar o próximo atendimento'
+    :modo==='mais'?'Marcar mais atendimentos':'Agendado para dia…';
+
+  const passos=INTERVALOS.map(o=>'<label class="'+(passo===o.dias?'on':'')+'" data-passo="'+o.dias+'">'+
+      '<input type="radio" name="m-passo" value="'+o.dias+'"'+(passo===o.dias?' checked':'')+'>'+
+      '<b>'+o.dias+'</b>'+(o.dias===7?'semanal':'dias')+'</label>').join('')+
+    '<label class="'+(atalho?'':'on')+'" data-passo="outro">'+
+      '<input type="radio" name="m-passo" value="outro"'+(atalho?'':' checked')+'>'+
+      '<b id="m-passo-rot">'+(atalho?'…':passo)+'</b>personalizado</label>';
+
+  abrir(cabecaModal(titulo,esc(p.nome)+' &middot; '+a.nome+' &middot; ciclo de '+c.freq+' dias')+
     '<div class="modal-body">'+
-      (r.primeiro?'':'<div class="note info" style="margin-bottom:20px">'+I.info(15)+
-        '<div>Último atendimento '+a.nome.toLowerCase()+' em <b>'+D.br(c.ultimo)+'</b>. '+
-        'O prazo calculado é <b>'+D.br(r.prazo)+'</b>'+(r.cond?' (já adiado por “'+
-        esc(r.cond.texto)+'”)':'')+'.</div></div>')+
+      (modo==='mais'
+        ? '<div class="note info" style="margin-bottom:20px">'+I.info(15)+'<div>'+
+          (ja.length===1?'Já está marcado <b>'+D.br(ja[0])+'</b>.'
+            :'Já estão marcados '+ja.length+' atendimentos, de <b>'+D.br(ja[0])+'</b> a <b>'+
+              D.br(ja[ja.length-1])+'</b>.')+
+          ' Os novos entram depois, sem mexer nesses.</div></div>'
+        : (r.primeiro?'':'<div class="note info" style="margin-bottom:20px">'+I.info(15)+
+          '<div>Último atendimento '+a.nome.toLowerCase()+' em <b>'+D.br(c.ultimo)+'</b>. '+
+          'O prazo calculado é <b>'+D.br(r.prazo)+'</b>'+(r.cond?' (já adiado por “'+
+          esc(r.cond.texto)+'”)':'')+'.</div></div>'))+
+      (modo==='alterar'&&ja.length>1
+        ? '<div class="note info" style="margin-bottom:20px">'+I.loop(15)+'<div>Este é o primeiro de '+
+          ja.length+' atendimentos marcados. Mudar esta data não mexe nos seguintes — cada um se '+
+          'altera na ficha.</div></div>'
+        : '')+
       '<div class="fgrid one">'+
-        '<div class="field"><label for="m-data">Data do agendamento</label>'+
-          '<input type="date" id="m-data" value="'+sugerida+'"></div>'+
+        '<div class="field"><label for="m-data">'+(serie?'Data do primeiro atendimento':'Data do atendimento')+
+          '</label><input type="date" id="m-data" value="'+sugerida+'"></div>'+
         '<div id="m-aviso"></div>'+
-        '<div class="field"><label class="check'+(temFU?' on':'')+'" id="m-fu-w">'+
-          '<input type="checkbox" id="m-fu"'+(temFU?' checked':'')+'>'+
-          '<span>Com follow-up<b>Um contato de acompanhamento depois da sessão. '+
-          'Aparece no Dashboard no dia marcado.</b></span></label></div>'+
-        '<div class="field" id="m-fu-box" style="'+(temFU?'':'display:none')+'">'+
-          '<label for="m-fud">Dia do follow-up</label>'+
-          '<input type="date" id="m-fud" value="'+fuData+'">'+
-          '<span class="hintx">Precisa ser depois da data do agendamento.</span></div>'+
+        (serie
+          ? '<div class="field"><label for="m-qtd">Quantidade de atendimentos</label>'+
+              '<input type="number" id="m-qtd" min="1" max="'+SERIE_MAX+'" step="1" inputmode="numeric" value="1">'+
+              '<span class="hintx">'+(modo==='novo'?'1 marca só este atendimento. Com mais de 1, a série sai com o espaçamento abaixo.'
+                :'Quantos atendimentos novos, a partir da data acima.')+' Até '+SERIE_MAX+'.</span></div>'+
+            '<div class="field" id="m-passo-box" hidden><label>Espaçamento entre os atendimentos</label>'+
+              '<div class="radios" id="m-passos">'+passos+'</div>'+
+              '<div class="dias-campo" id="m-passo-outro"'+(atalho?' hidden':'')+'>'+
+                '<label for="m-passo-n">A cada</label>'+
+                '<input type="number" id="m-passo-n" min="1" max="'+INTERVALO_MAX+'" step="1" inputmode="numeric" value="'+
+                  (atalho?'':passo)+'"><span>dias</span></div>'+
+              '<span class="hintx" id="m-passo-dica"'+(atalho?' hidden':'')+'>Um número inteiro de 1 a '+
+                INTERVALO_MAX+' dias.</span></div>'+
+            '<div id="m-previa"></div>'
+          : '')+
+        (comFU
+          ? '<div class="field"><label class="check'+(temFU?' on':'')+'" id="m-fu-w">'+
+              '<input type="checkbox" id="m-fu"'+(temFU?' checked':'')+'>'+
+              '<span>Com follow-up<b>Um contato de acompanhamento depois da sessão'+
+              (serie?' — a primeira da série':'')+'. Aparece no Dashboard no dia marcado.</b></span></label></div>'+
+            '<div class="field" id="m-fu-box" style="'+(temFU?'':'display:none')+'">'+
+              '<label for="m-fud">Dia do follow-up</label>'+
+              '<input type="date" id="m-fud" value="'+fuData+'">'+
+              '<span class="hintx">Precisa ser depois da data do atendimento.</span></div>'
+          : '')+
       '</div>'+
     '</div>'+
     '<div class="modal-foot">'+
-      (atual?'<button class="btn q" data-act="desmarcar" data-id="'+p.id+'" data-a="'+k+'">'+
+      (modo==='alterar'?'<button class="btn q" data-act="desmarcar" data-id="'+p.id+'" data-a="'+k+'">'+
         I.x(13)+' Desmarcar</button><span class="sep"></span>':'')+
       '<button class="btn g" data-act="fechar">Cancelar</button>'+
-      '<button class="btn p" data-act="confirmar-agenda" data-id="'+p.id+'" data-a="'+k+'">'+
-      I.check(13)+' Confirmar</button>'+
+      '<button class="btn p" id="m-ok" data-act="confirmar-agenda" data-id="'+p.id+'" data-a="'+k+
+        '" data-modo="'+modo+'">'+I.check(13)+' Confirmar</button>'+
     '</div>');
-  const dt=document.getElementById('m-data'),fu=document.getElementById('m-fu'),
-        fud=document.getElementById('m-fud'),box=document.getElementById('m-fu-box'),
-        av=document.getElementById('m-aviso');
+
+  const dt=document.getElementById('m-data'), av=document.getElementById('m-aviso');
+  const fu=document.getElementById('m-fu'), fud=document.getElementById('m-fud'),
+        box=document.getElementById('m-fu-box');
   function checar(){
     let h=''; const d=dt.value;
-    if(d){
+    const s=serie?lerSerie():{qtd:1};
+    /* numa série a prévia já mostra condição e data passada de cada dia */
+    if(d&&(!serie||s.qtd===1)){
       const cd=condEm(p,d);
       if(cd) h+='<div class="note warn">'+I.warn(15)+'<div><b>Atenção:</b> '+esc(cd.texto)+
         ' — ela está indisponível de '+D.br(cd.inicio)+' a '+D.br(cd.fim)+'.</div></div>';
       if(d<hoje) h+='<div class="note info" style="margin-top:10px">'+I.info(15)+
         '<div>Data no passado: o ciclo '+a.nome.toLowerCase()+
         ' será recontado a partir dela.</div></div>';
+      if(modo!=='alterar'&&ja.indexOf(d)>=0) h+='<div class="note warn" style="margin-top:10px">'+I.warn(15)+
+        '<div>Já existe atendimento '+a.nome.toLowerCase()+' nesse dia.</div></div>';
     }
-    if(fu.checked&&d){ fud.min=D.add(d,1); if(fud.value&&fud.value<=d) fud.value=D.add(d,2); }
-    if(fu.checked&&fud.value&&d){
+    if(fu&&fu.checked&&d){ fud.min=D.add(d,1); if(fud.value&&fud.value<=d) fud.value=D.add(d,2); }
+    if(fu&&fu.checked&&fud.value&&d){
       const c2=condEm(p,fud.value);
       if(c2) h+='<div class="note warn" style="margin-top:10px">'+I.warn(15)+
         '<div>O follow-up cai dentro de “'+esc(c2.texto)+'”.</div></div>';
     }
     av.innerHTML=h;
+    if(serie) previa(p,k,s);
   }
   dt.addEventListener('input',checar);
-  fud.addEventListener('input',checar);
-  fu.addEventListener('change',()=>{
-    box.style.display=fu.checked?'':'none';
-    document.getElementById('m-fu-w').classList.toggle('on',fu.checked);
-    if(fu.checked&&(!fud.value||fud.value<=dt.value)) fud.value=D.add(dt.value||hoje,2);
-    checar();
-  });
+  if(fu){
+    fud.addEventListener('input',checar);
+    fu.addEventListener('change',()=>{
+      box.style.display=fu.checked?'':'none';
+      document.getElementById('m-fu-w').classList.toggle('on',fu.checked);
+      if(fu.checked&&(!fud.value||fud.value<=dt.value)) fud.value=D.add(dt.value||hoje,2);
+      checar();
+    });
+  }
+  if(serie){
+    const qtd=document.getElementById('m-qtd'), n=document.getElementById('m-passo-n');
+    qtd.addEventListener('input',checar);
+    n.addEventListener('input',()=>{
+      const v=lerIntervalo(n.value);
+      document.getElementById('m-passo-rot').textContent=v||'…';
+      checar();
+    });
+    document.querySelectorAll('#m-passos label').forEach(l=>l.addEventListener('click',()=>{
+      document.querySelectorAll('#m-passos label').forEach(x=>x.classList.toggle('on',x===l));
+      const outro=l.dataset.passo==='outro';
+      document.getElementById('m-passo-outro').hidden=!outro;
+      document.getElementById('m-passo-dica').hidden=!outro;
+      if(outro) setTimeout(()=>n.focus(),0);
+      checar();
+    }));
+  }
   checar();
 }
-function confirmarAgenda(id,k){
-  const p=pac(id), c=ciclo(p,k); if(!c) return;
+
+/* O que está escolhido na tela: quantidade e espaçamento. Número que não é
+   inteiro, ou fora do limite, não vira série — volta como erro. */
+function lerSerie(){
+  const q=document.getElementById('m-qtd');
+  if(!q) return {qtd:1,passo:null};
+  const t=q.value.trim();
+  const qtd=/^\d{1,3}$/.test(t)?+t:NaN;
+  if(!(qtd>=1&&qtd<=SERIE_MAX)) return {erro:'A quantidade é um número inteiro de 1 a '+SERIE_MAX+'.'};
+  const marcado=document.querySelector('#m-passos label.on');
+  let passo=null;
+  if(marcado&&marcado.dataset.passo!=='outro') passo=+marcado.dataset.passo;
+  else passo=lerIntervalo(document.getElementById('m-passo-n').value);
+  if(qtd===1) return {qtd:1,passo:passo};
+  if(!passo) return {qtd:qtd,erro:'O intervalo é um número inteiro de 1 a '+INTERVALO_MAX+' dias.'};
+  return {qtd:qtd,passo:passo};
+}
+
+/* A prévia: as datas que vão ser criadas, antes de salvar. Dia já marcado
+   nesta área fica de fora (e a prévia diz); condição e data passada
+   aparecem como aviso, sem impedir. */
+function previa(p,k,s){
+  const alvo=document.getElementById('m-previa'); if(!alvo) return;
+  const boxPasso=document.getElementById('m-passo-box');
   const d=document.getElementById('m-data').value;
-  if(!D.ok(d)){ toast('Escolha a data do agendamento.',true); return; }
-  const temFU=document.getElementById('m-fu').checked;
-  const fud=document.getElementById('m-fud').value;
+  boxPasso.hidden=!(s.qtd>1);
+  const ok=document.getElementById('m-ok');
+  if(ok) ok.disabled=!!s.erro||!D.ok(d);
+  if(s.erro){
+    alvo.innerHTML='<div class="note warn">'+I.warn(15)+'<div>'+esc(s.erro)+'</div></div>';
+    return;
+  }
+  if(!D.ok(d)||s.qtd<2){ alvo.innerHTML=''; return; }
+  const hoje=D.hoje(), ja=marcadas(ciclo(p,k));
+  const datas=datasDaSerie(d,s.qtd,s.passo);
+  const novas=datas.filter(x=>ja.indexOf(x)<0).length;
+  alvo.innerHTML='<div class="serie-previa"><div class="sp-topo">'+
+    '<b>'+novas+(novas===1?' atendimento':' atendimentos')+'</b>'+
+    '<span>a cada '+s.passo+(s.passo===1?' dia':' dias')+'</span></div><ol>'+
+    datas.map(x=>{
+      const cd=condEm(p,x), repetida=ja.indexOf(x)>=0;
+      return '<li'+(repetida?' class="fora"':'')+'><span class="sp-data">'+D.br(x)+'</span>'+
+        '<span class="sp-dia">'+D.dow3(x)+'</span>'+
+        (repetida?'<span class="badge soft">já marcado — fica de fora</span>'
+          :cd?'<span class="badge warn">'+I.plane(11)+' '+esc(cd.texto||'indisponível')+'</span>'
+          :x<hoje?'<span class="badge soft">no passado</span>':'')+
+        '</li>';
+    }).join('')+'</ol></div>';
+}
+
+function confirmarAgenda(id,k,modo){
+  const p=pac(id), c=ciclo(p,k); if(!c) return;
+  const campo=document.getElementById('m-data');
+  /* a janela já fechou: é um segundo clique no mesmo botão */
+  if(!campo) return;
+  const d=campo.value, hoje=D.hoje(), a=area(k);
+  if(!D.ok(d)){ toast('Escolha a data do atendimento.',true); return; }
+  const fuEl=document.getElementById('m-fu');
+  const temFU=!!(fuEl&&fuEl.checked);
+  const fud=temFU?document.getElementById('m-fud').value:'';
   if(temFU){
     if(!D.ok(fud)){ toast('Escolha o dia do follow-up.',true); return; }
-    if(fud<=d){ toast('O follow-up precisa ser depois do agendamento.',true); return; }
+    if(fud<=d){ toast('O follow-up precisa ser depois do atendimento.',true); return; }
   }
-  c.agendamento={data:d,temFollowUp:temFU};
+  const trocarFollowUp=()=>{
+    state.followups=state.followups.filter(f=>!(f.pacienteId===p.id&&f.area===k&&!f.feito));
+    if(temFU) state.followups.push({id:uid(),pacienteId:p.id,area:k,data:fud,feito:false,
+      agendamentoData:d,criadoEm:hoje});
+  };
+
+  if(modo==='alterar'&&c.agendamento){
+    const antes=c.agendamento.data;
+    if(d!==antes&&(c.proximos||[]).indexOf(d)>=0){
+      toast('Já existe atendimento '+a.nome.toLowerCase()+' em '+D.br(d)+'.',true); return; }
+    c.agendamento={data:d,temFollowUp:temFU};
+    c.adiadaPara=null; c.naoRespondeu=0;
+    arrumarSerie(c);
+    if(d!==antes) p.historico.push({tipo:'reagendou',area:k,data:d,em:hoje,fu:temFU?fud:null});
+    trocarFollowUp();
+    salvar(); fechar(); tudo();
+    toast(p.nome+' — '+a.nome.toLowerCase()+(d!==antes?' remarcado de '+D.br(antes)+' para ':' em ')+
+      D.br(d)+(temFU?' · follow-up em '+D.br(fud):''));
+    return;
+  }
+
+  const s=lerSerie();
+  if(s.erro){ toast(s.erro,true); return; }
+  const ja=marcadas(c);
+  const novas=datasDaSerie(d,s.qtd,s.passo||1).filter(x=>ja.indexOf(x)<0);
+  if(!novas.length){ toast(s.qtd>1?'Essas datas já estavam marcadas.':'Esse dia já estava marcado.',true); return; }
+
+  if(!c.agendamento){
+    c.agendamento={data:novas[0],temFollowUp:temFU};
+    c.proximos=(c.proximos||[]).concat(novas.slice(1));
+    trocarFollowUp();
+  } else {
+    c.proximos=(c.proximos||[]).concat(novas);
+  }
   c.adiadaPara=null; c.naoRespondeu=0;
-  p.historico.push({tipo:'agendou',area:k,data:d,em:D.hoje(),fu:temFU?fud:null});
-  state.followups=state.followups.filter(f=>!(f.pacienteId===p.id&&f.area===k&&!f.feito));
-  if(temFU) state.followups.push({id:uid(),pacienteId:p.id,area:k,data:fud,feito:false,
-    agendamentoData:d,criadoEm:D.hoje()});
+  arrumarSerie(c);
+  novas.forEach((x,i)=>p.historico.push({tipo:'agendou',area:k,data:x,em:hoje,
+    fu:(i===0&&temFU)?fud:null}));
   salvar(); fechar(); tudo();
-  toast(p.nome+' — '+area(k).nome.toLowerCase()+' agendado para '+D.br(d)+
-    (temFU?' · follow-up em '+D.br(fud):''));
+  toast(novas.length===1
+    ? p.nome+' — '+a.nome.toLowerCase()+' agendado para '+D.br(novas[0])+(temFU?' · follow-up em '+D.br(fud):'')
+    : p.nome+' — '+novas.length+' atendimentos '+a.nome.toLowerCase()+', de '+D.br(novas[0])+
+      ' a '+D.br(novas[novas.length-1])+'.');
 }
+
+/* ---------- uma data da série ---------- */
+function modalDataDaSerie(p,k,data){
+  const c=ciclo(p,k), a=area(k);
+  if(!c||(c.proximos||[]).indexOf(data)<0) return;
+  abrir(cabecaModal('Atendimento da série',esc(p.nome)+' &middot; '+a.nome+' &middot; '+D.br(data))+
+    '<div class="modal-body"><div class="fgrid one">'+
+      '<div class="field"><label for="m-sessao">Nova data</label>'+
+        '<input type="date" id="m-sessao" value="'+data+'">'+
+        '<span class="hintx">Só este atendimento muda. Os outros da série ficam onde estão.</span></div>'+
+      '<div id="m-sessao-aviso"></div>'+
+    '</div></div>'+
+    '<div class="modal-foot">'+
+      '<button class="btn q" data-act="serie-tirar" data-id="'+p.id+'" data-a="'+k+'" data-d="'+data+'">'+
+        I.x(13)+' Desmarcar este</button><span class="sep"></span>'+
+      '<button class="btn g" data-act="fechar">Cancelar</button>'+
+      '<button class="btn p" data-act="serie-alterar" data-id="'+p.id+'" data-a="'+k+'" data-d="'+data+'">'+
+        I.check(13)+' Confirmar</button>'+
+    '</div>');
+  const campo=document.getElementById('m-sessao'), av=document.getElementById('m-sessao-aviso');
+  const checar=()=>{
+    const cd=D.ok(campo.value)?condEm(p,campo.value):null;
+    av.innerHTML=cd?'<div class="note warn">'+I.warn(15)+'<div><b>Atenção:</b> '+esc(cd.texto)+
+      ' — ela está indisponível de '+D.br(cd.inicio)+' a '+D.br(cd.fim)+'.</div></div>':'';
+  };
+  campo.addEventListener('input',checar); checar();
+}
+function alterarDaSerie(id,k,antiga){
+  const p=pac(id), c=ciclo(p,k); if(!c) return;
+  const campo=document.getElementById('m-sessao'); if(!campo) return;
+  const nova=campo.value, a=area(k);
+  if(!D.ok(nova)){ toast('Escolha a nova data.',true); return; }
+  if(nova===antiga){ fechar(); return; }
+  if(marcadas(c).indexOf(nova)>=0){
+    toast('Já existe atendimento '+a.nome.toLowerCase()+' em '+D.br(nova)+'.',true); return; }
+  c.proximos=(c.proximos||[]).filter(x=>x!==antiga).concat([nova]);
+  arrumarSerie(c);
+  p.historico.push({tipo:'reagendou',area:k,data:nova,em:D.hoje()});
+  salvar(); fechar(); tudo();
+  toast(p.nome+' — atendimento '+a.nome.toLowerCase()+' de '+D.br(antiga)+' passou para '+D.br(nova)+'.');
+}
+function tirarDaSerie(id,k,data){
+  const p=pac(id), c=ciclo(p,k); if(!c) return;
+  if((c.proximos||[]).indexOf(data)<0) return;
+  c.proximos=c.proximos.filter(x=>x!==data);
+  p.historico.push({tipo:'desmarcou',area:k,data:data,em:D.hoje()});
+  salvar(); fechar(); tudo();
+  toast('Atendimento '+area(k).nome.toLowerCase()+' de '+p.nome+' em '+D.br(data)+' desmarcado.');
+}
+
 function naoRespondeu(id,k){
   const p=pac(id), c=ciclo(p,k); if(!c) return;
   const hoje=D.hoje();
@@ -1684,16 +2007,63 @@ function naoRespondeu(id,k){
   toast(p.nome+' ('+area(k).nome.toLowerCase()+') volta para a lista amanhã ('+
     D.br(c.adiadaPara)+').');
 }
+
+/* Desmarcar é cancelar antes de acontecer — não é falta. O próximo
+   atendimento sai, o seguinte da série (se houver) assume, e o histórico
+   guarda o dia que foi desmarcado. */
 function desmarcar(id,k){
-  const p=pac(id), c=ciclo(p,k); if(!c) return;
+  const p=pac(id), c=ciclo(p,k); if(!c||!c.agendamento) return;
+  const data=c.agendamento.data;
   c.agendamento=null;
+  arrumarSerie(c);
   state.followups=state.followups.filter(f=>!(f.pacienteId===p.id&&f.area===k&&!f.feito));
-  p.historico.push({tipo:'desmarcou',area:k,data:D.hoje(),em:D.hoje()});
+  p.historico.push({tipo:'desmarcou',area:k,data:data,em:D.hoje()});
   salvar(); fechar(); tudo();
-  toast('Agendamento '+area(k).nome.toLowerCase()+' de '+p.nome+' desfeito.');
+  toast('Atendimento '+area(k).nome.toLowerCase()+' de '+p.nome+' em '+D.br(data)+' desmarcado.'+
+    (c.agendamento?' O próximo agora é '+D.br(c.agendamento.data)+'.':''));
+}
+
+/* a série inteira de uma área, de uma vez — com confirmação */
+function desmarcarTodos(id,k){
+  const p=pac(id), c=ciclo(p,k); if(!c) return;
+  const datas=marcadas(c); if(!datas.length) return;
+  confirmar('Desmarcar os '+datas.length+' atendimentos?',
+    'Saem todos os atendimentos '+area(k).nome.toLowerCase()+' marcados para '+esc(p.nome)+
+    ', de '+D.br(datas[0])+' a '+D.br(datas[datas.length-1])+'. O histórico guarda cada um.',
+    'Desmarcar todos',()=>{
+      c.agendamento=null; c.proximos=[];
+      state.followups=state.followups.filter(f=>!(f.pacienteId===p.id&&f.area===k&&!f.feito));
+      datas.forEach(x=>p.historico.push({tipo:'desmarcou',area:k,data:x,em:D.hoje()}));
+      salvar(); tudo();
+      toast(datas.length+' atendimentos '+area(k).nome.toLowerCase()+' de '+p.nome+' desmarcados.');
+    });
 }
 
 /* ---------- Ficha ---------- */
+
+/* Os atendimentos marcados de uma área: o próximo primeiro, e cada data da
+   série com o seu "Alterar". Mudar uma não arrasta as outras. */
+function serieNaFicha(p,k,hoje){
+  const c=ciclo(p,k), ds=marcadas(c);
+  if(!ds.length) return '';
+  const passo=passoDaSerie(ds);
+  return '<div class="serie-ficha">'+
+    '<div class="sf-topo"><b>'+(ds.length===1?'1 atendimento marcado':ds.length+' atendimentos marcados')+'</b>'+
+      (passo?'<span>a cada '+passo+(passo===1?' dia':' dias')+'</span>':'')+'</div>'+
+    '<ol>'+ds.map((x,i)=>'<li><span class="sp-data">'+D.br(x)+'</span>'+
+      '<span class="sp-dia">'+D.dow3(x)+' · '+relativo(x,hoje)+'</span>'+
+      (i===0?'<span class="badge ok">próximo</span>'
+        :'<button class="btn q sm" data-act="agendar" data-modo="sessao" data-d="'+x+'" data-id="'+p.id+
+          '" data-a="'+k+'" title="Alterar só este">'+I.edit(12)+'</button>')+
+      '</li>').join('')+'</ol>'+
+    '<div class="sf-acoes">'+
+      '<button class="btn g sm" data-act="agendar" data-modo="mais" data-id="'+p.id+'" data-a="'+k+'">'+
+        I.plus(12)+' Marcar mais</button>'+
+      (ds.length>1?'<button class="btn q sm" data-act="serie-desmarcar-tudo" data-id="'+p.id+'" data-a="'+k+'">'+
+        I.x(12)+' Desmarcar todos</button>':'')+
+    '</div></div>';
+}
+
 function modalFicha(id){
   const p=pac(id); if(!p) return;
   const hoje=D.hoje(), c=cat(p.categoriaId);
@@ -1719,11 +2089,11 @@ function modalFicha(id){
       (cc.naoRespondeu>0?'<span class="badge soft">Sem resposta '+cc.naoRespondeu+'&times;</span>':'')+
       '<span style="flex:1"></span>'+
       '<button class="btn g sm" data-act="agendar" data-id="'+p.id+'" data-a="'+k+'">'+
-        I.cal(12)+' Agendar</button></div>'+
+        I.cal(12)+(cc.agendamento?' Alterar próximo':' Agendar')+'</button></div>'+
       '<div class="card-body" style="margin:0">'+
         linha(I.cal(13),'Último atendimento: <b>'+(cc.ultimo?D.br(cc.ultimo):'—')+'</b>')+
         linha(I.cal(13),'Próximo prazo: <b>'+(r.prazo?D.br(r.prazo):'—')+'</b> — '+sit)+
-      '</div>'+avisoCond(r)+'</div>';
+      '</div>'+serieNaFicha(p,k,hoje)+avisoCond(r)+'</div>';
   });
   if(!ciclosHTML) ciclosHTML='<span class="hintx">Nenhum ciclo cadastrado.</span>';
 
@@ -1732,6 +2102,7 @@ function modalFicha(id){
     hist='<div style="display:flex;flex-direction:column;gap:8px">'+
       p.historico.slice().reverse().slice(0,14).map(x=>{
         const rot={sessao:'Sessão realizada',agendou:'Agendamento marcado',
+          reagendou:'Atendimento remarcado',
           nao_respondeu:'Não respondeu',desmarcou:'Agendamento desfeito',
           fu:'Follow-up feito',importado:'Importada da planilha',
           maq_agendou:'Confirmada na máquina',maq_proxima:'Adiada para a próxima vinda',
@@ -1894,7 +2265,10 @@ function parseFreqOpt(v){
   if(/^(nao|não|n|-|x)$/i.test(s)) return null;
   const m=s.match(/\d+/); if(!m) return null;
   const n=+m[0]; if(!n) return null;
-  return [7,15,30].reduce((a,b)=>Math.abs(b-n)<Math.abs(a-n)?b:a,7);
+  /* O número da planilha vale como está: 21 é 21. Antes ele era arredondado
+     para 7, 15 ou 30, e um ciclo de 21 dias entrava como 15. Fora de 1 a
+     365, o mais perto do limite. */
+  return Math.min(n,INTERVALO_MAX);
 }
 function parseData(v){
   if(v==null||v==='') return null;
@@ -2128,22 +2502,25 @@ function expXlsx(){
   const hoje=D.hoje();
   const aoa=[['Nome','Facial','Último facial','Corporal','Último corporal','Capilar',
               'Último capilar','Categoria','Máquinas','Próximo prazo','Situação',
-              'Condições','Observações']];
+              'Atendimentos marcados','Condições','Observações']];
   state.pacientes.slice().sort((a,b)=>
     (a.arquivada?1:0)-(b.arquivada?1:0)||a.nome.localeCompare(b.nome,'pt-BR')).forEach(p=>{
     const c=cat(p.categoriaId), s=situacaoPac(p,hoje);
     const cel=k=>{ const cc=ciclo(p,k); return cc?cc.freq:''; };
     const ult=k=>{ const cc=ciclo(p,k); return cc&&cc.ultimo?D.br(cc.ultimo):''; };
     const sitTxt=String(s.html).replace(/<[^>]+>/g,'');
+    /* cada área com as suas datas, a próxima primeiro: "Facial 20/09/2026, 30/09/2026" */
+    const agendados=areasDe(p).filter(k=>marcadas(ciclo(p,k)).length)
+      .map(k=>area(k).nome+' '+marcadas(ciclo(p,k)).map(D.br).join(', ')).join(' | ');
     aoa.push([p.nome,cel('facial'),ult('facial'),cel('corporal'),ult('corporal'),
       cel('capilar'),ult('capilar'),c?c.nome:'',
       (p.maquinas||[]).map(mid=>{const m=maq(mid);return m?m.nome:'';}).filter(Boolean).join(', '),
-      s.prazo?D.br(s.prazo):'',sitTxt,
+      s.prazo?D.br(s.prazo):'',sitTxt,agendados,
       (p.condicoes||[]).map(x=>x.texto+' ('+D.br(x.inicio)+'–'+D.br(x.fim)+')').join(' | '),p.obs]);
   });
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:28},{wch:8},{wch:14},{wch:10},{wch:15},{wch:9},{wch:14},{wch:16},
-    {wch:20},{wch:14},{wch:22},{wch:30},{wch:40}];
+    {wch:20},{wch:14},{wch:22},{wch:36},{wch:30},{wch:40}];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Pacientes');
   XLSX.writeFile(wb,'Pacientes_FloreSer_'+D.hoje()+'.xlsx');
   toast('Planilha exportada.');
@@ -2285,8 +2662,11 @@ document.addEventListener('click',e=>{
       const campo=document.getElementById('motivo-lixeira');
       const motivo=campo?campo.value.trim():'';
       fechar(); if(f) f(motivo); break; }
-    case 'agendar': modalAgendar(id,ar); break;
-    case 'confirmar-agenda': confirmarAgenda(id,ar); break;
+    case 'agendar': modalAgendar(id,ar,b.dataset.modo,b.dataset.d); break;
+    case 'confirmar-agenda': confirmarAgenda(id,ar,b.dataset.modo); break;
+    case 'serie-alterar': alterarDaSerie(id,ar,b.dataset.d); break;
+    case 'serie-tirar': tirarDaSerie(id,ar,b.dataset.d); break;
+    case 'serie-desmarcar-tudo': desmarcarTodos(id,ar); break;
     case 'naoresp': naoRespondeu(id,ar); break;
     case 'desmarcar': desmarcar(id,ar); break;
     case 'ver': modalFicha(id); break;

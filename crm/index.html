@@ -103,6 +103,86 @@
        mesmo tempo somam, em vez de um apagar o evento do outro */
     const ESQUEMA_CRM = { listas: { leads: "id", contatos: "id" } };
 
+    /* ---- A etapa decide junto com o que depende dela ----
+       O merge de três vias compara campo a campo, e para a etapa isso não
+       basta. "Falta" num aparelho e "Fazer orçamento" no outro dão conflito
+       na etapa — mas a cadência (Quente, de um lado) e o comparecimento
+       (carimbado do outro) passariam sozinhos, e qualquer escolha terminaria
+       incoerente: Falta com comparecimento, ou Fazer orçamento com cadência.
+
+       Então a etapa é UMA pergunta, e o que ela arrasta segue o lado
+       escolhido: cadência, data do atendimento e marcos do funil.
+
+       Também vira pergunta a etapa mudada de um lado enquanto o outro mudava
+       a data do atendimento: marcar Falta aqui enquanto alguém reagendava lá
+       não é coisa para o sistema juntar sozinho.
+
+       Mudanças que não se cruzam continuam passando sem pergunta: reagendar
+       num aparelho e mexer nas observações no outro guarda as duas. */
+    const CAMPOS_DA_ETAPA = ["cadencia", "dataAgendada", "dtConversa", "dtAgendamento",
+      "dtComparecimento", "dtVenda", "dtReprovado"];
+
+    function amarrarEtapas(m, base, local, servidor) {
+      const indexar = (estado) => {
+        const mapa = {};
+        ((estado && estado.leads) || []).forEach((l) => { if (l && l.id) mapa[String(l.id)] = l; });
+        return mapa;
+      };
+      const B = indexar(base), L = indexar(local), S = indexar(servidor);
+      const mudou = (antes, depois, campo) => !FloreSerSync.iguais(antes[campo], depois[campo]);
+      const daEtapa = (c) => c.tipo === "campo" && c.lista === "leads" && c.campo === "etapa";
+
+      const emDisputa = {};
+      m.conflitos.forEach((c) => { if (daEtapa(c)) emDisputa[c.id] = "etapa"; });
+      Object.keys(L).forEach((id) => {
+        if (emDisputa[id] || !B[id] || !S[id]) return;
+        const b = B[id], l = L[id], s = S[id];
+        const etapaAqui = mudou(b, l, "etapa"), etapaLa = mudou(b, s, "etapa");
+        if ((etapaAqui && !etapaLa && mudou(b, s, "dataAgendada")) ||
+          (etapaLa && !etapaAqui && mudou(b, l, "dataAgendada"))) {
+          emDisputa[id] = "cruzada";
+        }
+      });
+
+      const conflitos = m.conflitos.filter((c) =>
+        !(c.tipo === "campo" && c.lista === "leads" && emDisputa[c.id] && CAMPOS_DA_ETAPA.includes(c.campo)));
+      Object.keys(emDisputa).forEach((id) => {
+        if (emDisputa[id] !== "cruzada") return;
+        conflitos.push({
+          tipo: "campo", lista: "leads", id: id, campo: "etapa",
+          rotuloRegistro: L[id].nome || S[id].nome || id,
+          base: B[id].etapa, local: L[id].etapa, servidor: S[id].etapa,
+        });
+      });
+
+      /* Depois das escolhas: a etapa e tudo o que ela arrasta vêm inteiros do
+         lado escolhido. Por último, cadência que não pertence à etapa não
+         fica — em nenhuma lead que o merge tocou. */
+      function finalizar(estado, escolhas) {
+        const saida = estado;
+        const porId = indexar(saida);
+        conflitos.forEach((c, i) => {
+          if (!daEtapa(c) || !emDisputa[c.id]) return;
+          const fonte = (escolhas[i] === "local" ? L : S)[c.id];
+          const alvo = porId[c.id];
+          if (!fonte || !alvo) return;
+          ["etapa"].concat(CAMPOS_DA_ETAPA).forEach((k) => {
+            alvo[k] = fonte[k] === undefined ? "" : FloreSerSync.copiar(fonte[k]);
+          });
+        });
+
+        const tocadas = {};
+        m.automaticos.forEach((a) => { if (a.lista === "leads") tocadas[a.id] = true; });
+        conflitos.forEach((c) => { if (c.lista === "leads") tocadas[c.id] = true; });
+        (saida.leads || []).forEach((l) => {
+          if (tocadas[String(l.id)]) l.cadencia = cadenciaValida(l.etapa, l.cadencia);
+        });
+        return saida;
+      }
+
+      return { conflitos: conflitos, finalizar: finalizar };
+    }
+
     /* O que conta como cadastro repetido no CRM.
 
        O WhatsApp é forte: número igual é quase sempre a mesma pessoa, e
@@ -123,7 +203,8 @@
         cadencia: "Cadência", ultimoContato: "Último contato", observacoes: "Observações",
         interesse: "Interesse",
         origem: "Origem", exCliente: "Ex-cliente", criadoEm: "Cadastrada em",
-        dtConversa: "1ª conversa", dtAgendamento: "Agendamento",
+        dtConversa: "1ª conversa", dtAgendamento: "Agendou em",
+        dataAgendada: "Data do atendimento",
         dtComparecimento: "Comparecimento", dtVenda: "Venda",
         dtReprovado: "Reprovada em", historico: "Histórico",
       },
@@ -149,6 +230,8 @@
               comparecimento semanas depois não duplica o agendamento.
               null quer dizer que a etapa não carimba nada novo: o que já
               foi carimbado continua valendo.
+       comercial: quem cuida da lead enquanto ela está nesta etapa — ver
+              comercialDaEtapa(), logo abaixo. null é o arquivo.
        arquivo: sai do dia a dia, mas continua salvo                      */
     /* preenche os rótulos do comparador com o que as tabelas já dizem */
     function prepararRotulos() {
@@ -157,17 +240,75 @@
       ORIGENS.forEach(function (o) { ROTULOS_CRM.valores.origem[o.id] = o.nome; });
     }
 
+    /* Fazer orçamento e Em aberto são coisas diferentes, e a diferença é o
+       fluxo inteiro:
+         Fazer orçamento — ela compareceu e o orçamento AINDA PRECISA SER
+                           PREPARADO. É do Comercial 2, não tem cadência e
+                           fica no topo da fila até alguém concluir.
+         Em aberto       — o orçamento JÁ EXISTE e foi apresentado; o
+                           Comercial 1 acompanha a decisão, com cadência.
+       A antiga "Com orçamento" (com_orcamento) era a segunda, e continua
+       migrando para Em aberto — nunca para Fazer orçamento. */
     const ETAPAS = [
-      { id: "nao_responde", nome: "Não responde", cadencias: ["quente", "morno", "frio", "muito_frio"], nivel: null },
-      { id: "conversando", nome: "Conversando", cadencias: ["quente"], nivel: 1 },
-      { id: "nurturing", nome: "Nurturing", cadencias: ["frio", "muito_frio"], nivel: null },
-      { id: "agendado", nome: "Agendado", cadencias: [], nivel: 2 },
-      { id: "falta", nome: "Falta", cadencias: ["quente"], nivel: null },
-      { id: "em_aberto", nome: "Em aberto", cadencias: ["quente", "morno", "frio", "muito_frio"], nivel: 3 },
-      { id: "venda", nome: "Venda", cadencias: [], nivel: 4, arquivo: true },
-      { id: "venda_reprovada", nome: "Venda reprovada", cadencias: [], nivel: 3, arquivo: true, encerra: true },
-      { id: "recusado", nome: "Recusado", cadencias: [], nivel: null, arquivo: true, encerra: true },
+      { id: "nao_responde", nome: "Não responde", cadencias: ["quente", "morno", "frio", "muito_frio"], nivel: null, comercial: 1 },
+      { id: "conversando", nome: "Conversando", cadencias: ["quente"], nivel: 1, comercial: 1 },
+      { id: "nurturing", nome: "Nurturing", cadencias: ["frio", "muito_frio"], nivel: null, comercial: 1 },
+      { id: "agendado", nome: "Agendado", cadencias: [], nivel: 2, comercial: 2 },
+      { id: "falta", nome: "Falta", cadencias: ["quente"], nivel: null, comercial: 1 },
+      { id: "fazer_orcamento", nome: "Fazer orçamento", cadencias: [], nivel: 3, comercial: 2 },
+      { id: "em_aberto", nome: "Em aberto", cadencias: ["quente", "morno", "frio", "muito_frio"], nivel: 3, comercial: 1 },
+      { id: "venda", nome: "Venda", cadencias: [], nivel: 4, arquivo: true, comercial: null },
+      { id: "venda_reprovada", nome: "Venda reprovada", cadencias: [], nivel: 3, arquivo: true, encerra: true, comercial: null },
+      { id: "recusado", nome: "Recusado", cadencias: [], nivel: null, arquivo: true, encerra: true, comercial: null },
     ];
+
+    /* ---- Quem cuida da lead agora ----
+       As duas filas de trabalho. A responsabilidade NÃO é gravada na lead:
+       ela sai da etapa, sempre, por comercialDaEtapa(). Gravar
+       "responsavel" em cada cadastro abriria espaço para uma lead em Falta
+       aparecer como do Comercial 2 — duas verdades que um dia discordam.
+
+       Quando existirem contas presas a uma fila, a regra entra aqui: qual
+       destas filas cada conta enxerga. O resto do CRM já pergunta tudo por
+       comercialDaEtapa(). */
+    const COMERCIAIS = [
+      { id: 1, nome: "Comercial 1", papel: "Relacionamento e acompanhamento" },
+      { id: 2, nome: "Comercial 2", papel: "Atendimentos agendados e orçamentos" },
+    ];
+
+    function comercialDaEtapa(etapaId) {
+      return etapaPor(etapaId).comercial || null;
+    }
+
+    function nomeDoResponsavel(etapaId) {
+      const n = comercialDaEtapa(etapaId);
+      const c = COMERCIAIS.find((x) => x.id === n);
+      return c ? c.nome : "Arquivo";
+    }
+
+    /* Os passos do dia a dia a partir de cada etapa. É o que o seletor da
+       ficha oferece; qualquer outra etapa continua possível, mas só pela
+       correção manual, que existe para consertar cadastro.
+
+       Agendado não tem seletor: antes do atendimento a ação é a data, e
+       depois dele a pergunta tem só duas respostas — DESFECHOS_DO_ATENDIMENTO.
+       Fazer orçamento também não: a saída é "Orçamento feito". */
+    const PROXIMAS_ETAPAS = {
+      nao_responde: ["conversando", "nurturing", "agendado", "recusado"],
+      conversando: ["nao_responde", "nurturing", "agendado", "recusado"],
+      nurturing: ["nao_responde", "conversando", "agendado", "recusado"],
+      falta: ["agendado", "nao_responde", "conversando", "nurturing", "recusado"],
+      em_aberto: ["venda", "venda_reprovada", "recusado"],
+      agendado: [],
+      fazer_orcamento: [],
+      venda: [],
+      venda_reprovada: [],
+      recusado: [],
+    };
+
+    /* Depois do dia do atendimento, só existem duas perguntas possíveis:
+       ela faltou, ou compareceu e precisa de orçamento? */
+    const DESFECHOS_DO_ATENDIMENTO = ["falta", "fazer_orcamento"];
 
     /* ---- De onde a cliente veio ---- */
     const ORIGENS = [
@@ -210,6 +351,20 @@
       if (!iso) return "—";
       const [y, m, d] = String(iso).split("-");
       return d && m ? `${d}/${m}/${y}` : "—";
+    }
+    function dataValida(iso) {
+      return /^\d{4}-\d{2}-\d{2}$/.test(String(iso || "")) && !!paraData(iso);
+    }
+    /* "hoje", "ontem", "em 4 dias", "há 3 dias": a distância que se lê de
+       relance, contada em dias do calendário e não em horas */
+    function distancia(iso, hoje) {
+      const d = paraData(iso), h = paraData(hoje);
+      if (!d || !h) return "";
+      const n = Math.round((d - h) / 86400000);
+      if (n === 0) return "hoje";
+      if (n === 1) return "amanhã";
+      if (n === -1) return "ontem";
+      return n > 1 ? `em ${n} dias` : `há ${-n} dias`;
     }
     function inicioDaSemana() {
       const d = new Date();
@@ -301,11 +456,19 @@
       return permitidas[Math.min(i + 1, permitidas.length - 1)];
     }
 
-    /* ---- Situação do follow-up ---- */
+    /* a etapa trabalha por cadência, e a lead tem uma: é aí que cabe "Contatei" */
+    function temCadencia(lead) {
+      return etapaPor(lead.etapa).cadencias.length > 0 && !!lead.cadencia;
+    }
+
+    /* ---- Situação do follow-up ----
+       Só para etapas com cadência. Agendado e Fazer orçamento têm a própria
+       situação, em situacaoComercial2() — uma cadência que sobrou gravada
+       numa lead agendada não pode colocá-la na fila de contatos. */
     function situacao(lead, dias) {
       const etapa = etapaPor(lead.etapa);
       if (etapa.arquivo) return { tipo: "arquivado", texto: "Arquivado", atraso: -9999 };
-      if (!lead.cadencia) return { tipo: "sem-cadencia", texto: "Sem cadência", atraso: -9999 };
+      if (!temCadencia(lead)) return { tipo: "sem-cadencia", texto: "Sem cadência", atraso: -9999 };
       const intervalo = dias[lead.cadencia] || cadenciaPor(lead.cadencia)?.padrao || 5;
       const passados = diasDesde(lead.ultimoContato);
       if (passados === null) return { tipo: "atrasado", texto: "Nunca contatada", atraso: 999 };
@@ -315,18 +478,102 @@
       return { tipo: "em-dia", texto: `Em ${restam}d`, atraso: -restam };
     }
 
-    /* ---- Marcos do funil: carimba as datas conforme o lead avança ---- */
-    function aplicarMarcos(lead, etapaId) {
+    /* ---- A fila do Comercial 2 ----
+       Não é cadência. Agendado e Fazer orçamento não esfriam e não têm
+       "próximo contato": a ordem sai da prioridade e da data do atendimento.
+
+       A data é dataAgendada — o dia em que a pessoa vem à clínica. NÃO é
+       dtAgendamento, que é o marco do funil: o dia em que a lead foi
+       agendada. Marcar hoje para daqui a uma semana dá dtAgendamento hoje e
+       dataAgendada daqui a uma semana.
+
+       Uma tabela só diz a ordem dos grupos e quais pedem ação agora; o
+       badge da aba e a ordenação leem daqui. */
+    const FILA_COMERCIAL2 = {
+      orcamento: { ordem: 0, acao: true, titulo: "Prioridade · fazer orçamento" },
+      sem_data: { ordem: 1, acao: true, titulo: "Sem data do atendimento" },
+      passou: { ordem: 2, acao: true, titulo: "O atendimento já passou" },
+      hoje: { ordem: 3, acao: false, titulo: "Atendimento hoje" },
+      futuro: { ordem: 4, acao: false, titulo: "Próximos atendimentos" },
+    };
+
+    function situacaoComercial2(lead, hoje) {
+      const dia = hoje || hojeISO();
+      const montar = (tipo, chave, texto) => ({ tipo, chave: chave || "", texto, ...FILA_COMERCIAL2[tipo] });
+
+      if (lead.etapa === "fazer_orcamento") {
+        /* o mais antigo primeiro: orçamento esquecido é o que mais custa */
+        const c = lead.dtComparecimento;
+        const texto = !dataValida(c) ? "Orçamento a fazer"
+          : c === dia ? "Compareceu hoje"
+            : `Compareceu em ${formatarData(c)} · ${distancia(c, dia)}`;
+        return montar("orcamento", c || lead.dataAgendada || lead.criadoEm, texto);
+      }
+      if (lead.etapa !== "agendado") return null;
+
+      const d = lead.dataAgendada;
+      /* Lead de antes desta versão não tem a data. Ela NÃO é inventada a
+         partir de dtAgendamento: isso trocaria "quando marcou" por "quando
+         vem", e o CRM passaria a cobrar desfecho de quem ainda nem veio. */
+      if (!dataValida(d)) return montar("sem_data", lead.dtAgendamento || lead.criadoEm, "Data do atendimento não informada");
+      if (d < dia) return montar("passou", d, `Atendimento em ${formatarData(d)} · ${distancia(d, dia)}`);
+      if (d === dia) return montar("hoje", d, "Atendimento hoje");
+      return montar("futuro", d, `${formatarData(d)} · ${distancia(d, dia)}`);
+    }
+
+    /* A única ordenação do Comercial 2: grupo, depois a data dentro dele
+       (a mais antiga primeiro — no futuro, isso é a mais próxima), depois o
+       nome, para a lista não pular de lugar entre um desenho e outro. */
+    function compararComercial2(a, b) {
+      return (a.sit2.ordem - b.sit2.ordem) ||
+        String(a.sit2.chave).localeCompare(String(b.sit2.chave)) ||
+        String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR");
+    }
+
+    /* ---- Marcos do funil: carimba as datas conforme o lead avança ----
+       "quando" é o dia do carimbo; sem ele, hoje. */
+    function aplicarMarcos(lead, etapaId, quando) {
       const etapa = etapaPor(etapaId);
+      const dia = quando || hojeISO();
       const atualizado = { ...lead };
       if (etapa.encerra) atualizado.dtReprovado = atualizado.dtReprovado || hojeISO();
       const nivel = etapa.nivel;
       if (nivel === null || nivel === undefined) return atualizado;
       for (let i = 1; i <= nivel; i++) {
         const campo = MARCOS[i];
-        if (!atualizado[campo]) atualizado[campo] = hojeISO();
+        if (!atualizado[campo]) atualizado[campo] = dia;
       }
       return atualizado;
+    }
+
+    /* ---- Mudar de etapa: um lugar só ----
+       Toda troca de etapa passa por aqui — o seletor, os botões do
+       Comercial 2, a correção manual. A cadência se ajusta à etapa nova e
+       os marcos do funil são carimbados.
+
+       Quem volta ao Comercial 1 vindo de uma etapa sem cadência (Agendado
+       virando Falta, Fazer orçamento virando Em aberto) entra na primeira
+       cadência da etapa, a mais quente: cadenciaValida() dá isso, porque a
+       cadência vazia não pertence a etapa nenhuma que tenha cadência.
+
+       Comparecer é o que Fazer orçamento significa. Vindo de Agendado com o
+       dia do atendimento já chegado, o comparecimento leva a data do
+       atendimento, e não a do clique de quem registrou no dia seguinte.
+       Comparecimento que já existia nunca é reescrito.
+
+       "extras" são campos que mudam junto — a data do atendimento, ao
+       agendar. dtAgendamento e dataAgendada ficam como estão em Falta:
+       faltar não apaga que houve um agendamento. */
+    function aplicarEtapa(lead, etapaId, extras) {
+      const hoje = hojeISO();
+      const base = { ...lead, ...(extras || {}) };
+      const doAtendimento = etapaId === "fazer_orcamento" && lead.etapa === "agendado" &&
+        dataValida(lead.dataAgendada) && lead.dataAgendada <= hoje;
+      return aplicarMarcos(
+        { ...base, etapa: etapaId, cadencia: cadenciaValida(etapaId, base.cadencia) },
+        etapaId,
+        doAtendimento ? lead.dataAgendada : hoje
+      );
     }
 
     /* o indicador é o mesmo dos três módulos, montado fora do React */
@@ -347,6 +594,9 @@
       const contatosRef = React.useRef([]);
       /* registro em andamento, por lead: segura o duplo clique acidental */
       const contatoEmCurso = React.useRef({});
+      /* a gravação com o estado do desenho mais recente, para quem vive fora
+         do React (o indicador de status, montado uma vez só) */
+      const salvarAtual = React.useRef(() => { });
       /* o dia de hoje, conferido de minuto em minuto: a meia-noite zera a
          contagem mesmo com a página aberta desde ontem */
       const [dia, setDia] = useState(() => hojeISO());
@@ -354,8 +604,12 @@
       const [periodo, setPeriodo] = useState("semana");
       const [mesRef, setMesRef] = useState(() => hojeISO().slice(0, 7));
       const [filtroEtapa, setFiltroEtapa] = useState("todas");
+      /* "todos", 1 ou 2: a aba Leads continua sendo a visão geral */
+      const [filtroComercial, setFiltroComercial] = useState("todos");
       const [busca, setBusca] = useState("");
       const [editando, setEditando] = useState(null);
+      /* a data do atendimento sendo pedida: null, ou { lead, modo } */
+      const [atendimento, setAtendimento] = useState(null);
       /* a conversa da integração com a Agenda: null, ou o que falta decidir */
       const [integrando, setIntegrando] = useState(null);
       const [aberto, setAberto] = useState(null);
@@ -383,9 +637,13 @@
         caixa.style.cursor = "pointer";
         caixa.setAttribute("role", "button");
         caixa.setAttribute("tabindex", "0");
+        /* Pelo ref, e não pela função deste desenho: este efeito roda uma
+           vez só, e a função que ele enxergasse ficaria presa aos leads da
+           hora em que a página abriu — regravar com ela desfaria tudo o que
+           foi feito depois. */
         const reabrir = () => {
           if (statusCRM.estado() !== "conflito" || FloreSerSync.conflitoAberto()) return;
-          if (!FloreSerSync.reabrirConflito()) salvar();
+          if (!FloreSerSync.reabrirConflito()) salvarAtual.current();
         };
         caixa.addEventListener("click", reabrir);
         caixa.addEventListener("keydown", (ev) => {
@@ -481,14 +739,18 @@
          "salvo" quando o servidor confirma. Se der conflito, as duas
          versões são comparadas em vez de a página recarregar. */
       async function salvar(novosLeads, novosDias) {
-        await salvarEstado({ leads: novosLeads, dias: novosDias });
+        return salvarEstado({ leads: novosLeads, dias: novosDias });
       }
 
       /* O estado do CRM tem três partes — leads, dias e contatos — e uma
          alteração pode mexer em mais de uma. Tudo o que muda junto vai numa
          gravação só: o lead com o último contato novo e o evento que conta o
          contato nunca sobem separados, então não existe "atualizou o lead mas
-         não contou" nem o contrário. O que não foi informado segue como está. */
+         não contou" nem o contrário. O que não foi informado segue como está.
+
+         Devolve true quando o servidor confirmou — inclusive depois de uma
+         conciliação automática. Quem precisa encadear outra operação (marcar
+         na Agenda a data que acabou de ir para o CRM) só segue com true. */
       async function salvarEstado(mudancas) {
         const m = mudancas || {};
         const lds = m.leads ?? leads;
@@ -497,8 +759,9 @@
         if (m.leads) setLeads(m.leads);
         if (m.dias) setDias(m.dias);
         if (m.contatos) definirContatos(m.contatos);
-        await gravar({ leads: lds, dias: ds, contatos: cts });
+        return gravar({ leads: lds, dias: ds, contatos: cts });
       }
+      salvarAtual.current = () => salvarEstado({});
 
       async function gravar(estado) {
         if (statusCRM) statusCRM.definir("salvando");
@@ -508,19 +771,20 @@
           tentativasDeMerge = 0;
           setErro(null);
           if (statusCRM) statusCRM.salvoAgora();
+          return true;
         } catch (e) {
-          if (e && e.conflito) { await conciliar(estado, e); return; }
+          if (e && e.conflito) return conciliar(estado, e);
 
           if (e && e.motivo === "sem_acesso") {
             if (statusCRM) statusCRM.definir("semAcesso");
             setErro("Seu acesso ao CRM foi retirado. O que está na tela continua aqui, " +
               "mas não sobe mais para a planilha — fale com quem administra o sistema.");
-            return;
+            return false;
           }
           if (e && (e.motivo === "sessao" || e.motivo === "expirada" || e.motivo === "inativo")) {
             if (statusCRM) statusCRM.definir("expirado");
             setErro("Sua sessão expirou. Copie o que ainda não foi salvo, recarregue a página e entre de novo.");
-            return;
+            return false;
           }
 
           /* rede caiu, ou o servidor recusou: são coisas diferentes */
@@ -529,15 +793,19 @@
           setErro(semRede
             ? "Sem conexão com o servidor. As alterações continuam aqui — tente de novo quando voltar."
             : "O servidor recusou a gravação. As alterações continuam aqui — tente de novo.");
+          return false;
         }
       }
 
+      /* Devolve true só quando a versão conciliada já foi aceita. Com
+         pergunta aberta para a pessoa, ainda não foi: devolve false, e a
+         resolução grava sozinha depois. */
       async function conciliar(local, falha) {
         const servidor = falha.dados;
         if (!servidor) {
           if (statusCRM) statusCRM.definir("conflito");
           setErro("Outro aparelho alterou os leads. Recarregue para ver a versão mais recente.");
-          return;
+          return false;
         }
 
         const base = BASE_CRM || local;
@@ -551,6 +819,7 @@
           : ((base && base.contatos) || []);
 
         const m = FloreSerSync.mesclar(base, local, servidor, ESQUEMA_CRM);
+        const etapas = amarrarEtapas(m, base, local, servidor);
 
         /* Contato registrado nunca vira pergunta: tem id único e não é editado
            depois. Fica fora da contagem de "conciliados sozinho", que é sobre
@@ -559,32 +828,32 @@
         const automaticosDasFichas = m.automaticos.filter((a) => a.lista !== "contatos");
 
         anotarSync("SYNC_CONFLITO_DETECTADO",
-          m.conflitos.length + " campo(s) em disputa, " + automaticosDasFichas.length + " conciliado(s) sozinho");
+          etapas.conflitos.length + " campo(s) em disputa, " + automaticosDasFichas.length + " conciliado(s) sozinho");
 
-        if (!m.conflitos.length) {
+        if (!etapas.conflitos.length) {
           anotarSync("SYNC_CONFLITO_AUTO_MESCLADO", automaticosDasFichas.length + " alteração(ões)");
-          await aplicarMerge(m.estado, falha.rev);
-          return;
+          return aplicarMerge(etapas.finalizar(m.estado, []), falha.rev);
         }
 
         if (statusCRM) statusCRM.definir("conflito");
         setErro(null);
         FloreSerSync.abrirConflito({
-          conflitos: m.conflitos, automaticos: automaticosDasFichas, rotulos: ROTULOS_CRM,
+          conflitos: etapas.conflitos, automaticos: automaticosDasFichas, rotulos: ROTULOS_CRM,
           aviso: "Os leads foram alterados em outro aparelho enquanto você trabalhava. " +
             "O que não se cruzou já foi juntado; escolha o que fica no que sobrou.",
           aoResolver: async function (escolhas) {
-            const fim = FloreSerSync.aplicarEscolhas(m.estado, m.conflitos, escolhas, ESQUEMA_CRM);
+            const escolhido = FloreSerSync.aplicarEscolhas(m.estado, etapas.conflitos, escolhas, ESQUEMA_CRM);
             anotarSync("SYNC_CONFLITO_RESOLVIDO_MANUAL",
               escolhas.filter((e) => e === "local").length + " de " + escolhas.length +
               " campo(s) ficaram com a versão deste aparelho");
-            await aplicarMerge(fim, falha.rev);
+            await aplicarMerge(etapas.finalizar(escolhido, escolhas), falha.rev);
           },
           aoCancelar: function () {
             if (statusCRM) statusCRM.definir("conflito");
             setErro('Conflito guardado. Toque em "Conflito de alterações", no topo, para resolver.');
           },
         });
+        return false;
       }
 
       async function aplicarMerge(estado, rev) {
@@ -599,9 +868,9 @@
         if (tentativasDeMerge > 4) {
           if (statusCRM) statusCRM.definir("conflito");
           setErro("Os dados continuam sendo alterados por outra pessoa. Revise antes de salvar.");
-          return;
+          return false;
         }
-        await gravar(estado);
+        return gravar(estado);
       }
 
       function anotarSync(evento, mensagem) {
@@ -609,8 +878,12 @@
         if (r) r(evento, { mensagem: "crm · " + mensagem });
       }
 
+      /* O formulário é a correção manual da ficha: aceita qualquer etapa, e
+         Agendado só sai dele com a data do atendimento preenchida. A troca de
+         etapa é a mesma do resto do CRM, a partir de como a lead estava. */
       function salvarLead(dados) {
-        const preparado = aplicarMarcos({ ...dados, cadencia: cadenciaValida(dados.etapa, dados.cadencia) }, dados.etapa);
+        const antes = dados.id ? leads.find((l) => l.id === dados.id) : null;
+        const preparado = aplicarEtapa({ ...dados, etapa: antes ? antes.etapa : dados.etapa }, dados.etapa);
         conferirRepetido(preparado, dados.id, () => gravarLead(preparado, dados.id));
       }
 
@@ -699,16 +972,77 @@
         });
       }
 
+      /* Toda troca de etapa feita na tela passa por aqui: o seletor da
+         ficha, a correção manual, os desfechos do atendimento e "Orçamento
+         feito". Entrar em Agendado nunca é direto — antes vem a data do
+         atendimento, que é o que faz a fila do Comercial 2 funcionar. */
       function mudarEtapa(id, etapaId) {
-        salvar(leads.map((l) => {
-          if (l.id !== id) return l;
-          return aplicarMarcos({ ...l, etapa: etapaId, cadencia: cadenciaValida(etapaId, l.cadencia) }, etapaId);
-        }));
+        const lead = leads.find((l) => l.id === id);
+        if (!lead || lead.etapa === etapaId) return;
+        if (etapaId === "agendado") { pedirAtendimento(lead, "entrar"); return; }
+        salvar(leads.map((l) => (l.id === id ? aplicarEtapa(l, etapaId) : l)));
+        avisarPassagem(lead, etapaId);
+      }
 
-        /* Marcar como Agendado é o momento em que a lead vira paciente na
-           vida real. O sistema oferece fazer isso na Agenda também — mas
-           só oferece: quem quiser mexer só no CRM segue em frente. */
-        if (etapaId === "agendado") convidarParaAgenda(leads.find((l) => l.id === id));
+      /* Quem muda de fila precisa saber para onde foi: a lead sai da tela em
+         que a pessoa estava, e sem aviso parece que sumiu. */
+      function avisarPassagem(lead, etapaId) {
+        const nome = lead.nome || "A lead";
+        const etapa = etapaPor(etapaId);
+        if (etapaId === "fazer_orcamento") {
+          setRecado(`${nome} está no topo do Comercial 2: fazer orçamento.`);
+          return;
+        }
+        const para = comercialDaEtapa(etapaId);
+        if (!para || para === comercialDaEtapa(lead.etapa)) return;
+        const cad = cadenciaPor(cadenciaValida(etapaId, lead.cadencia));
+        setRecado(`${nome} passou para o ${nomeDoResponsavel(etapaId)}: ${etapa.nome}` +
+          (cad ? `, cadência ${cad.nome}.` : "."));
+      }
+
+      /* A data do atendimento: ao entrar em Agendado, ao informar a que
+         falta numa lead antiga e ao remarcar. modo: entrar | informar | alterar */
+      function pedirAtendimento(lead, modo) {
+        setAberto(null);
+        setAtendimento({ lead: lead, modo: modo });
+      }
+
+      /* Salva a data no CRM e, se pedido, leva a MESMA data para a Agenda.
+         Os dois lados saem do mesmo campo, então não nascem diferentes.
+
+         A ordem importa: primeiro o CRM, e só com a gravação confirmada a
+         Agenda. Se o CRM não confirmou (sem rede, conflito esperando
+         decisão), a Agenda não é tocada — uma agenda marcada para uma lead
+         que o CRM não registrou seria justamente as duas datas soltas. */
+      async function confirmarAtendimento(id, data, agenda) {
+        const lead = leads.find((l) => l.id === id);
+        setAtendimento(null);
+        if (!lead || !dataValida(data)) return;
+
+        const jaAgendada = lead.etapa === "agendado";
+        const anterior = jaAgendada ? (lead.dataAgendada || "") : "";
+        const atualizado = jaAgendada
+          ? { ...lead, dataAgendada: data }
+          : aplicarEtapa(lead, "agendado", { dataAgendada: data });
+
+        let salvou = true;
+        if (!FloreSerSync.iguais(atualizado, lead)) {
+          salvou = await salvar(leads.map((l) => (l.id === id ? atualizado : l)));
+        }
+        if (!jaAgendada) avisarPassagem(lead, "agendado");
+        else if (anterior !== data) setRecado(`Atendimento de ${lead.nome || "a lead"} marcado para ${formatarData(data)}.`);
+
+        if (!agenda) return;
+        if (!salvou) {
+          setRecado("A data ainda não foi confirmada no CRM, então a Agenda não foi alterada. " +
+            "Quando o CRM salvar, use Vincular à Agenda na ficha.");
+          return;
+        }
+        setIntegrando({ etapa: "enviando", lead: atualizado });
+        await integrarNaAgenda({
+          leadId: id, area: agenda.area, data: data, freq: agenda.freq,
+          dataAnterior: anterior, atualizarData: true,
+        });
       }
 
       /* A integração grava nos dois módulos, então exige as duas permissões.
@@ -758,7 +1092,9 @@
             return;
           }
 
-          if (r.jaVinculada) {
+          /* já vinculada e ninguém pediu para levar a data: só avisa e
+             oferece abrir a ficha */
+          if (r.jaVinculada && !r.agendou && !pedido.atualizarData) {
             setIntegrando((a) => ({ ...a, etapa: "jaVinculada",
               pacienteId: r.pacienteId, pacienteNome: r.pacienteNome }));
             return;
@@ -770,8 +1106,11 @@
           await recarregarDoServidor();
 
           setIntegrando(null);
-          setRecado((r.criado ? "Paciente criada e vinculada" : "Paciente vinculada") +
-            " na Agenda: " + r.pacienteNome + ".");
+          const quando = r.data ? " · atendimento em " + formatarData(r.data) : "";
+          setRecado((r.criado ? "Paciente criada e vinculada na Agenda: "
+            : r.jaEstava ? "A Agenda já estava com esse atendimento: "
+              : r.jaVinculada ? "Agenda atualizada: "
+                : "Paciente vinculada na Agenda: ") + r.pacienteNome + quando + ".");
         } catch (e) {
           setIntegrando((a) => ({ ...a, etapa: "erro",
             mensagem: "Sem conexão com o servidor. Tente de novo." }));
@@ -820,6 +1159,11 @@
            segundo toque é ignorado; terminado, registrar de novo no mesmo dia
            continua valendo — é outro contato de verdade. */
         if (contatoEmCurso.current[id]) return;
+        /* Agendado e Fazer orçamento não trabalham por cadência: ali não há
+           contato a registrar. O botão nem aparece; isto segura um cartão que
+           ficou na tela de antes de a etapa mudar. */
+        const alvo = leads.find((l) => l.id === id);
+        if (!alvo || !temCadencia(alvo)) return;
         contatoEmCurso.current[id] = true;
 
         const agora = new Date();
@@ -883,10 +1227,18 @@
         setImportando(false);
         setAba("leads");
 
+        /* Agendado sem data entra assim mesmo — a planilha é o que é — e a
+           tela diz onde elas estão: no Comercial 2, pedindo a data. */
+        const semData = entram.filter((l) => l.etapa === "agendado" && !dataValida(l.dataAgendada)).length;
+        const avisoSemData = !semData ? ""
+          : " " + (semData === 1 ? "1 lead em Agendado chegou" : semData + " leads em Agendado chegaram") +
+          " sem a data do atendimento e " + (semData === 1 ? "está" : "estão") +
+          " no Comercial 2, esperando essa data.";
+
         if (!analise.repetidos.length) {
-          setRecado(entram.length === 1
+          setRecado((entram.length === 1
             ? "1 lead importado."
-            : entram.length + " leads importados.");
+            : entram.length + " leads importados.") + avisoSemData);
         } else {
           const fora = analise.repetidos.length;
           anotarSync("IMPORTACAO_REPETIDOS",
@@ -896,7 +1248,7 @@
             " · " + (fora === 1 ? "1 linha ficou de fora" : fora + " linhas ficaram de fora") +
             " por já existir cadastro com o mesmo WhatsApp: " +
             analise.repetidos.slice(0, 5).map((r) => r.registro.nome || "(sem nome)").join(", ") +
-            (fora > 5 ? " e mais " + (fora - 5) + "." : "."));
+            (fora > 5 ? " e mais " + (fora - 5) + "." : ".") + avisoSemData);
         }
       }
 
@@ -904,13 +1256,26 @@
          meia-noite com a página aberta — a regra de quem fica pendente é a
          mesma de sempre. Sem isto, o resumo zeraria os contatos do dia novo
          e continuaria mostrando os pendentes de ontem. */
-      const comSituacao = useMemo(() => leads.map((l) => ({ ...l, sit: situacao(l, dias) })), [leads, dias, dia]);
+      const comSituacao = useMemo(() => leads.map((l) => ({
+        ...l, sit: situacao(l, dias), sit2: situacaoComercial2(l, dia),
+      })), [leads, dias, dia]);
       const ativos = comSituacao.filter((l) => !etapaPor(l.etapa).arquivo);
       const arquivados = comSituacao.filter((l) => etapaPor(l.etapa).arquivo);
 
-      const pendentes = ativos
+      /* Uma lead, uma fila: quem decide é a etapa. As duas listas saem da
+         mesma lista de leads — ninguém é copiado para lá e para cá. */
+      const fila1 = ativos.filter((l) => comercialDaEtapa(l.etapa) === 1);
+      const fila2 = ativos.filter((l) => comercialDaEtapa(l.etapa) === 2).sort(compararComercial2);
+
+      /* Comercial 1: a cadência de sempre — atrasados, depois os de hoje.
+         O número da aba é isto, não o tamanho da fila inteira. */
+      const pendentes = fila1
         .filter((l) => l.sit.tipo === "atrasado" || l.sit.tipo === "hoje")
         .sort((a, b) => b.sit.atraso - a.sit.atraso);
+
+      /* Comercial 2: o que pede ação agora. Atendimento futuro não entra, e
+         o de hoje também não — ele ainda não aconteceu. */
+      const acoes2 = fila2.filter((l) => l.sit2.acao);
 
       /* Cada evento é um contato: a mesma lead contatada duas vezes hoje soma
          dois. Contatos de ontem continuam guardados; só não entram aqui. */
@@ -920,6 +1285,7 @@
       );
 
       const filtrados = ativos
+        .filter((l) => filtroComercial === "todos" || comercialDaEtapa(l.etapa) === filtroComercial)
         .filter((l) => filtroEtapa === "todas" || l.etapa === filtroEtapa)
         .filter((l) => l.nome.toLowerCase().includes(busca.toLowerCase()))
         .sort((a, b) => b.sit.atraso - a.sit.atraso);
@@ -1071,7 +1437,8 @@
               <nav style={{ display: "flex", gap: 6, marginTop: 18, flexWrap: "wrap" }}>
                 {[
                   { id: "funil", rotulo: "Funil" },
-                  { id: "hoje", rotulo: `Follow-ups${pendentes.length ? ` (${pendentes.length})` : ""}` },
+                  { id: "comercial1", rotulo: `Comercial 1${pendentes.length ? ` (${pendentes.length})` : ""}` },
+                  { id: "comercial2", rotulo: `Comercial 2${acoes2.length ? ` (${acoes2.length})` : ""}` },
                   { id: "leads", rotulo: `Leads (${ativos.length})` },
                   { id: "config", rotulo: "Cadências" },
                 ].map((t) => (
@@ -1155,7 +1522,7 @@
                   {ETAPAS.filter((e) => !e.arquivo).map((e) => {
                     const qtd = ativos.filter((l) => l.etapa === e.id).length;
                     return (
-                      <button key={e.id} onClick={() => { setFiltroEtapa(e.id); setAba("leads"); }}
+                      <button key={e.id} onClick={() => { setFiltroComercial("todos"); setFiltroEtapa(e.id); setAba("leads"); }}
                         style={{
                           display: "flex", justifyContent: "space-between", width: "100%", border: "none", background: "none",
                           padding: "10px 0", borderBottom: `1px solid ${CORES.borda}`, fontSize: 14, color: CORES.texto, textAlign: "left"
@@ -1173,13 +1540,14 @@
               </section>
             )}
 
-            {/* ===== FOLLOW-UPS ===== */}
-            {aba === "hoje" && (
+            {/* ===== COMERCIAL 1 ===== */}
+            {aba === "comercial1" && (
               <section>
-                <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 25, fontWeight: 600, margin: "6px 0 4px" }}>
-                  Quem precisa de você hoje
+                <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 25, fontWeight: 600, margin: "6px 0 4px", fontVariantNumeric: "lining-nums" }}>
+                  Comercial 1
                 </h2>
                 <p style={{ fontSize: 13, color: CORES.suave, margin: "0 0 18px" }}>
+                  Relacionamento e acompanhamento: quem ainda não agendou, quem faltou e quem está com o orçamento em aberto.
                   Ao registrar o contato, o lead esfria um degrau — dentro do limite que a etapa permite.
                 </p>
                 <ResumoDoDia feitos={contatosHoje} pendentes={pendentes.length} />
@@ -1190,6 +1558,30 @@
                     <CartaoLead key={l.id} lead={l} aoAbrir={() => setAberto(l)} aoContatar={() => registrarContato(l.id)} />
                   ))
                 )}
+                <VerFilaInteira quantos={fila1.length} texto="Ver todos do Comercial 1"
+                  aoVer={() => { setFiltroComercial(1); setFiltroEtapa("todas"); setAba("leads"); }} />
+              </section>
+            )}
+
+            {/* ===== COMERCIAL 2 ===== */}
+            {aba === "comercial2" && (
+              <section>
+                <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 25, fontWeight: 600, margin: "6px 0 4px", fontVariantNumeric: "lining-nums" }}>
+                  Comercial 2
+                </h2>
+                <p style={{ fontSize: 13, color: CORES.suave, margin: "0 0 18px" }}>
+                  Atendimentos agendados e orçamentos. Aqui não há cadência: a fila segue a prioridade e a data do atendimento.
+                </p>
+                <ResumoComercial2 fila={fila2} />
+                {fila2.length === 0 ? (
+                  <Vazio titulo="Nada agendado" texto="Nenhum atendimento marcado nem orçamento esperando." />
+                ) : (
+                  <FilaComercial2 fila={fila2}
+                    aoAbrir={(l) => setAberto(l)}
+                    aoDesfecho={(l, etapaId) => mudarEtapa(l.id, etapaId)}
+                    aoOrcamentoFeito={(l) => mudarEtapa(l.id, "em_aberto")}
+                    aoInformarData={(l) => pedirAtendimento(l, "informar")} />
+                )}
               </section>
             )}
 
@@ -1199,10 +1591,20 @@
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "6px 0 16px" }}>
                   <input placeholder="Buscar por nome…" value={busca} onChange={(e) => setBusca(e.target.value)}
                     style={{ flex: "1 1 150px", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--crm-borda-forte)", fontSize: 14, background: CORES.branco }} />
-                  <select value={filtroEtapa} onChange={(e) => setFiltroEtapa(e.target.value)}
+                  <select value={String(filtroComercial)} aria-label="Fila"
+                    onChange={(e) => {
+                      setFiltroComercial(e.target.value === "todos" ? "todos" : Number(e.target.value));
+                      setFiltroEtapa("todas");
+                    }}
+                    style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid var(--crm-borda-forte)", fontSize: 14, background: CORES.branco }}>
+                    <option value="todos">Todas as filas</option>
+                    {COMERCIAIS.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                  <select value={filtroEtapa} onChange={(e) => setFiltroEtapa(e.target.value)} aria-label="Etapa"
                     style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid var(--crm-borda-forte)", fontSize: 14, background: CORES.branco }}>
                     <option value="todas">Todas as etapas</option>
-                    {ETAPAS.filter((e) => !e.arquivo).map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                    {ETAPAS.filter((e) => !e.arquivo && (filtroComercial === "todos" || e.comercial === filtroComercial))
+                      .map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
                   </select>
                   <button className="acao" onClick={() => setEditando("novo")}
                     style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: CORES.verdeFundo, color: CORES.sobreVerde, fontWeight: 600, fontSize: 14 }}>
@@ -1269,7 +1671,10 @@
                   </div>
                   {ETAPAS.map((e) => (
                     <div key={e.id} style={{ fontSize: 13, padding: "5px 0", display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <span style={{ fontWeight: 600 }}>{e.nome}</span>
+                      <span>
+                        <span style={{ fontWeight: 600 }}>{e.nome}</span>
+                        {e.comercial && <span style={{ fontSize: 11.5, color: CORES.suaveForte }}> · {nomeDoResponsavel(e.id)}</span>}
+                      </span>
                       <span style={{ color: CORES.verde, textAlign: "right" }}>
                         {e.encerra ? "Arquiva sem venda" : e.arquivo ? "Arquiva como venda" : e.cadencias.length === 0 ? "Sem cadência" : e.cadencias.map((c) => cadenciaPor(c).nome).join(" → ")}
                       </span>
@@ -1298,18 +1703,38 @@
             </Modal>
           )}
 
-          {aberto && !editando && (
-            <Modal aoFechar={() => setAberto(null)}>
-              <DetalheLead
-                lead={comSituacao.find((l) => l.id === aberto.id) || aberto}
-                aoEditar={() => setEditando(aberto)}
-                aoContatar={() => registrarContato(aberto.id)}
-                aoMudarEtapa={(e) => mudarEtapa(aberto.id, e)}
-                aoMudarCadencia={(c) => mudarCadencia(aberto.id, c)}
-                aoAlternarEx={() => alternarExCliente(aberto.id)}
-                aoExcluir={(motivo) => moverLeadParaLixeira(aberto.id, motivo)}
+          {aberto && !editando && (() => {
+            /* a ficha sempre com a lead de agora, não com a foto de quando
+               foi aberta: editar a partir da foto desfaria a etapa recém-mudada */
+            const atual = comSituacao.find((l) => l.id === aberto.id) || aberto;
+            return (
+              <Modal aoFechar={() => setAberto(null)}>
+                <DetalheLead
+                  lead={atual}
+                  aoEditar={() => setEditando(atual)}
+                  aoContatar={() => registrarContato(atual.id)}
+                  aoMudarEtapa={(e) => mudarEtapa(atual.id, e)}
+                  aoDesfecho={(e) => { setAberto(null); mudarEtapa(atual.id, e); }}
+                  aoPedirData={(modo) => pedirAtendimento(atual, modo)}
+                  aoMudarCadencia={(c) => mudarCadencia(atual.id, c)}
+                  aoAlternarEx={() => alternarExCliente(atual.id)}
+                  aoExcluir={(motivo) => moverLeadParaLixeira(atual.id, motivo)}
+                  podeAgenda={podeIntegrar()}
+                  aoIntegrar={() => convidarParaAgenda(atual)}
+                />
+              </Modal>
+            );
+          })()}
+
+          {atendimento && (
+            <Modal aoFechar={() => setAtendimento(null)}>
+              <DialogoAtendimento
+                lead={comSituacao.find((l) => l.id === atendimento.lead.id) || atendimento.lead}
+                modo={atendimento.modo}
+                hoje={dia}
                 podeAgenda={podeIntegrar()}
-                aoIntegrar={() => convidarParaAgenda(comSituacao.find((l) => l.id === aberto.id) || aberto)}
+                aoConfirmar={(data, agenda) => confirmarAtendimento(atendimento.lead.id, data, agenda)}
+                aoFechar={() => setAtendimento(null)}
               />
             </Modal>
           )}
@@ -1475,9 +1900,141 @@
           <div className="crm-resumo-item painel-claro">
             <span className="crm-resumo-numero">{pendentes}</span>
             <span className="crm-resumo-rotulo">
-              {plural(pendentes, "follow-up pendente", "follow-ups pendentes")}
+              {plural(pendentes, "contato pendente agora", "contatos pendentes agora")}
             </span>
           </div>
+        </div>
+      );
+    }
+
+    /* O mesmo desenho do resumo do Comercial 1, com o que conta aqui: o que
+       pede ação agora vem primeiro, e o que ainda não chegou vem por último.
+       "Sem data" só aparece quando existe — é resto de cadastro antigo. */
+    function ResumoComercial2({ fila }) {
+      const conta = (tipo) => fila.filter((l) => l.sit2.tipo === tipo).length;
+      const orcamentos = conta("orcamento");
+      const passaram = conta("passou");
+      const semData = conta("sem_data");
+      const hoje = conta("hoje");
+      return (
+        <div className="crm-resumo-dia" aria-live="polite" aria-atomic="true">
+          <div className="crm-resumo-item crm-resumo-prioridade painel-claro">
+            <span className="crm-resumo-numero">{orcamentos}</span>
+            <span className="crm-resumo-rotulo">{plural(orcamentos, "orçamento a fazer", "orçamentos a fazer")}</span>
+          </div>
+          <div className="crm-resumo-item painel-claro">
+            <span className="crm-resumo-numero">{passaram}</span>
+            <span className="crm-resumo-rotulo">{plural(passaram, "atendimento esperando o resultado", "atendimentos esperando o resultado")}</span>
+          </div>
+          {semData > 0 && (
+            <div className="crm-resumo-item painel-claro">
+              <span className="crm-resumo-numero">{semData}</span>
+              <span className="crm-resumo-rotulo">{plural(semData, "agendamento sem data", "agendamentos sem data")}</span>
+            </div>
+          )}
+          <div className="crm-resumo-item painel-claro">
+            <span className="crm-resumo-numero">{hoje}</span>
+            <span className="crm-resumo-rotulo">{plural(hoje, "atendimento hoje", "atendimentos hoje")}</span>
+          </div>
+        </div>
+      );
+    }
+
+    /* A aba de uma fila mostra o que pede ação; a fila inteira está na aba
+       Leads, com o filtro já escolhido. */
+    function VerFilaInteira({ quantos, texto, aoVer }) {
+      if (!quantos) return null;
+      return (
+        <div style={{ textAlign: "right", marginTop: 6 }}>
+          <button onClick={aoVer}
+            style={{ border: "none", background: "none", color: CORES.verde, fontSize: 12.5, fontWeight: 600, padding: "6px 0" }}>
+            {texto} ({quantos}) →
+          </button>
+        </div>
+      );
+    }
+
+    /* Um ícone de alerta em traço fino, como os do portão — sem emoji */
+    function IconeAlerta() {
+      return (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" style={{ flex: "0 0 auto" }}>
+          <path d="M12 3.8 21 19.5H3L12 3.8Z" />
+          <path d="M12 10v4M12 16.6v.4" />
+        </svg>
+      );
+    }
+
+    /* ==== A fila do Comercial 2 ====
+       Os grupos na ordem de FILA_COMERCIAL2. A prioridade está, antes de
+       tudo, na POSIÇÃO: Fazer orçamento é sempre o primeiro bloco. A cor
+       só acompanha. */
+    function FilaComercial2({ fila, aoAbrir, aoDesfecho, aoOrcamentoFeito, aoInformarData }) {
+      const grupos = Object.keys(FILA_COMERCIAL2)
+        .sort((a, b) => FILA_COMERCIAL2[a].ordem - FILA_COMERCIAL2[b].ordem)
+        .map((tipo) => ({ tipo, ...FILA_COMERCIAL2[tipo], leads: fila.filter((l) => l.sit2.tipo === tipo) }))
+        .filter((g) => g.leads.length);
+
+      return grupos.map((g) => (
+        <div key={g.tipo} className={"crm-c2-grupo crm-c2-grupo-" + g.tipo}>
+          <h3 className="crm-c2-titulo">
+            {g.titulo}
+            <span className="crm-c2-conta">{g.leads.length}</span>
+          </h3>
+          {g.leads.map((l) => (
+            <CartaoComercial2 key={l.id} lead={l}
+              aoAbrir={() => aoAbrir(l)}
+              aoDesfecho={(etapaId) => aoDesfecho(l, etapaId)}
+              aoOrcamentoFeito={() => aoOrcamentoFeito(l)}
+              aoInformarData={() => aoInformarData(l)} />
+          ))}
+        </div>
+      ));
+    }
+
+    function CartaoComercial2({ lead, aoAbrir, aoDesfecho, aoOrcamentoFeito, aoInformarData }) {
+      const s = lead.sit2;
+      const etapa = etapaPor(lead.etapa);
+      return (
+        <div className={"cartao-lead crm-c2-cartao crm-c2-" + s.tipo}>
+          <button className="crm-c2-quem" onClick={aoAbrir}>
+            <span className="crm-c2-nome">{lead.nome}</span>
+            <span className="crm-c2-linha">
+              <Etiqueta texto={etapa.nome} cor={CORES.texto} fundo="var(--crm-etiqueta-bg)" />
+              {s.tipo === "orcamento" && <Etiqueta texto="Prioridade" cor="var(--crm-ouro-texto)" fundo="var(--crm-etiqueta-ouro-bg)" />}
+              {lead.exCliente && <Etiqueta texto="Ex-cliente" cor={CORES.ouro} fundo="var(--crm-etiqueta-ouro-bg)" />}
+              <span className="crm-c2-quando">
+                {s.tipo === "sem_data" && <IconeAlerta />}
+                {s.texto}
+              </span>
+            </span>
+          </button>
+
+          {s.tipo === "orcamento" && (
+            <div className="crm-c2-acoes">
+              <button className="crm-botao crm-botao-cheio" onClick={aoOrcamentoFeito}
+                title="O orçamento está pronto: a lead volta para o Comercial 1, em Em aberto">
+                Orçamento feito
+              </button>
+            </div>
+          )}
+          {s.tipo === "sem_data" && (
+            <div className="crm-c2-acoes">
+              <button className="crm-botao" onClick={aoInformarData}>Informar data</button>
+            </div>
+          )}
+          {s.tipo === "passou" && (
+            <div className="crm-c2-decisao">
+              <span className="crm-c2-pergunta">O que aconteceu?</span>
+              <div className="crm-c2-acoes crm-c2-acoes-par">
+                {DESFECHOS_DO_ATENDIMENTO.map((id) => (
+                  <button key={id} className="crm-botao" onClick={() => aoDesfecho(id)}>
+                    {etapaPor(id).nome}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -1505,9 +2062,14 @@
 
     function CartaoLead({ lead, aoAbrir, aoContatar, semContato }) {
       const etapa = etapaPor(lead.etapa);
-      const cad = cadenciaPor(lead.cadencia);
-      const s = lead.sit;
-      const corSit = s.tipo === "atrasado" ? CORES.atrasado : s.tipo === "hoje" ? CORES.ouro : CORES.verde;
+      /* cadência só se a etapa trabalha com ela: uma sobra gravada numa lead
+         agendada não aparece como se valesse */
+      const cad = temCadencia(lead) ? cadenciaPor(lead.cadencia) : null;
+      /* etapa do Comercial 2 fala da data do atendimento, não de cadência */
+      const s = lead.sit2 || lead.sit;
+      const corSit = lead.sit2
+        ? (s.acao ? "var(--crm-ouro-texto)" : CORES.verde)
+        : s.tipo === "atrasado" ? CORES.atrasado : s.tipo === "hoje" ? CORES.ouro : CORES.verde;
 
       return (
         <div className="cartao-lead" style={{ background: CORES.branco, borderRadius: 12, border: `1px solid ${CORES.borda}`, padding: "13px 15px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
@@ -1520,7 +2082,7 @@
               {!semContato && <span style={{ fontSize: 12, fontWeight: 600, color: corSit }}>{s.texto}</span>}
             </div>
           </button>
-          {!semContato && lead.cadencia && (
+          {!semContato && temCadencia(lead) && (
             <button onClick={aoContatar} title="Registrar contato feito hoje"
               style={{ border: `1.5px solid ${CORES.verde}`, background: "none", color: CORES.verde, borderRadius: 8, padding: "8px 11px", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
               Contatei ✓
@@ -1531,24 +2093,99 @@
     }
 
     /* ==== Detalhe ==== */
-    function DetalheLead({ lead, aoEditar, aoContatar, aoMudarEtapa, aoMudarCadencia, aoAlternarEx, aoExcluir, aoIntegrar, podeAgenda }) {
+    function DetalheLead({ lead, aoEditar, aoContatar, aoMudarEtapa, aoDesfecho, aoPedirData, aoMudarCadencia, aoAlternarEx, aoExcluir, aoIntegrar, podeAgenda }) {
       const [confirmando, setConfirmando] = useState(false);
       const [motivo, setMotivo] = useState("");
+      /* o seletor mostra os passos do dia a dia; a lista inteira de etapas é
+         correção de cadastro, e fica atrás deste botão */
+      const [corrigindo, setCorrigindo] = useState(false);
       const etapa = etapaPor(lead.etapa);
+      const s2 = lead.sit2;
+      const proximas = PROXIMAS_ETAPAS[lead.etapa] || [];
+      const opcoes = corrigindo ? ETAPAS.map((e) => e.id) : [lead.etapa].concat(proximas);
       const tel = (lead.whatsapp || "").replace(/\D/g, "");
       const campo = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--crm-borda-forte)", fontSize: 14, background: CORES.branco, marginTop: 4 };
       const rot = { fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: CORES.suave };
 
       return (
         <div>
-          <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 26, fontWeight: 600, margin: "0 0 10px" }}>{lead.nome}</h3>
+          <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 26, fontWeight: 600, margin: "0 0 4px" }}>{lead.nome}</h3>
+          <div className="crm-responsavel">
+            <span style={rot}>Responsável atual</span>
+            <strong>{nomeDoResponsavel(lead.etapa)}</strong>
+          </div>
 
-          <label style={{ display: "block", marginBottom: 12 }}>
-            <span style={rot}>Etapa do funil</span>
-            <select value={lead.etapa} onChange={(e) => aoMudarEtapa(e.target.value)} style={campo}>
-              {ETAPAS.map((e) => <option key={e.id} value={e.id}>{e.nome}{e.arquivo ? " (arquiva)" : ""}</option>)}
-            </select>
-          </label>
+          {lead.etapa === "agendado" && (
+            <div className={"crm-bloco crm-bloco-" + s2.tipo}>
+              <div style={rot}>Atendimento</div>
+              {s2.tipo === "sem_data" ? (
+                <div className="crm-bloco-valor crm-bloco-alerta"><IconeAlerta /> Data do atendimento não informada</div>
+              ) : (
+                <div className="crm-bloco-valor">
+                  {formatarData(lead.dataAgendada)}
+                  <span className="crm-bloco-quando"> · {distancia(lead.dataAgendada, hojeISO())}</span>
+                </div>
+              )}
+
+              {(s2.tipo === "passou" || s2.tipo === "hoje") && (
+                <>
+                  <p className="crm-bloco-texto">
+                    {s2.tipo === "passou"
+                      ? "O atendimento já passou. O que aconteceu?"
+                      : "O atendimento é hoje. Se já aconteceu, registre o resultado:"}
+                  </p>
+                  <div className="crm-c2-acoes crm-c2-acoes-par">
+                    {DESFECHOS_DO_ATENDIMENTO.map((id) => (
+                      <button key={id} className="crm-botao" onClick={() => aoDesfecho(id)}>{etapaPor(id).nome}</button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* depois do dia, a pergunta é só uma: remarcar não responde se ela veio */}
+              {s2.tipo !== "passou" && (
+                <button className={s2.tipo === "sem_data" ? "crm-botao crm-botao-cheio" : "crm-botao-texto"}
+                  onClick={() => aoPedirData(s2.tipo === "sem_data" ? "informar" : "alterar")}>
+                  {s2.tipo === "sem_data" ? "Informar data" : "Alterar data"}
+                </button>
+              )}
+            </div>
+          )}
+
+          {lead.etapa === "fazer_orcamento" && (
+            <div className="crm-bloco crm-bloco-orcamento">
+              <div style={rot}>Prioridade</div>
+              <div className="crm-bloco-valor">Fazer orçamento</div>
+              <p className="crm-bloco-texto">
+                {s2.texto}. Quando o orçamento estiver pronto, a lead volta para o Comercial 1, em Em aberto.
+              </p>
+              <button className="crm-botao crm-botao-cheio" onClick={() => aoDesfecho("em_aberto")}>Orçamento feito</button>
+            </div>
+          )}
+
+          {(corrigindo || proximas.length > 0) && (
+            <label style={{ display: "block", marginBottom: 6 }}>
+              <span style={rot}>{corrigindo ? "Corrigir etapa" : "Etapa do funil"}</span>
+              <select value={lead.etapa} style={campo}
+                onChange={(e) => { setCorrigindo(false); aoMudarEtapa(e.target.value); }}>
+                {opcoes.map((id) => {
+                  const e = etapaPor(id);
+                  return <option key={id} value={id}>{e.nome}{e.arquivo ? " (arquiva)" : ""}</option>;
+                })}
+              </select>
+            </label>
+          )}
+          {corrigindo && (
+            <p style={{ fontSize: 12, color: CORES.suaveForte, margin: "0 0 4px", lineHeight: 1.5 }}>
+              Correção manual, para consertar um cadastro. No dia a dia, use as ações da ficha — elas passam a lead
+              de um comercial para o outro do jeito certo. Agendado sempre pede a data do atendimento.
+            </p>
+          )}
+          <div style={{ textAlign: "right", marginBottom: 12 }}>
+            <button className="crm-botao-texto crm-botao-discreto" onClick={() => setCorrigindo(!corrigindo)}>
+              {corrigindo ? "Voltar às ações do dia a dia" : "Corrigir etapa manualmente"}
+            </button>
+          </div>
 
           {etapa.cadencias.length > 0 && (
             <label style={{ display: "block", marginBottom: 12 }}>
@@ -1569,10 +2206,16 @@
             <Linha rotulo="Interesse" valor={lead.interesse || "—"} />
             <Linha rotulo="Origem" valor={origemPor(lead.origem)?.nome || "—"} />
             <Linha rotulo="Último contato" valor={formatarData(lead.ultimoContato)} />
-            <Linha rotulo="Situação" valor={lead.sit?.texto || "—"} />
+            {/* no Comercial 2 a situação é a do atendimento, dita no bloco acima */}
+            {!s2 && <Linha rotulo="Situação" valor={lead.sit?.texto || "—"} />}
             <Linha rotulo="Captada em" valor={formatarData(lead.criadoEm)} />
             {lead.dtConversa && <Linha rotulo="1ª conversa" valor={formatarData(lead.dtConversa)} />}
-            {lead.dtAgendamento && <Linha rotulo="Agendamento" valor={formatarData(lead.dtAgendamento)} />}
+            {/* o dia em que foi agendada — marco do funil, não o dia em que vem */}
+            {lead.dtAgendamento && <Linha rotulo="Agendou em" valor={formatarData(lead.dtAgendamento)} />}
+            {/* fora de Agendado, a data do atendimento fica como histórico */}
+            {lead.etapa !== "agendado" && dataValida(lead.dataAgendada) && (
+              <Linha rotulo="Atendimento" valor={formatarData(lead.dataAgendada)} />
+            )}
             {lead.dtComparecimento && <Linha rotulo="Comparecimento" valor={formatarData(lead.dtComparecimento)} />}
             {lead.dtVenda && <Linha rotulo="Venda" valor={formatarData(lead.dtVenda)} />}
             {lead.dtReprovado && <Linha rotulo="Encerrado em" valor={formatarData(lead.dtReprovado)} />}
@@ -1591,7 +2234,7 @@
                 Abrir WhatsApp
               </a>
             )}
-            {lead.cadencia && (
+            {temCadencia(lead) && (
               <button onClick={aoContatar} style={{ border: `1.5px solid ${CORES.verde}`, background: "none", color: CORES.verde, borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600 }}>
                 Contatei hoje ✓
               </button>
@@ -1608,7 +2251,7 @@
 
       {podeAgenda && (
             <button onClick={aoIntegrar}
-              style={{ marginTop: 4, width: "100%", border: "1.5px solid var(--crm-borda-media)", background: "none", color: CORES.teal, borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              style={{ marginTop: 4, width: "100%", border: "1.5px solid var(--crm-borda-media)", background: "none", color: CORES.verde, borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               Vincular à Agenda
             </button>
           )}
@@ -1695,11 +2338,17 @@
         dtComparecimento: lead?.dtComparecimento || "",
         dtVenda: lead?.dtVenda || "",
         dtReprovado: lead?.dtReprovado || "",
+        dataAgendada: lead?.dataAgendada || "",
       });
 
       const etapa = etapaPor(d.etapa);
       const dataInvalida = !!d.ultimoContato && !!d.criadoEm && d.ultimoContato < d.criadoEm;
-      const podeSalvar = d.nome.trim().length > 0 && !dataInvalida;
+      /* Entrar em Agendado exige a data do atendimento. Uma lead que já
+         estava em Agendado sem data (cadastro antigo) continua podendo ser
+         editada — o Comercial 2 já mostra o alerta pedindo a data. */
+      const entraEmAgendado = d.etapa === "agendado" && (!lead || lead.etapa !== "agendado");
+      const faltaAtendimento = entraEmAgendado && !dataValida(d.dataAgendada);
+      const podeSalvar = d.nome.trim().length > 0 && !dataInvalida && !faltaAtendimento;
       const campo = { display: "block", width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--crm-borda-forte)", fontSize: 14, background: CORES.branco, marginTop: 4 };
       const rot = { fontSize: 12, fontWeight: 600, color: CORES.texto, display: "block", marginTop: 13 };
 
@@ -1747,6 +2396,17 @@
             </label>
           ) : (
             <div style={{ fontSize: 12.5, color: CORES.verde, marginTop: 13 }}>Esta etapa não tem cadência de follow-up.</div>
+          )}
+          {d.etapa === "agendado" && (
+            <>
+              <label style={rot}>Data do atendimento{entraEmAgendado ? " *" : ""}
+                <input type="date" style={{ ...campo, borderColor: faltaAtendimento ? CORES.ouro : "var(--crm-borda-forte)" }}
+                  value={d.dataAgendada} onChange={(e) => setD({ ...d, dataAgendada: e.target.value })} />
+              </label>
+              <div style={{ fontSize: 12, color: CORES.suaveForte, marginTop: 5, lineHeight: 1.45 }}>
+                O dia marcado para vir à clínica. É por ele que o Comercial 2 sabe quando registrar o resultado.
+              </div>
+            </>
           )}
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginTop: 14, cursor: "pointer" }}>
             <input type="checkbox" checked={d.exCliente} onChange={(e) => setD({ ...d, exCliente: e.target.checked })} style={{ width: 17, height: 17 }} />
@@ -1813,6 +2473,10 @@
          como Conversando, igual ao que acontece com os cadastros antigos */
       if (t.includes("agendand")) return "conversando";
       if (t.includes("agendad")) return "agendado";
+      /* "Fazer orçamento" é o orçamento que ainda falta preparar. Qualquer
+         outro "orçamento" — a antiga "Com orçamento" — é o que já existe, e
+         continua sendo Em aberto, como sempre foi. */
+      if ((t.includes("fazer") || t.includes("preparar")) && (t.includes("orçam") || t.includes("orcam"))) return "fazer_orcamento";
       if (t.includes("aberto") || t.includes("orçam") || t.includes("orcam")) return "em_aberto";
       if (t.includes("falt")) return "falta";
       if (t.includes("reprov")) return "venda_reprovada";
@@ -1837,7 +2501,7 @@
     function ImportarPlanilha({ aoImportar, aoCancelar }) {
       const [linhas, setLinhas] = useState(null);
       const [colunas, setColunas] = useState([]);
-      const [mapa, setMapa] = useState({ nome: "", whatsapp: "", interesse: "", origem: "", observacoes: "", etapa: "", exCliente: "", ultimoContato: "" });
+      const [mapa, setMapa] = useState({ nome: "", whatsapp: "", interesse: "", origem: "", observacoes: "", etapa: "", exCliente: "", ultimoContato: "", dataAgendada: "" });
       const [etapaPadrao, setEtapaPadrao] = useState("nao_responde");
       const [erroArq, setErroArq] = useState(null);
 
@@ -1852,6 +2516,12 @@
           if (!dados.length) { setErroArq("A planilha está vazia ou sem cabeçalhos na primeira linha."); return; }
           const cab = Object.keys(dados[0]);
           const achar = (...t) => cab.find((h) => t.some((x) => h.toLowerCase().includes(x))) || "";
+          /* A data do atendimento primeiro, e o último contato sem ela: uma
+             coluna "Data do atendimento" também tem "data" no nome, e virar
+             último contato faria a lead parecer contatada no dia em que vem. */
+          const atendimento = achar("atendimento", "data agendada", "agendada para", "data da consulta");
+          const contato = achar("contato") ||
+            cab.find((h) => h !== atendimento && h.toLowerCase().includes("data")) || "";
           setColunas(cab);
           setLinhas(dados);
           setMapa({
@@ -1862,7 +2532,8 @@
             observacoes: achar("obs", "nota", "coment"),
             etapa: achar("etapa", "situa", "status", "categoria"),
             exCliente: achar("ex-cliente", "ex cliente", "recompra"),
-            ultimoContato: achar("contato", "data"),
+            ultimoContato: contato,
+            dataAgendada: atendimento,
           });
         } catch {
           setErroArq("Não consegui ler este arquivo. Use .xlsx, .xls ou .csv.");
@@ -1881,6 +2552,10 @@
           const contato = (mapa.ultimoContato && normalizarData(r[mapa.ultimoContato])) || hojeISO();
           /* se o contato da planilha é mais antigo que hoje, ele também marca a captação */
           const captacao = contato < hojeISO() ? contato : hojeISO();
+          /* Só a coluna que diz a data do atendimento vira dataAgendada. Uma
+             coluna de "agendamento" como marco do funil não é o dia em que a
+             pessoa vem, e não é tratada como se fosse. */
+          const atendimento = (mapa.dataAgendada && normalizarData(r[mapa.dataAgendada])) || "";
           return {
             nome,
             whatsapp: mapa.whatsapp ? String(r[mapa.whatsapp] ?? "").trim() : "",
@@ -1892,6 +2567,7 @@
             exCliente: ex,
             ultimoContato: contato,
             criadoEm: captacao,
+            dataAgendada: dataValida(atendimento) ? atendimento : "",
           };
         }).filter(Boolean);
       }, [linhas, mapa, etapaPadrao]);
@@ -1914,7 +2590,7 @@
                 <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: CORES.ouro }}>
                   Combine as colunas da sua planilha
                 </div>
-                {[["nome", "Nome *"], ["whatsapp", "WhatsApp"], ["interesse", "Interesse"], ["observacoes", "Observações"], ["etapa", "Etapa"], ["exCliente", "Ex-cliente"], ["ultimoContato", "Último contato"]].map(([k, txt]) => (
+                {[["nome", "Nome *"], ["whatsapp", "WhatsApp"], ["interesse", "Interesse"], ["observacoes", "Observações"], ["etapa", "Etapa"], ["exCliente", "Ex-cliente"], ["ultimoContato", "Último contato"], ["dataAgendada", "Data do atendimento"]].map(([k, txt]) => (
                   <label key={k} style={rot}>{txt}
                     <select style={campo} value={mapa[k]} onChange={(e) => setMapa({ ...mapa, [k]: e.target.value })}>
                       <option value="">— não importar —</option>
@@ -1950,25 +2626,117 @@
       );
     }
 
-    /* ==== Modal ==== */
+    /* ================================================================
+       A data do atendimento
+       ----------------------------------------------------------------
+       Pedida ao entrar em Agendado, ao completar uma lead antiga que não
+       tem data e ao remarcar. Sem data não há Agendado: é ela que diz ao
+       Comercial 2 quando perguntar se a pessoa veio.
+
+       Com acesso à Agenda, a mesma data vai para lá — "Só no CRM" é sempre
+       uma saída, e a data continua salva no CRM do mesmo jeito.
+       ================================================================ */
+    const AREAS_AGENDA = [["facial", "Facial"], ["corporal", "Corporal"], ["capilar", "Capilar"]];
+    const CICLOS_AGENDA = [7, 15, 21, 30, 45, 60, 90];
+
+    function DialogoAtendimento({ lead, modo, hoje, podeAgenda, aoConfirmar, aoFechar }) {
+      /* remarcar parte da data de agora; entrar em Agendado — inclusive
+         vindo de Falta — pede uma data NOVA, nunca a antiga de novo */
+      const [data, setData] = useState(modo === "alterar" && dataValida(lead.dataAgendada) ? lead.dataAgendada : "");
+      const [area, setArea] = useState("facial");
+      const [freq, setFreq] = useState(21);
+      const valida = dataValida(data);
+
+      const titulo = modo === "entrar" ? "Marcar o atendimento"
+        : modo === "alterar" ? "Alterar a data do atendimento"
+          : "Informar a data do atendimento";
+      const texto = modo === "entrar"
+        ? `Ao salvar, ${lead.nome} vai para Agendado e passa para o Comercial 2.`
+        : modo === "alterar"
+          ? `Hoje o atendimento de ${lead.nome} está marcado para ${formatarData(lead.dataAgendada)}.`
+          : `${lead.nome} está em Agendado, mas sem o dia do atendimento. Sem ele, o Comercial 2 não sabe quando registrar o resultado.`;
+
+      return (
+        <div className="crm-dialogo">
+          <h3>{titulo}</h3>
+          <p className="crm-dialogo-texto">{texto}</p>
+
+          <label className="crm-dialogo-campo">
+            <span>Data do atendimento</span>
+            <input type="date" value={data} required autoFocus onChange={(e) => setData(e.target.value)} />
+          </label>
+          {valida && data < hoje && (
+            <p className="crm-dialogo-nota">
+              Essa data já passou: a lead aparece no Comercial 2 pedindo o resultado — Falta ou Fazer orçamento.
+            </p>
+          )}
+
+          {podeAgenda && (
+            <fieldset className="crm-dialogo-agenda">
+              <legend>Na Agenda</legend>
+              <p>A mesma data vai para a ficha da paciente. Se ela ainda não existir, é criada agora.</p>
+              <div className="crm-dialogo-par">
+                <label className="crm-dialogo-campo">
+                  <span>Área</span>
+                  {/* nada de adivinhar a área pelo texto do interesse: quem sabe é quem atende */}
+                  <select value={area} onChange={(e) => setArea(e.target.value)}>
+                    {AREAS_AGENDA.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
+                  </select>
+                </label>
+                <label className="crm-dialogo-campo">
+                  <span>Ciclo de retorno</span>
+                  <select value={freq} onChange={(e) => setFreq(Number(e.target.value))}>
+                    {CICLOS_AGENDA.map((d) => <option key={d} value={d}>{d} dias</option>)}
+                  </select>
+                </label>
+              </div>
+            </fieldset>
+          )}
+
+          <div className="crm-dialogo-botoes">
+            {podeAgenda ? (
+              <>
+                <button className="crm-botao crm-botao-cheio" disabled={!valida}
+                  onClick={() => aoConfirmar(data, { area: area, freq: freq })}>
+                  Salvar e marcar na Agenda
+                </button>
+                <button className="crm-botao" disabled={!valida} onClick={() => aoConfirmar(data, null)}>
+                  Só no CRM
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="crm-botao crm-botao-cheio" disabled={!valida} onClick={() => aoConfirmar(data, null)}>
+                  Salvar
+                </button>
+                <button className="crm-botao" onClick={aoFechar}>Cancelar</button>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     /* ================================================================
        A conversa da integração com a Agenda
        ----------------------------------------------------------------
-       Quatro momentos: o convite, o formulário, a lista de pacientes
-       parecidas e o aviso de que já existe vínculo. Nenhum deles obriga
-       nada — "Só atualizar CRM" é sempre uma saída.
+       O botão "Vincular à Agenda" da ficha abre o formulário; depois dele
+       podem vir a lista de pacientes parecidas e o aviso de que já existe
+       vínculo. Nada disto é obrigatório — Cancelar é sempre uma saída.
        ================================================================ */
     function TelaIntegracao({ estado, aoFechar, aoEnviar }) {
       const lead = estado.lead || {};
       const [area, setArea] = useState("facial");
-      const [data, setData] = useState(hojeISO());
+      /* a data do atendimento que o CRM já tem é a que vai para a Agenda:
+         as duas não nascem diferentes */
+      const [data, setData] = useState(lead.etapa === "agendado" && dataValida(lead.dataAgendada) ? lead.dataAgendada : "");
       const [freq, setFreq] = useState(21);
 
       const rot = { fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: CORES.suave };
       const campo = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--crm-borda-forte)", fontSize: 14, background: CORES.branco, color: CORES.texto, marginTop: 4 };
       const botao = { border: "none", borderRadius: 8, padding: "11px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
       const secundario = { ...botao, border: "1.5px solid var(--crm-borda-media)", background: "none", color: CORES.texto };
-      const principal = { ...botao, background: CORES.teal, color: "var(--crm-sobre-verde)" };
+      const principal = { ...botao, background: CORES.verdeFundo, color: "var(--crm-sobre-verde)" };
 
       if (estado.etapa === "enviando") {
         return <p style={{ fontSize: 14, color: CORES.suaveForte }}>Integrando…</p>;
@@ -2045,15 +2813,24 @@
         );
       }
 
-      /* o convite e o formulário, na mesma tela */
+      /* As etapas que o servidor leva a Agendado quando a Agenda recebe uma
+         data — as de antes do agendamento (NIVEL_ETAPA < 2 no Apps Script).
+         Sem data, ele só faz o vínculo: Agendado sem dia não existe. */
+      const antesDoAgendamento = ["nao_responde", "conversando", "nurturing", "falta", "recusado"].includes(lead.etapa);
+      const efeito = lead.etapa === "agendado"
+        ? "A Agenda recebe a mesma data do atendimento que está no CRM."
+        : antesDoAgendamento
+          ? "Com data, a lead também passa para Agendado no CRM, com esse mesmo dia. Sem data, só o vínculo é feito."
+          : "A etapa no CRM não muda. A data, se informada, vai só para a Agenda.";
+
+      /* o formulário */
       return (
         <div>
           <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 24, fontWeight: 600, margin: "0 0 8px" }}>
-            Criar o agendamento na Agenda?
+            Vincular à Agenda
           </h3>
           <p style={{ fontSize: 13.5, color: CORES.suaveForte, lineHeight: 1.5, margin: "0 0 14px" }}>
-            {lead.nome} foi marcada como Agendado. Dá para criar ou vincular a ficha dela
-            na Agenda agora — ou seguir só com o CRM.
+            Cria a ficha de {lead.nome} na Agenda, ou liga a uma que já existe. {efeito}
           </p>
 
           <dl style={{ margin: "0 0 16px", fontSize: 14, lineHeight: 1.7 }}>
@@ -2088,15 +2865,16 @@
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button style={principal}
-              onClick={() => aoEnviar({ leadId: lead.id, area: area, data: data, freq: freq })}>
-              Criar e agendar
+              onClick={() => aoEnviar({ leadId: lead.id, area: area, data: dataValida(data) ? data : "", freq: freq })}>
+              {dataValida(data) ? "Vincular e agendar" : "Só vincular"}
             </button>
-            <button onClick={aoFechar} style={secundario}>Só atualizar CRM</button>
+            <button onClick={aoFechar} style={secundario}>Cancelar</button>
           </div>
         </div>
       );
     }
 
+    /* ==== Modal ==== */
     function Modal({ children, aoFechar }) {
       return (
         <div onClick={aoFechar}

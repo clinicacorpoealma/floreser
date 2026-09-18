@@ -1,11 +1,13 @@
 /* =====================================================================
    FloreSer · Corpo e Alma — apresentação do CRM
    ---------------------------------------------------------------------
-   Três partes, nesta ordem:
+   Quatro partes, nesta ordem:
 
      1. a paleta --crm-* dos dois temas, que morava no <style> do <head>
      2. o portão de entrada .pt-*, que morava num <style> dentro do JSX
-     3. o resumo do dia na aba Follow-ups, .crm-resumo-*
+     3. os resumos no alto das abas Comercial 1 e Comercial 2, .crm-resumo-*
+     4. a fila do Comercial 2, a ficha e o diálogo da data do atendimento:
+        .crm-c2-*, .crm-bloco-*, .crm-dialogo-* e os botões .crm-botao
 
    O outro lugar onde há CSS — o <style> do componente da aplicação —
    continua dentro do JSX, no crm/index.html, e de propósito. Ele tem regras globais ("*",
@@ -36,6 +38,9 @@
   --crm-verde-hover: #2E5654;
   --crm-sobre-verde: #FFFFFF;
   --crm-ouro: #8C7550;
+  /* o dourado para TEXTO pequeno: o --crm-ouro fica em 4,4:1 sobre branco,
+     abaixo do mínimo de leitura; este passa de 6:1 */
+  --crm-ouro-texto: #735F3F;
   --crm-areia: #F5F3EE;
   --crm-superficie: #FFFFFF;
   --crm-superficie-2: #EDEAE0;
@@ -92,6 +97,7 @@
 }
 
 :root[data-tema="escuro"] {
+  --crm-ouro-texto: #C9AC7A;
   --crm-borda-media: #3E4C49;
   --crm-topo-tag: #7E938E;
   --crm-pilula-fundo: rgba(234, 241, 239, 0.10);
@@ -247,7 +253,7 @@ body {
   .pt-entrar.carregando::after { animation: none; }
 }
 
-/* ---------- 3. resumo do dia, na aba Follow-ups ---------- */
+/* ---------- 3. resumos no alto das abas Comercial 1 e Comercial 2 ---------- */
 
 /* Dois números lado a lado: o que já foi feito hoje e o que ainda falta.
    Discreto de propósito — é um lembrete ao pé do título, não um painel.
@@ -275,7 +281,151 @@ body {
 /* o que foi feito leva o verde da marca; a frase ao lado diz o que é, então
    a cor nunca é a única pista */
 .crm-resumo-feitos .crm-resumo-numero { color: var(--crm-verde); }
+/* no Comercial 2, os orçamentos a fazer levam o dourado da prioridade */
+.crm-resumo-prioridade .crm-resumo-numero { color: var(--crm-ouro); }
 .crm-resumo-rotulo {
   font-size: 12.5px; line-height: 1.3;
   color: var(--crm-suave-forte);
+}
+
+/* ---------- 4. Comercial 2, ficha e data do atendimento ---------- */
+
+/* A prioridade está, antes de tudo, na posição: Fazer orçamento é sempre o
+   primeiro bloco da fila. O dourado e o filete à esquerda só acompanham —
+   o CRM não vira uma tela vermelha, e quem não distingue cor lê o título
+   do grupo e o selo "Prioridade". */
+
+.crm-c2-grupo { margin: 0 0 20px; }
+.crm-c2-titulo {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 10px;
+  font-family: 'Montserrat', sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--crm-suave-forte);
+}
+.crm-c2-grupo-orcamento .crm-c2-titulo { color: var(--crm-ouro-texto); }
+.crm-c2-conta {
+  font-size: 11px; font-weight: 600; letter-spacing: 0; padding: 1px 8px; border-radius: 10px;
+  background: var(--crm-superficie-2); color: var(--crm-suave-forte);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.crm-c2-cartao {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px;
+  margin-bottom: 10px; padding: 13px 15px; border-radius: 12px;
+  background: var(--crm-branco); border: 1px solid var(--crm-borda);
+}
+/* o que pede ação agora ganha o filete dourado; o que ainda não chegou, não */
+.crm-c2-orcamento, .crm-c2-passou, .crm-c2-sem_data { border-left: 3px solid var(--crm-ouro); }
+
+.crm-c2-quem {
+  flex: 1 1 220px; min-width: 0; padding: 0; border: none; background: none;
+  text-align: left; color: inherit;
+}
+.crm-c2-nome { display: block; font-size: 15px; font-weight: 600; color: var(--crm-texto); }
+.crm-c2-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; }
+.crm-c2-quando {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; color: var(--crm-verde);
+}
+.crm-c2-orcamento .crm-c2-quando,
+.crm-c2-passou .crm-c2-quando,
+.crm-c2-sem_data .crm-c2-quando { color: var(--crm-ouro-texto); }
+
+.crm-c2-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Depois do dia do atendimento: a pergunta e as duas únicas respostas, numa
+   faixa própria dentro do cartão */
+.crm-c2-decisao {
+  flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding-top: 10px; border-top: 1px solid var(--crm-borda);
+}
+.crm-c2-pergunta { font-size: 12.5px; color: var(--crm-suave-forte); }
+.crm-c2-acoes-par .crm-botao { min-width: 136px; }
+
+/* ---- botões das filas, da ficha e do diálogo ---- */
+.crm-botao {
+  min-height: 40px; padding: 9px 15px; border-radius: 8px;
+  border: 1.5px solid var(--crm-verde); background: none; color: var(--crm-verde);
+  font-family: 'Montserrat', sans-serif; font-size: 13px; font-weight: 600; white-space: nowrap;
+  transition: background .18s ease, border-color .18s ease, box-shadow .2s ease;
+}
+.crm-botao-cheio {
+  background: var(--crm-verde-fundo); border-color: var(--crm-verde-fundo); color: var(--crm-sobre-verde);
+}
+@media (hover: hover) {
+  .crm-botao:hover:not([disabled]) { background: var(--crm-etiqueta-cad-bg); }
+  .crm-botao-cheio:hover:not([disabled]) {
+    background: var(--crm-verde-hover); border-color: var(--crm-verde-hover);
+    box-shadow: 0 6px 16px rgba(59, 110, 106, .18);
+  }
+}
+.crm-botao:focus-visible, .crm-botao-texto:focus-visible { outline: 2px solid var(--crm-verde); outline-offset: 2px; }
+.crm-botao[disabled] { opacity: .5; cursor: not-allowed; }
+.crm-botao-texto {
+  padding: 6px 0; border: none; background: none; color: var(--crm-verde);
+  font-family: 'Montserrat', sans-serif; font-size: 12.5px; font-weight: 600;
+}
+.crm-botao-discreto { color: var(--crm-suave-forte); font-weight: 500; }
+
+/* ---- a ficha: quem cuida e o bloco do atendimento ---- */
+.crm-responsavel {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  margin: 0 0 14px; font-size: 14px;
+}
+.crm-responsavel strong { color: var(--crm-verde); font-weight: 600; }
+
+.crm-bloco {
+  margin: 0 0 14px; padding: 13px 15px; border-radius: 12px;
+  background: var(--crm-superficie-2); border-left: 3px solid var(--crm-verde);
+}
+.crm-bloco-orcamento, .crm-bloco-passou, .crm-bloco-sem_data { border-left-color: var(--crm-ouro); }
+.crm-bloco-valor {
+  margin-top: 2px; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 23px; font-weight: 600;
+  line-height: 1.2; color: var(--crm-texto); font-variant-numeric: lining-nums tabular-nums;
+}
+.crm-bloco-quando {
+  font-family: 'Montserrat', sans-serif; font-size: 12.5px; font-weight: 500; color: var(--crm-suave-forte);
+}
+.crm-bloco-alerta {
+  display: flex; align-items: center; gap: 7px;
+  font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 600; color: var(--crm-ouro-texto);
+}
+.crm-bloco-texto { margin: 8px 0 10px; font-size: 13px; line-height: 1.5; color: var(--crm-suave-forte); }
+.crm-bloco > .crm-botao { margin-top: 10px; }
+.crm-bloco > .crm-botao-texto { display: block; margin-top: 6px; }
+
+/* ---- o diálogo da data do atendimento ---- */
+.crm-dialogo h3 {
+  margin: 0 0 8px; font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 24px; font-weight: 600; color: var(--crm-texto);
+}
+.crm-dialogo-texto { margin: 0 0 16px; font-size: 13.5px; line-height: 1.5; color: var(--crm-suave-forte); }
+.crm-dialogo-campo { display: block; margin: 0 0 12px; }
+.crm-dialogo-campo > span {
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--crm-suave-forte);
+}
+.crm-dialogo-campo input, .crm-dialogo-campo select {
+  display: block; width: 100%; margin-top: 4px; padding: 9px 12px; border-radius: 8px;
+  border: 1px solid var(--crm-borda-forte); background: var(--crm-branco); color: var(--crm-texto); font-size: 14px;
+}
+.crm-dialogo-nota { margin: -4px 0 12px; font-size: 12.5px; line-height: 1.45; color: var(--crm-ouro-texto); }
+.crm-dialogo-agenda {
+  min-width: 0; margin: 4px 0 16px; padding: 10px 14px 2px;
+  border: 1px solid var(--crm-borda-forte); border-radius: 12px;
+}
+.crm-dialogo-agenda legend {
+  padding: 0 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--crm-ouro-texto);
+}
+.crm-dialogo-agenda p { margin: 0 0 10px; font-size: 12.5px; line-height: 1.45; color: var(--crm-suave-forte); }
+.crm-dialogo-par { display: flex; flex-wrap: wrap; gap: 0 10px; }
+.crm-dialogo-par > * { flex: 1 1 140px; min-width: 0; }
+.crm-dialogo-botoes { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* No celular os botões de decisão ocupam a largura toda: o dedo não erra, e
+   "Fazer orçamento" não empurra nada para fora da tela. */
+@media (max-width: 520px) {
+  .crm-botao { min-height: 44px; }
+  .crm-c2-cartao > .crm-c2-acoes, .crm-c2-decisao .crm-c2-acoes { flex: 1 1 100%; }
+  .crm-c2-acoes .crm-botao { flex: 1 1 0; min-width: 0; }
+  .crm-dialogo-botoes .crm-botao { flex: 1 1 100%; }
 }

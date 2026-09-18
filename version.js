@@ -22,6 +22,44 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "3.2.0",
+      codinome: "POLINIZAÇÃO",
+      data: "18/09/2026",
+      mudancas: {
+        "Adicionado": [
+          "O CRM agora tem duas filas de trabalho. O Comercial 1 cuida do relacionamento e do acompanhamento: quem ainda não agendou, quem faltou e quem está com o orçamento em aberto. O Comercial 2 cuida dos atendimentos agendados e da preparação dos orçamentos.",
+          "Nova etapa Fazer orçamento, para quem compareceu e ainda precisa receber o orçamento. Ela fica sempre no topo do Comercial 2, sem cadência, até alguém tocar em “Orçamento feito” — aí a lead volta ao Comercial 1 em Em aberto, com cadência Quente.",
+          "Marcar uma lead como Agendado agora pede a data do atendimento. Depois que esse dia passa, o Comercial 2 responde o que aconteceu, com só duas opções: Falta, que devolve a lead ao Comercial 1, ou Fazer orçamento.",
+          "Na Agenda, dá para marcar vários atendimentos de uma vez: a quantidade, o espaçamento — semanal, a cada 15 dias, a cada 30 dias ou personalizado, de 1 a 365 dias — e a prévia das datas antes de salvar. Cada data da série pode ser alterada ou desmarcada sozinha, sem mexer nas outras.",
+          "O intervalo de retorno de cada área da paciente também aceita um número personalizado de dias, além de 7, 15 e 30."
+        ],
+        "Alterado": [
+          "A aba Follow-ups virou Comercial 1, com o mesmo contador de contatos feitos hoje. O número na aba conta só quem precisa de contato agora; no Comercial 2, só o que pede ação: orçamentos a fazer, atendimentos que já passaram e agendamentos sem data.",
+          "A ficha da lead mostra quem é o responsável agora e, em Agendado, a data do atendimento com o botão para alterar. O seletor de etapa oferece os próximos passos do dia a dia; a lista completa fica em “Corrigir etapa manualmente”.",
+          "Uma sessão na Agenda não leva mais a lead direto para Em aberto. A Agenda registra a sessão sozinha quando o dia passa, sem confirmar presença, e isso pulava o orçamento — agora quem diz se a pessoa veio é o Comercial 2."
+        ],
+        "Melhorado": [
+          "CRM e Agenda usam a mesma data do atendimento. Agendar pelo CRM leva a data para a Agenda; remarcar na Agenda muda a data no CRM; desmarcar lá deixa a lead aqui sem data, pedindo uma nova — nunca como Falta.",
+          "Depois que a lead passa de Agendado, as sessões seguintes do tratamento ficam só na Agenda e não reabrem o funil.",
+          "A importação de leads reconhece Fazer orçamento e lê a coluna Data do atendimento. A antiga Com orçamento continua virando Em aberto, como sempre.",
+          "A exportação de pacientes da Agenda ganhou a coluna Atendimentos marcados.",
+          "Quando dois computadores mudam a etapa da mesma lead — Falta num, Fazer orçamento no outro —, a escolha é uma só, e a cadência e o comparecimento acompanham o lado escolhido."
+        ],
+        "Corrigido": [
+          "Entrar com usuário em um aparelho encerrava a sessão de todas as outras pessoas conectadas. Agora uma sessão só acaba quando a própria pessoa sai ou tem o acesso alterado.",
+          "Um ciclo de retorno de 21 dias criado pelo CRM virava 7 dias ao abrir a Agenda, e a importação arredondava os intervalos para 7, 15 ou 30.",
+          "O botão principal da integração com a Agenda aparecia sem cor de fundo, com o texto quase invisível.",
+          "Editar a ficha no CRM logo depois de mudar a etapa podia trazer a etapa antiga de volta.",
+          "Tocar no aviso de conflito do CRM podia regravar os leads como estavam ao abrir a página, desfazendo o que foi feito depois.",
+          "O histórico de alterações da Agenda mostrava como desmarcado o atendimento que só tinha virado sessão com a passagem do dia."
+        ],
+        "Técnico": [
+          "A planilha ganha duas colunas, criadas sozinhas no fim das abas: a data do atendimento das leads e os atendimentos seguintes de cada ciclo da Agenda. Nada do que já existe muda, e nenhuma data é deduzida para as leads antigas em Agendado.",
+          "Quem cuida de cada lead sai da etapa, e não fica gravado na ficha: não existe lead em Falta marcada como do Comercial 2."
+        ]
+      }
+    },
+    {
       versao: "3.1.0",
       codinome: "CULTIVO",
       data: "16/09/2026",

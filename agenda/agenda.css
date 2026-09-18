@@ -611,6 +611,47 @@ footer{border-top:1px solid var(--linha);padding:26px 0;background:var(--branco)
   #portao .cartao,#portao .erro{animation:none}
   #portao button#portao-btn.carregando::after{animation:none}
 }
+/* ---------- SÉRIE DE ATENDIMENTOS E INTERVALO PERSONALIZADO ----------
+   O campo "a cada N dias" aparece só quando o intervalo é personalizado; a
+   prévia lista as datas que vão ser criadas antes de salvar. No celular
+   tudo empilha: nenhum campo minúsculo espremido ao lado de outro. */
+.dias-campo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.dias-campo[hidden]{display:none}
+.dias-campo label{letter-spacing:.12em}
+.dias-campo input[type=number]{width:96px;flex:0 0 auto;text-align:center;font-weight:500}
+.dias-campo span{font-size:13px;color:var(--texto-2)}
+.radios label[data-passo="outro"]{letter-spacing:.02em}
+.area-cfg .dias-campo input[type=number]{width:78px;padding:8px 10px}
+
+.serie-previa,.serie-ficha{border:1px solid var(--linha);border-radius:2px;background:var(--fundo-1)}
+.serie-previa{padding:14px 16px}
+.serie-ficha{margin-top:12px;padding:12px 14px}
+.sp-topo,.sf-topo{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.sp-topo b,.sf-topo b{font-family:var(--serif);font-size:18px;font-weight:600;color:var(--teal-deep)}
+.sp-topo span,.sf-topo span{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--texto-2)}
+.serie-previa ol,.serie-ficha ol{list-style:none;display:flex;flex-direction:column;gap:2px;
+  max-height:260px;overflow-y:auto}
+.serie-previa li,.serie-ficha li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:6px 0;border-top:1px solid var(--fundo-3)}
+.serie-previa li:first-child,.serie-ficha li:first-child{border-top:none}
+.serie-previa li.fora .sp-data{text-decoration:line-through;color:var(--texto-2)}
+.sp-data{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--teal);
+  min-width:94px;font-variant-numeric:lining-nums tabular-nums}
+.sp-dia{font-size:12px;font-weight:300;color:var(--texto-2);flex:1;min-width:90px}
+/* na ficha, a data em cima e o dia embaixo, com a ação à direita: no
+   celular nada espreme nem desce para uma linha solta */
+.serie-ficha li{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;row-gap:0}
+.serie-ficha .sp-data,.serie-ficha .sp-dia{grid-column:1;min-width:0}
+.serie-ficha li>.badge,.serie-ficha li>.btn{grid-column:2;grid-row:1/span 2;justify-self:end}
+.serie-ficha li .btn.sm{padding:5px 8px}
+.sf-acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+@media(max-width:480px){
+  .dias-campo input[type=number]{width:84px}
+  .serie-previa{padding:12px}
+  .sp-data{min-width:86px;font-size:15px}
+}
+
 /* ---------- ACABAMENTO ----------
    Cantos, sombras e transições no mesmo tom do portal. Fica por último para
    valer sobre as regras de cima sem precisar reescrevê-las. */

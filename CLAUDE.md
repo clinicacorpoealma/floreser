@@ -38,10 +38,10 @@ comporta*. Nenhum dos três volta a morar dentro do outro.
 | Arquivo | Papel |
 |---|---|
 | `crm/index.html` | casca do CRM, as bibliotecas e a aplicação React em JSX — que fica aqui dentro de propósito, ver abaixo |
-| `crm/crm.css` | paleta `--crm-*` dos dois temas, o portão de entrada `.pt-*` e o resumo do dia `.crm-resumo-*` |
+| `crm/crm.css` | paleta `--crm-*` dos dois temas, o portão de entrada `.pt-*`, os resumos `.crm-resumo-*` e a fila do Comercial 2, a ficha e o diálogo da data do atendimento (`.crm-c2-*`, `.crm-bloco-*`, `.crm-dialogo-*`, `.crm-botao`) |
 | `crm/crm-core.js` | infraestrutura: endereço da API, sessão, `chamarAPI`, `window.storage` |
 | `agenda/index.html` | estrutura da Agenda |
-| `agenda/agenda.css` | as seis `@font-face` locais e toda a apresentação da Agenda |
+| `agenda/agenda.css` | as seis `@font-face` locais e toda a apresentação da Agenda, incluindo a série de atendimentos (`.serie-*`, `.sp-*`, `.sf-*`) e o campo de intervalo `.dias-campo` |
 | `agenda/agenda.js` | comportamento da Agenda |
 | `entradas/index.html` | estrutura das Entradas |
 | `entradas/entradas.css` | apresentação das Entradas |
@@ -128,6 +128,91 @@ A leitura devolve só os últimos 62 dias. **Publique o Apps Script antes do sit
 ou junto:** um servidor antigo descarta a lista, e a contagem volta a zero a cada
 recarregamento.
 
+### Comercial 1, Comercial 2 e as etapas
+
+O CRM tem duas filas de trabalho. **Quem cuida da lead sai da etapa, sempre**
+— `comercialDaEtapa()`, lendo a propriedade `comercial` de `ETAPAS`. Não grave
+"responsável" na lead: seriam duas verdades, e um dia elas discordam.
+
+| Etapa | Fila |
+|---|---|
+| Não responde, Conversando, Nurturing, Falta, Em aberto | Comercial 1 — trabalha por cadência, com "Contatei" |
+| Agendado, Fazer orçamento | Comercial 2 — sem cadência: prioridade e data do atendimento |
+| Venda, Venda reprovada, Recusado | Arquivo |
+
+Quando existirem contas presas a uma fila, a regra entra em `COMERCIAIS`; o
+resto do CRM já pergunta tudo por `comercialDaEtapa()`.
+
+**Fazer orçamento ≠ Em aberto.** Fazer orçamento = compareceu e o orçamento
+*ainda precisa ser preparado* (Comercial 2, sem cadência, sempre no topo da
+fila até "Orçamento feito"). Em aberto = o orçamento *já existe e foi
+apresentado*, e o Comercial 1 acompanha a decisão com cadência. A antiga
+"Com orçamento" (`com_orcamento`) era Em aberto e continua migrando para Em
+aberto — nunca para Fazer orçamento.
+
+**`dtAgendamento` ≠ `dataAgendada`.** `dtAgendamento` é marco do funil: o dia
+em que a lead *foi agendada*, carimbado uma vez. `dataAgendada` é o dia em que a
+pessoa *vem à clínica* — a data do atendimento comercial inicial. Agendar hoje
+para daqui a uma semana dá `dtAgendamento` hoje e `dataAgendada` daqui a uma
+semana. Nunca deduza uma da outra: lead antiga em Agendado fica sem
+`dataAgendada` e aparece no Comercial 2 pedindo a data.
+
+As regras do fluxo:
+
+- Toda troca de etapa passa por `aplicarEtapa()`: ajusta a cadência (quem volta
+  ao Comercial 1 vindo de etapa sem cadência entra na mais quente) e carimba os
+  marcos. Fazer orçamento carimba o comparecimento — com a data do atendimento,
+  se ela já chegou; comparecimento existente nunca é reescrito. Falta não
+  carimba nada e não apaga `dtAgendamento` nem `dataAgendada`.
+- Entrar em Agendado sempre pede a data do atendimento (`DialogoAtendimento`,
+  ou o campo no formulário). Voltar de Falta para Agendado pede uma data *nova*.
+- Depois do dia do atendimento, a ficha e o cartão oferecem só
+  `DESFECHOS_DO_ATENDIMENTO` (Falta ou Fazer orçamento). O seletor de etapa
+  mostra `PROXIMAS_ETAPAS`; a lista inteira é "Corrigir etapa manualmente".
+- A fila do Comercial 2 é `situacaoComercial2()` + `FILA_COMERCIAL2` + uma
+  ordenação só, `compararComercial2()`: Fazer orçamento (mais antigo primeiro),
+  sem data, atendimento que passou, hoje, futuros (mais próximo primeiro). O
+  badge conta só o que pede ação — atendimento futuro e o de hoje não.
+- `situacao()` é só da cadência. Etapa sem cadência nunca entra nela, nem com
+  uma cadência que sobrou gravada.
+- Num conflito, a etapa é **uma** pergunta e arrasta junto `CAMPOS_DA_ETAPA`
+  (cadência, data do atendimento e marcos) do lado escolhido —
+  `amarrarEtapas()`. Etapa mudada de um lado enquanto o outro remarcava também
+  vira pergunta. O que não se cruza continua somando sozinho.
+
+### A Agenda e o CRM
+
+**A Agenda é a fonte operacional dos atendimentos; o CRM guarda só o
+atendimento comercial inicial** (`dataAgendada`). A Agenda pode ter várias
+sessões futuras — elas nunca reiniciam o funil.
+
+- Cada área da paciente tem `agendamento` (o **próximo** atendimento — é dele
+  que o painel, os follow-ups e a integração falam) e `proximos` (as datas
+  seguintes de uma série, em ordem). `arrumarSerie()` garante que o próximo é
+  sempre o mais cedo. Na planilha, `proximos` é uma coluna de
+  `Pacientes_Ciclos`, datas separadas por vírgula — vai e volta com o ciclo, na
+  lixeira e na restauração.
+- A série é uma lista de datas, não uma regra: `datasDaSerie()` gera as datas
+  pelo calendário (`D.add`, meio-dia local), nunca somando milissegundos.
+  Alterar ou desmarcar uma data mexe só nela.
+- Intervalos — o de retorno ("Ela vem a cada") e o espaçamento da série — são
+  7, 15, 30 ou personalizado: qualquer inteiro de **1 a 365** dias
+  (`INTERVALOS`, `lerIntervalo()`). O valor real vai gravado em `freq`; a série
+  guarda só as datas, e o passo é lido delas.
+- `maturar()` transforma o atendimento cujo dia passou em "sessão" **pelo
+  relógio**, sem ninguém confirmar presença. Por isso a sessão da Agenda nunca
+  vira comparecimento nem Fazer orçamento no CRM: passado o dia, quem decide é
+  o Comercial 2. A Agenda não tem "faltou".
+- No servidor, `ecoDaAgendaNoCRM()` só olha leads **em Agendado**, pelo vínculo
+  `Pacientes.crmLeadId` (nunca pelo nome), e só mexe na `dataAgendada`:
+  remarcou o atendimento que tinha a data do CRM → o CRM acompanha; desmarcou →
+  a lead fica sem data; lead sem data ganhou agendamento → é ele. Sessão pela
+  passagem do dia, mais de um candidato ou lead em outra etapa: nada muda.
+- Do CRM para a Agenda, a data vai por `crm_agenda_agendar` (exige as duas
+  permissões). O CRM grava primeiro e só leva a data à Agenda com a gravação
+  confirmada; com a paciente já vinculada, `atualizarData` remarca o
+  atendimento que tinha a data anterior, sem mexer no ciclo dela.
+
 A **auditoria de negócio** vive na aba `Auditoria` e responde "quem mudou esta
 ficha, o quê, quando". Ela é separada do **log técnico** das abas `Logs` e
 `Sessoes`, que continua sendo erro, rede, sessão e segurança. Não misture os
@@ -187,7 +272,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO.
 
 ### Changelog
 
