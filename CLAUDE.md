@@ -213,6 +213,23 @@ sessões futuras — elas nunca reiniciam o funil.
   confirmada; com a paciente já vinculada, `atualizarData` remarca o
   atendimento que tinha a data anterior, sem mexer no ciclo dela.
 
+### Quem administra
+
+**Administrador é só a conta de usuário marcada como `admin` no painel de
+manutenção** — `eAdministrador(auth)` no Apps Script. A senha compartilhada de
+um módulo nunca conta: ela não diz quem é a pessoa.
+
+Nas Entradas, quem não administra registra, edita e confere as entradas, mas
+não vê somas (resumo do período, recebido, em haver, contagem com ticket médio,
+divisão por forma de pagamento, total de cada dia), não exporta (planilha, cópia
+e backup) e não exclui. A tela decide pelo `podeAdministrar` que o servidor
+devolve em cada `ler_entradas` — nunca pelo perfil guardado no navegador. E a
+trava de verdade é do servidor: `lixeira_mover` de entrada e uma
+`salvar_entradas` que some com alguma entrada são recusados (`sem_permissao`)
+para quem não administra, e cada tentativa vai para o log de segurança
+(`EXCLUSAO_NEGADA`). O valor de cada entrada continua visível a quem trabalha
+no módulo — ele é necessário para registrar e conferir.
+
 A **auditoria de negócio** vive na aba `Auditoria` e responde "quem mudou esta
 ficha, o quê, quando". Ela é separada do **log técnico** das abas `Logs` e
 `Sessoes`, que continua sendo erro, rede, sessão e segurança. Não misture os
@@ -272,7 +289,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE.
 
 ### Changelog
 

@@ -22,6 +22,23 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "3.3.0",
+      codinome: "SEBE",
+      data: "18/09/2026",
+      mudancas: {
+        "Adicionado": [
+          "Nas Entradas, quem não é administrador registra, edita e confere as entradas, mas não vê os totais do período, o recebido, o em haver, a contagem com o ticket médio, a divisão por forma de pagamento nem o total de cada dia.",
+          "Nas Entradas, só administradores excluem entradas e exportam — planilha, cópia da tabela e backup. A exclusão é recusada pelo servidor para quem não administra, mesmo fora da tela, e cada tentativa fica registrada."
+        ],
+        "Corrigido": [
+          "Na lista de pacientes da Agenda, rolar a tabela para o lado escondia o nome. Agora o nome fica preso à esquerda e os botões de ver, editar, arquivar e excluir ficam presos à direita, então dá para saber de quem é cada linha."
+        ],
+        "Técnico": [
+          "Quem administra é só a conta de usuário marcada como administradora no painel de manutenção; a senha compartilhada do módulo não conta. A decisão vem do servidor a cada leitura, e não do que está guardado no navegador."
+        ]
+      }
+    },
+    {
       versao: "3.2.0",
       codinome: "POLINIZAÇÃO",
       data: "18/09/2026",

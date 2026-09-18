@@ -1149,7 +1149,9 @@ function renderPac(){
         '<button class="btn q sm" data-act="excluir" data-id="'+p.id+'" title="Excluir">'+I.trash(14)+'</button>'+
       '</td></tr>';
   });
-  alvo.innerHTML=topo+topo2+'<div class="tbl-wrap"><div class="tbl-scroll"><table><thead><tr>'+
+  /* tbl-pac: com a lista mais larga que a tela, o nome fica preso à esquerda
+     e as ações à direita ao rolar para o lado — ver agenda.css */
+  alvo.innerHTML=topo+topo2+'<div class="tbl-wrap"><div class="tbl-scroll"><table class="tbl-pac"><thead><tr>'+
     '<th>Paciente</th><th>Ciclos</th><th>Categoria</th><th>Situação</th>'+
     '<th>Próximo prazo</th><th>Máquinas</th><th></th>'+
     '</tr></thead><tbody>'+linhas+'</tbody></table></div></div>';

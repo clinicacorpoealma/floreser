@@ -165,6 +165,23 @@
      e pode ser cancelado sem mexer em nenhum outro aparelho. */
   const SESSAO = { token: "", rev: 0 };
 
+  /* Quem administra vê as somas, exporta e exclui; quem não administra
+     registra e confere as entradas. O sinal vem do servidor a cada leitura
+     — nunca do que está guardado neste navegador — e começa desligado. A
+     trava de verdade também está lá: excluir é recusado pelo servidor para
+     quem não administra, com ou sem botão na tela. */
+  let podeAdministrar = false;
+
+  function aplicarPermissoes() {
+    document.body.classList.toggle("sem-admin", !podeAdministrar);
+    if (!podeAdministrar) {
+      el("summary").innerHTML = "";
+      el("dist").innerHTML = "";
+      const dlg = el("exportDialog");
+      if (dlg && dlg.open) dlg.close();
+    }
+  }
+
   /* Ler pode ser repetido sem consequência; gravar, não — quem grava tem a
      revisão em mãos e cuida do próprio reenvio. O que se ganha aqui é o
      tropeço do redirecionamento do Apps Script, que devolve 404 de vez em
@@ -187,6 +204,8 @@
     const r = await api({ acao: "ler_entradas", token: SESSAO.token });
     if (!r.ok) throw new Error(r.erro || "falha");
     SESSAO.rev = r.rev;
+    podeAdministrar = r.podeAdministrar === true;
+    aplicarPermissoes();
     const copia = readLocal();
     state = sanitize(r.dados || {});
     /* o que acabou de chegar é o que o servidor tem */
@@ -300,6 +319,7 @@
       });
       if (!r.ok) {
         if (r.erro === "conflito") { conflito(r); return; }
+        if (r.erro === "sem_permissao") { await devolverApagadas(); return; }
         if (r.erro === "sem_acesso") {
           travado = true; setStatus("expirado");
           toast("Seu acesso a este módulo foi retirado. Recarregue a página.");
@@ -342,6 +362,31 @@
         clearTimeout(timerEnvio);
         timerEnvio = setTimeout(enviar, 200);
       }
+    }
+  }
+
+  /* O servidor recusou porque sumiu daqui uma entrada, e quem está usando
+     não pode excluir. As que sumiram voltam do servidor; o resto do que foi
+     feito aqui continua e sobe na próxima gravação — nada é descartado. */
+  async function devolverApagadas() {
+    try {
+      const r = await api({ acao: "ler_entradas", token: SESSAO.token });
+      if (!r || !r.ok) throw new Error((r && r.erro) || "falha");
+      SESSAO.rev = r.rev;
+      podeAdministrar = r.podeAdministrar === true;
+      aplicarPermissoes();
+      const doServidor = sanitize(r.dados || {}).entradas;
+      const aqui = new Set(state.entradas.map(e => e.id));
+      let voltaram = 0;
+      for (const e of doServidor) if (!aqui.has(e.id)) { state.entradas.push(e); voltaram++; }
+      BASE_ENTRADAS = { entradas: FloreSerSync.copiar(doServidor) };
+      render();
+      touch();
+      toast("Só administradores podem excluir entradas." +
+        (voltaram ? (voltaram === 1 ? " A entrada voltou para a lista." : " As entradas voltaram para a lista.") : ""));
+    } catch (e) {
+      setStatus("error");
+      toast("Só administradores podem excluir entradas. Recarregue a página para ver a lista do servidor.");
     }
   }
 
@@ -508,6 +553,7 @@
      5. Renderização
      ========================================================== */
   function renderSummary(list) {
+    if (!podeAdministrar) { el("summary").innerHTML = ""; return; }
     const total = list.reduce((s, e) => s + entryTotal(e), 0);
     let haver = 0;
     for (const e of list) for (const p of e.pagamentos) if (p.metodo === "haver") haver += p.valor;
@@ -539,6 +585,7 @@
   }
 
   function renderDist(list) {
+    if (!podeAdministrar) { el("dist").innerHTML = ""; return; }
     const totals = {};
     let grand = 0;
     for (const e of list) for (const p of e.pagamentos) {
@@ -601,10 +648,13 @@
       if (iso === today) cls.push("is-today");
       if (iso === selectedDay) cls.push("is-selected");
       if (period === "dia") cls.push("is-day-view");
-      return `<button type="button" class="${cls.join(" ")}" data-day="${iso}" aria-label="${esc(d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }))}${list.length ? ", " + fmtBRL(total) : ", sem entradas"}">
+      const resumoDoDia = !list.length ? ", sem entradas"
+        : podeAdministrar ? ", " + fmtBRL(total)
+          : ", " + list.length + (list.length === 1 ? " entrada" : " entradas");
+      return `<button type="button" class="${cls.join(" ")}" data-day="${iso}" aria-label="${esc(d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }))}${resumoDoDia}">
         <span class="d-num num">${d.getDate()}</span>
         ${list.length ? `<span class="d-dots">${methodDots({ pagamentos: list.flatMap(e => e.pagamentos) })}</span>` : ""}
-        ${list.length ? `<span class="d-total num">${fmtShort(total)}</span>` : ""}
+        ${list.length && podeAdministrar ? `<span class="d-total num">${fmtShort(total)}</span>` : ""}
         ${list.length ? `<span class="d-count">${list.length} ${list.length === 1 ? "entrada" : "entradas"}</span>` : ""}
       </button>`;
     }).join("");
@@ -637,9 +687,9 @@
         <button type="button" class="icon-btn" data-edit="${esc(e.id)}" title="Editar" aria-label="Editar entrada de ${esc(e.nome)}">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.2 2.8 13.2 4.8 5.6 12.4 3 13l.6-2.6 7.6-7.6Z"/></svg>
         </button>
-        <button type="button" class="icon-btn is-danger" data-del="${esc(e.id)}" title="Mover para a lixeira" aria-label="Excluir entrada de ${esc(e.nome)}">
+        ${podeAdministrar ? `<button type="button" class="icon-btn is-danger" data-del="${esc(e.id)}" title="Mover para a lixeira" aria-label="Excluir entrada de ${esc(e.nome)}">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8"/></svg>
-        </button>
+        </button>` : ""}
       </div>
     </article>`;
   }
@@ -655,7 +705,7 @@
         </span>
         <span class="dch-meta">
           <span class="dch-count">${list.length} ${list.length === 1 ? "entrada" : "entradas"}</span>
-          <span class="dch-total num">${esc(fmtBRL(total))}</span>
+          ${podeAdministrar ? `<span class="dch-total num">${esc(fmtBRL(total))}</span>` : ""}
           <svg class="dch-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 6 5 5 5-5"/></svg>
         </span>
       </button>
@@ -876,7 +926,7 @@
     editingId = entry ? entry.id : null;
     el("entryTitle").textContent = entry ? "Editar entrada" : "Nova entrada";
     el("btnSave").textContent = entry ? "Salvar alterações" : "Salvar entrada";
-    el("btnDelete").style.display = entry ? "" : "none";
+    el("btnDelete").style.display = entry && podeAdministrar ? "" : "none";
     el("btnDelete").disabled = false;
     el("confDelete").hidden = true;
     el("fMotivoLixeira").value = "";
@@ -1068,6 +1118,7 @@
      só refletimos o que ele já fez — nada é reenviado, para o registro não
      voltar sozinho na próxima gravação. */
   async function deleteEntry(id, motivo) {
+    if (!podeAdministrar) { toast("Só administradores podem excluir entradas."); return; }
     const i = state.entradas.findIndex(e => e.id === id);
     if (i < 0) return;
     const alvo = state.entradas[i];
@@ -1079,7 +1130,9 @@
       if (!r || !r.ok) {
         toast(r && r.erro === "sem_acesso"
           ? "Você não possui acesso a este módulo."
-          : "Não foi possível concluir a operação. Tente novamente.");
+          : r && r.erro === "sem_permissao"
+            ? "Só administradores podem excluir entradas."
+            : "Não foi possível concluir a operação. Tente novamente.");
         return;
       }
       if (typeof r.rev === "number") SESSAO.rev = r.rev;
@@ -1207,6 +1260,7 @@
   }
 
   function baixarBackup() {
+    if (!podeAdministrar) return;
     const ok = triggerDownload(
       "backup_entradas_" + todayISO() + ".json",
       JSON.stringify(state, null, 2),
@@ -1247,6 +1301,7 @@
   }
 
   function downloadCsv() {
+    if (!podeAdministrar) return;
     const de = el("expDe").value, ate = el("expAte").value;
     const r = buildCsv(de, ate);
     const nome = "entradas_" + de + "_a_" + ate + ".csv";
@@ -1261,6 +1316,7 @@
   }
 
   async function copyCsv() {
+    if (!podeAdministrar) return;
     const r = buildCsv(el("expDe").value, el("expAte").value);
     try {
       await navigator.clipboard.writeText(r.csv);
@@ -1336,7 +1392,7 @@
         return;
       }
       const del = ev.target.closest("[data-del]");
-      if (del) {
+      if (del && podeAdministrar) {
         if (del.dataset.armed === "1") { deleteEntry(del.dataset.del); return; }
         del.dataset.armed = "1";
         del.title = "Clique de novo para mover para a lixeira";
@@ -1359,7 +1415,7 @@
 
     /* o botão só abre a pergunta; quem move é o painel abaixo dele */
     el("btnDelete").addEventListener("click", () => {
-      if (!editingId) return;
+      if (!editingId || !podeAdministrar) return;
       el("confDelete").hidden = false;
       el("btnDelete").disabled = true;
       el("fMotivoLixeira").focus();
@@ -1372,7 +1428,7 @@
     });
 
     el("btnDeleteOk").addEventListener("click", () => {
-      if (!editingId) return;
+      if (!editingId || !podeAdministrar) return;
       const id = editingId;
       const motivo = el("fMotivoLixeira").value.trim();
       entryDialog.close();
@@ -1419,6 +1475,7 @@
     el("fValor").addEventListener("input", ev => maskMoney(ev.target));
 
     el("btnExport").addEventListener("click", () => {
+      if (!podeAdministrar) return;
       applyPreset("periodo");
       for (const p of el("exportPresets").querySelectorAll(".preset")) p.classList.toggle("is-on", p.dataset.preset === "periodo");
       el("csvFallback").style.display = "none";

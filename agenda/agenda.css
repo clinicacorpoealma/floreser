@@ -252,6 +252,25 @@ td .nm{font-family:var(--serif);font-size:18px;font-weight:600}
 td.acts{text-align:right;white-space:nowrap}
 .tbl-scroll{overflow-x:auto}
 
+/* Lista de pacientes: quando ela fica mais larga que a tela e rola para o
+   lado, o nome não pode sumir — senão quem vai editar precisa adivinhar de
+   quem é a linha. A coluna do nome fica presa à esquerda e a das ações à
+   direita, cada uma com fundo próprio e um filete marcando a borda. */
+.tbl-pac th:first-child,.tbl-pac td:first-child{position:sticky;left:0;z-index:1;background:var(--branco);
+  box-shadow:inset -1px 0 0 var(--linha);min-width:190px;max-width:280px}
+.tbl-pac th:last-child,.tbl-pac td:last-child{position:sticky;right:0;z-index:1;background:var(--branco);
+  box-shadow:inset 1px 0 0 var(--linha)}
+.tbl-pac th:first-child,.tbl-pac th:last-child{background:var(--fundo-2);z-index:2}
+.tbl-pac tbody tr:hover td:first-child,.tbl-pac tbody tr:hover td:last-child{background:var(--fundo-1)}
+.tbl-pac td .nm{display:block;line-height:1.25}
+/* no celular, presas as duas colunas não deixariam espaço para o meio: fica
+   só o nome, e as ações chegam rolando — com o nome ainda à vista */
+@media(max-width:600px){
+  .tbl-pac th:first-child,.tbl-pac td:first-child{min-width:0;max-width:46vw}
+  .tbl-pac th:last-child,.tbl-pac td:last-child{position:static;box-shadow:none}
+  .tbl-pac td .nm{font-size:16px}
+}
+
 /* ---------- FORMULÁRIO ---------- */
 .form{background:var(--branco);border:1px solid var(--linha);border-radius:3px;padding:34px 36px;
   box-shadow:var(--sombra);max-width:760px}

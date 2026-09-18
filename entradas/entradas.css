@@ -232,6 +232,11 @@ body::before{
 .dist-item b{font-weight:600;color:var(--text)}
 .dist-empty{font-size:12.5px;color:var(--text-3);font-style:italic}
 
+/* Quem não administra registra e confere as entradas, sem somas, sem a
+   divisão por forma de pagamento e sem exportar. O sinal vem do servidor;
+   aqui só sai da tela o espaço que ficaria vazio. */
+.sem-admin .summary,.sem-admin .dist,.sem-admin #btnExport{display:none}
+
 /* ============================================================
    Controles
    ============================================================ */
