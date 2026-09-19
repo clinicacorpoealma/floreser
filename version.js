@@ -22,6 +22,17 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "3.3.1",
+      codinome: "COMPASSO",
+      data: "18/09/2026",
+      mudancas: {
+        "Corrigido": [
+          "A quinzena da Agenda agora é de 14 dias: duas semanas certas, e a sessão cai sempre no mesmo dia da semana. Com 15, cada retorno andava um dia — quinta virava sexta, depois sábado. Vale para o intervalo da paciente, para as séries de atendimentos e para o ciclo de retorno escolhido no CRM.",
+          "As pacientes que estavam com o ciclo de 15 dias passam a 14 sozinhas, uma vez, na primeira abertura depois da atualização."
+        ]
+      }
+    },
+    {
       versao: "3.3.0",
       codinome: "SEBE",
       data: "18/09/2026",

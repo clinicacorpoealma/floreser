@@ -196,9 +196,13 @@ sessões futuras — elas nunca reiniciam o funil.
   pelo calendário (`D.add`, meio-dia local), nunca somando milissegundos.
   Alterar ou desmarcar uma data mexe só nela.
 - Intervalos — o de retorno ("Ela vem a cada") e o espaçamento da série — são
-  7, 15, 30 ou personalizado: qualquer inteiro de **1 a 365** dias
+  7, 14, 30 ou personalizado: qualquer inteiro de **1 a 365** dias
   (`INTERVALOS`, `lerIntervalo()`). O valor real vai gravado em `freq`; a série
-  guarda só as datas, e o passo é lido delas.
+  guarda só as datas, e o passo é lido delas. A quinzena é **14**, não 15:
+  duas semanas certas mantêm o dia da semana. Os ciclos de 15 gravados antes
+  da 3.3.1 viraram 14 numa migração única do servidor
+  (`migrarQuinzenaPara14`); depois dela, 15 é um intervalo personalizado
+  como qualquer outro.
 - `maturar()` transforma o atendimento cujo dia passou em "sessão" **pelo
   relógio**, sem ninguém confirmar presença. Por isso a sessão da Agenda nunca
   vira comparecimento nem Fazer orçamento no CRM: passado o dia, quem decide é
@@ -289,7 +293,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO.
 
 ### Changelog
 

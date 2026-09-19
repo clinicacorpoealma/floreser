@@ -83,7 +83,7 @@ function relativo(alvo,hoje){
    ÁREAS DE TRATAMENTO
    ----------------------------------------------------------
    Cada paciente pode ter um ciclo próprio em cada área —
-   Facial de 15 dias e Corporal de 7, por exemplo — ou ter
+   Facial de 14 dias e Corporal de 7, por exemplo — ou ter
    apenas uma delas.
    ========================================================== */
 const AREAS=[
@@ -168,11 +168,15 @@ async function carregar(){
   if(primeiraVez) salvar();
 }
 /* ---------- Intervalos ----------
-   Semanal, 15 e 30 dias são os atalhos de sempre; qualquer outro número
+   Semanal, 14 e 30 dias são os atalhos; qualquer outro número
    inteiro de 1 a 365 é um intervalo personalizado, e vale do mesmo jeito.
    Antes só os três atalhos passavam, e um ciclo de 21 dias vindo do CRM
    virava 7 sem ninguém perceber. */
-const INTERVALOS=[{dias:7,nome:'Semanal'},{dias:15,nome:'A cada 15 dias'},{dias:30,nome:'A cada 30 dias'}];
+/* A quinzena é de 14 dias: duas semanas certas, e a sessão cai sempre no
+   mesmo dia da semana. Com 15, cada retorno andava um dia — quinta virava
+   sexta, depois sábado. Os ciclos de 15 que já existiam passaram a 14 numa
+   migração única do Apps Script. */
+const INTERVALOS=[{dias:7,nome:'Semanal'},{dias:14,nome:'A cada 14 dias'},{dias:30,nome:'A cada 30 dias'}];
 const INTERVALO_MAX=365;
 function intervaloValido(n){ return Number.isInteger(n)&&n>=1&&n<=INTERVALO_MAX; }
 /* lê o que foi digitado: só aceita um inteiro de verdade — "2,5", "abc",
@@ -1174,7 +1178,7 @@ function formPaciente(p){
   const blocosArea=AREAS.map(a=>{
     const c=ed?ciclo(p,a.k):null;
     const on=!!c || (!ed&&a.k==='facial');
-    const f=c?c.freq:15;
+    const f=c?c.freq:14;
     /* os três atalhos de sempre, e "outro" para qualquer intervalo de 1 a
        365 dias — um ciclo de 21 dias abre aqui já marcado como outro, 21 */
     const outro=INTERVALOS.every(o=>o.dias!==f);
@@ -1213,7 +1217,7 @@ function formPaciente(p){
         (ed?esc(p.nome):'')+'"></div>'+
       '<div class="field full"><label>Ciclos de retorno</label>'+
         '<span class="hintx" style="margin-bottom:6px">Marque as áreas que ela faz — cada uma tem '+
-        'o próprio intervalo. Pode ser só uma, ou Facial de 15 dias e Corporal de 7. '+
+        'o próprio intervalo. Pode ser só uma, ou Facial de 14 dias e Corporal de 7. '+
         '<b style="font-weight:500">Pode deixar todas desmarcadas</b> — quem só vem nas máquinas '+
         'temporárias não precisa de ciclo.</span>'+
         '<div class="areas" id="f-areas">'+blocosArea+'</div></div>'+
@@ -2290,7 +2294,7 @@ let impPend=null;
 function baixarModelo(){
   const aoa=[
     ['Nome','Facial','Corporal','Capilar','Categoria','Máquinas','Último atendimento','Observações'],
-    ['Exemplo — apague esta linha',15,7,'','Pele madura','Soprano, Harmony','01/01/2026',
+    ['Exemplo — apague esta linha',14,7,'','Pele madura','Soprano, Harmony','01/01/2026',
      'Pele sensível, prefere manhã'],
     ['Exemplo — apague esta linha','',30,'','','','','Só corporal, ainda sem histórico']
   ];
@@ -2561,16 +2565,16 @@ function demo(){
   state.pacientes=[
     mk('Ana Paula',0,{facial:C(7,D.add(h,-9)),corporal:C(30,D.add(h,-5)),capilar:null},
       'Voltou a fazer o protocolo facial completo.'),
-    mk('Beatriz M.',1,{facial:null,corporal:C(15,D.add(h,-14)),capilar:null},
+    mk('Beatriz M.',1,{facial:null,corporal:C(14,D.add(h,-14)),capilar:null},
       'Prefere horários de manhã.'),
     mk('Carolina R.',2,{facial:C(7,D.add(h,-6)),corporal:null,capilar:C(30,D.add(h,-10))},
       'Pele sensível — intervalo curto.'),
     mk('Denise F.',0,{facial:C(30,D.add(h,-30)),corporal:null,capilar:null},
       'Retorno mensal de manutenção.'),
-    mk('Elisa T.',1,{facial:null,corporal:C(15,D.add(h,-2)),capilar:null},'Em série de sessões.'),
+    mk('Elisa T.',1,{facial:null,corporal:C(14,D.add(h,-2)),capilar:null},'Em série de sessões.'),
     mk('Fernanda L.',0,{facial:C(7,null),corporal:null,capilar:C(30,null)},
       'Primeira vez — indicação de cliente.'),
-    mk('Gabriela S.',2,{facial:C(15,D.add(h,-13)),corporal:null,capilar:null},'Viagem marcada.',
+    mk('Gabriela S.',2,{facial:C(14,D.add(h,-13)),corporal:null,capilar:null},'Viagem marcada.',
       [{id:uid(),texto:'Viagem de trabalho',inicio:D.add(h,1),fim:D.add(h,6)}]),
     mk('Helena V.',0,{facial:null,corporal:null,capilar:C(30,D.add(h,-28))},
       'Evento da filha no fim do mês.',

@@ -2637,7 +2637,8 @@
        uma saída, e a data continua salva no CRM do mesmo jeito.
        ================================================================ */
     const AREAS_AGENDA = [["facial", "Facial"], ["corporal", "Corporal"], ["capilar", "Capilar"]];
-    const CICLOS_AGENDA = [7, 15, 21, 30, 45, 60, 90];
+    /* 14, e não 15: duas semanas certas mantêm o dia da semana */
+    const CICLOS_AGENDA = [7, 14, 21, 30, 45, 60, 90];
 
     function DialogoAtendimento({ lead, modo, hoje, podeAgenda, aoConfirmar, aoFechar }) {
       /* remarcar parte da data de agora; entrar em Agendado — inclusive
@@ -2857,7 +2858,7 @@
           <label style={{ display: "block", marginBottom: 16 }}>
             <span style={rot}>Ciclo de retorno</span>
             <select value={freq} onChange={(e) => setFreq(Number(e.target.value))} style={campo}>
-              {[7, 15, 21, 30, 45, 60, 90].map((d) => (
+              {CICLOS_AGENDA.map((d) => (
                 <option key={d} value={d}>{d} dias</option>
               ))}
             </select>
