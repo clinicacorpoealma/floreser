@@ -22,6 +22,20 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "3.4.0",
+      codinome: "TRILHA",
+      data: "18/09/2026",
+      mudancas: {
+        "Adicionado": [
+          "Toda série de atendimentos da Agenda guarda o fim previsto do tratamento. Na ficha, no painel e na lista de pacientes aparece se ele está no prazo ou quantos dias está atrasado.",
+          "Sessão desmarcada numa série não some mais: ela fica a remarcar, e a paciente aparece no painel em “Sessões a remarcar” até alguém escolher a nova data — ou marcar que ela não vai ser remarcada."
+        ],
+        "Alterado": [
+          "Desmarcar uma sessão da série não deixa mais a paciente simplesmente como agendada, com uma sessão a menos. “Desmarcar todos” continua encerrando o tratamento inteiro, sem nada a remarcar."
+        ]
+      }
+    },
+    {
       versao: "3.3.1",
       codinome: "COMPASSO",
       data: "18/09/2026",

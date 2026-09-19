@@ -664,6 +664,13 @@ footer{border-top:1px solid var(--linha);padding:26px 0;background:var(--branco)
 .serie-ficha li>.badge,.serie-ficha li>.btn{grid-column:2;grid-row:1/span 2;justify-self:end}
 .serie-ficha li .btn.sm{padding:5px 8px}
 .sf-acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+/* o tratamento: fim previsto, atraso e sessões desmarcadas esperando data */
+.sf-fim{font-size:12.5px;font-weight:300;color:var(--texto-2);margin:-2px 0 10px;line-height:1.5}
+.sf-fim b{font-weight:600;color:var(--teal-deep)}
+.sf-fim.atrasado{color:var(--alerta-texto)}
+.sf-pendente{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;margin:0 0 10px;padding:9px 11px;
+  border-radius:2px;background:var(--alerta-bg);color:var(--alerta-texto);font-size:12.5px}
+.sf-pendente span{flex:1 1 160px}
 
 @media(max-width:480px){
   .dias-campo input[type=number]{width:84px}

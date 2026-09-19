@@ -203,6 +203,15 @@ sessões futuras — elas nunca reiniciam o funil.
   da 3.3.1 viraram 14 numa migração única do servidor
   (`migrarQuinzenaPara14`); depois dela, 15 é um intervalo personalizado
   como qualquer outro.
+- O tratamento tem **fim previsto** (`fimPrevisto`, a última data quando a
+  série é marcada ou ampliada com "Marcar mais") e **sessões a remarcar**
+  (`aRemarcar`). Desmarcar uma sessão de série não a apaga do tratamento: soma
+  uma a remarcar, e a paciente aparece em "Sessões a remarcar" no painel até
+  "Remarcar sessão" (que não mexe no fim previsto) ou "Não vai remarcar".
+  `situacaoTratamento()` compara o fim de agora — a última data, mais um passo
+  por sessão pendente — com o previsto, e isso é o atraso. "Desmarcar todos" é
+  encerrar o tratamento: zera os dois. Na planilha, são as colunas
+  `fimPrevisto` e `aRemarcar` de `Pacientes_Ciclos`.
 - `maturar()` transforma o atendimento cujo dia passou em "sessão" **pelo
   relógio**, sem ninguém confirmar presença. Por isso a sessão da Agenda nunca
   vira comparecimento nem Fazer orçamento no CRM: passado o dia, quem decide é
@@ -293,7 +302,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA.
 
 ### Changelog
 
