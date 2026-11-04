@@ -440,7 +440,36 @@
      Devolve o objeto que o servidor mandou. Se nem assim vier JSON,
      devolve { ok:false, erro:"servidor_falhou" } com o motivo legível —
      nunca deixa a tela achar que o problema é a internet de quem usa. */
+  /* O selo de atividade abre aqui e fecha aqui, em volta de TODA a
+     chamada — as repetições internas incluídas. Assim uma chamada que
+     tentou três vezes aparece como uma operação contínua, e não como uma
+     sequência de erro e sucesso piscando na tela.
+
+     Os envios do próprio registro técnico não passam por aqui: eles usam
+     o fetch lá de cima. Era o que faltava para o selo não virar um
+     notificador de telemetria. */
+  function abrirAtividade(corpo) {
+    return tentar(function () {
+      if (!global.FloreSerAtividade) return null;
+      var dados = typeof corpo === "string" ? JSON.parse(corpo) : corpo;
+      return global.FloreSerAtividade.iniciar(dados && dados.acao);
+    }, null);
+  }
+
   async function postar(corpo, opcoes) {
+    var op = abrirAtividade(corpo);
+    try {
+      var resposta = await postarAoServidor(corpo, opcoes);
+      if (op) tentar(function () { return global.FloreSerAtividade.concluir(op, resposta); }, null);
+      return resposta;
+    } catch (erro) {
+      /* a chamada estourou: a operação fecha assim mesmo, uma vez só */
+      if (op) tentar(function () { return global.FloreSerAtividade.falhaDeRede(op, erro); }, null);
+      throw erro;
+    }
+  }
+
+  async function postarAoServidor(corpo, opcoes) {
     var o = opcoes || {};
     var tentativas = o.repetir ? ESPERAS.length + 1 : 1;
     var ultimoStatus = 0;

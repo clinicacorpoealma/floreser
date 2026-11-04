@@ -20,6 +20,8 @@ comporta*. Nenhum dos três volta a morar dentro do outro.
 | `crm.html` `agenda.html` `entradas.html` | atalhos de uma linha para os endereços antigos |
 | `version.js` | **fonte única** de versão, codinome e changelog |
 | `logs.js` | registro técnico e `FloreSerRede.postar` — a camada de rede compartilhada |
+| `atividade-rede.js` | o selo que mostra quando o sistema está falando com a planilha |
+| `atividade-rede.css` | apresentação do selo de atividade, nos dois temas |
 | `tema.js` | tema claro/escuro/automático: paleta, seletor e preferência local |
 | `auth.js` | conta de usuário: tela de entrar, sessão de 30 dias, avatar e menu |
 | `painel.js` | painel de manutenção do portal (entrada discreta + senha no servidor) |
@@ -243,6 +245,35 @@ para quem não administra, e cada tentativa vai para o log de segurança
 (`EXCLUSAO_NEGADA`). O valor de cada entrada continua visível a quem trabalha
 no módulo — ele é necessário para registrar e conferir.
 
+### O selo de atividade
+
+`atividade-rede.js` mostra, no canto inferior esquerdo das quatro telas,
+quando há conversa com o Apps Script. Ele é **instrumentado na camada
+compartilhada, nunca botão a botão**: o `FloreSerRede.postar` abre e fecha uma
+operação em volta de toda a chamada — as repetições internas dentro da mesma
+operação, para não piscar entre erro e sucesso. O painel de manutenção tem um
+`fetch` próprio (ele não repete leitura sozinho) e por isso abre e fecha o selo
+à mão, em `chamar()`. O envio do registro técnico fica de fora: ele não passa
+pelo `postar`, e um selo que piscasse a cada log seria ruído.
+
+Três regras sustentam o arquivo, e mexer nele sem elas quebra a honestidade da
+tela:
+
+- **Atividade não é garantia.** Quem sabe se está guardado é o rodapé do módulo
+  (`FloreSerSync.criarStatus`, que avisa o selo em cada mudança). "Alterações
+  salvas" só sai quando o rodapé diz `salvo`; com coisa na fila — inclusive
+  editada durante o envio — o texto é "Envio concluído". O selo nunca
+  contradiz o rodapé, e não tem lógica de salvamento nenhuma.
+- **Sucesso se confirma lendo a resposta.** O Apps Script responde 200 com
+  `ok:false` em conflito, sessão vencida e acesso negado. Só vale como sucesso
+  o que vem com `ok` verdadeiro; sem o campo, a operação fecha sem visto verde.
+- **Falha não some sozinha.** Ela fica até a pessoa dispensar, ou até outra
+  operação do mesmo tipo dar certo. Um sucesso de outro tipo não apaga.
+
+Nada do que aparece ali tem nome, valor, token ou resposta do servidor: só o
+tipo da operação. O selo não recebe clique (só o botão de dispensar), não
+bloqueia a tela e mede a faixa do `pwa.js` para sair da frente dela.
+
 A **auditoria de negócio** vive na aba `Auditoria` e responde "quem mudou esta
 ficha, o quê, quando". Ela é separada do **log técnico** das abas `Logs` e
 `Sessoes`, que continua sendo erro, rede, sessão e segurança. Não misture os
@@ -302,7 +333,7 @@ Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes 
 usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
 luz — ou que resuma a atualização. O codinome não interfere na numeração.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA, FAROL.
 
 ### Changelog
 

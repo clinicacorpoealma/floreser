@@ -43,13 +43,31 @@
     }, false);
   }
 
+  /* O painel fala com o Apps Script por fetch próprio — ele não usa o
+     FloreSerRede, que repete leitura sozinho, e manutenção não é coisa
+     para repetir sem alguém mandar. Então o selo de atividade é aberto e
+     fechado aqui, à mão, com o mesmo contrato das outras telas. */
   function chamar(corpo) {
+    var op = tentar(function () {
+      return window.FloreSerAtividade
+        ? window.FloreSerAtividade.iniciar(corpo && corpo.acao) : null;
+    }, null);
+
     return fetch(URL_API, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(corpo),
       redirect: "follow",
-    }).then(function (r) { return r.json(); });
+    }).then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (op) tentar(function () { return window.FloreSerAtividade.concluir(op, r); }, null);
+        return r;
+      }, function (erro) {
+        /* resposta que não vira JSON cai aqui junto com a queda de rede:
+           nos dois casos a operação fecha, e uma vez só */
+        if (op) tentar(function () { return window.FloreSerAtividade.falhaDeRede(op, erro); }, null);
+        throw erro;
+      });
   }
 
   /* mostra "Não disponível" em vez de vazio, sem inventar valor */

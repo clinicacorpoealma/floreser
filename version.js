@@ -22,6 +22,23 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "3.5.0",
+      codinome: "FAROL",
+      data: "04/11/2026",
+      mudancas: {
+        "Adicionado": [
+          "Um aviso no canto da tela mostra quando o sistema está falando com a planilha: “Consultando…”, “Salvando…” ou “Entrando…” enquanto a operação corre, e um visto verde quando ela termina. Vale no portal, no CRM, na Agenda, nas Entradas e no painel de manutenção.",
+          "Quando alguma coisa dá errado — sem conexão, conflito, sessão expirada, acesso negado ou senha incorreta — o aviso diz o que foi e fica na tela até você dispensar. Uma operação que deu certo depois não apaga o problema anterior.",
+          "Com mais de uma operação ao mesmo tempo, o aviso mostra quantas são e só confirma quando a última termina. Se o servidor demorar, ele avisa que ainda está esperando — sem dizer que falhou."
+        ],
+        "Técnico": [
+          "“Alterações salvas” só aparece quando o rodapé do módulo confirma a gravação. Enquanto houver alteração na fila — inclusive uma feita durante o envio —, o aviso é mais modesto e não contradiz o rodapé.",
+          "As tentativas automáticas de uma mesma chamada contam como uma operação só, sem piscar entre erro e sucesso. O envio do registro técnico não aparece no aviso.",
+          "O aviso nunca bloqueia a tela nem recebe cliques, e sai da frente da faixa de versão nova do Alveare medindo a altura dela."
+        ]
+      }
+    },
+    {
       versao: "3.4.0",
       codinome: "TRILHA",
       data: "18/09/2026",

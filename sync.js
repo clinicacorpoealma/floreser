@@ -977,6 +977,15 @@
   };
 
   /* criarStatus(elemento, { extra() }) → { definir(estado), salvoAgora(), estado() } */
+  /* O selo global (atividade-rede.js) precisa saber o que o rodapé do
+     módulo concluiu, para nunca dizer "Alterações salvas" com coisa ainda
+     na fila. Quem decide continua sendo este arquivo: ali é só eco. */
+  function avisarAtividade(estado) {
+    try {
+      if (global.FloreSerAtividade) global.FloreSerAtividade.estadoDoModulo(estado);
+    } catch (e) { /* o indicador nunca pode atrapalhar o salvamento */ }
+  }
+
   function criarStatus(elemento, opcoes) {
     var o = opcoes || {};
     var estadoAtual = "carregando";
@@ -1015,6 +1024,7 @@
     function definir(novo) {
       var mudou = novo !== estadoAtual;
       estadoAtual = novo;
+      if (mudou) avisarAtividade(novo);
       /* Só um estado novo merece anúncio. Sem isto o leitor de tela leria
          "salvo há 9 s", "salvo há 10 s"… sem parar. */
       if (elemento) {
@@ -1027,6 +1037,9 @@
     function salvoAgora() {
       salvoEm = Date.now();
       definir("salvo");
+      /* definir() só avisa quando o estado muda; salvar de novo já estando
+         salvo precisa chegar ao selo do mesmo jeito */
+      avisarAtividade("salvo");
     }
 
     /* o texto do tempo anda sozinho, sem tocar em aria-live */

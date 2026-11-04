@@ -1,0 +1,151 @@
+/* =====================================================================
+   FloreSer · Corpo e Alma — apresentação do indicador de atividade
+   ---------------------------------------------------------------------
+   O selo que diz quando o sistema está falando com a planilha. Mora no
+   canto inferior esquerdo, que é o único livre: o seletor de tema fica
+   embaixo à direita, o aviso do Alveare e os avisos dos módulos ficam
+   embaixo ao centro.
+
+   Em repouso ele some por inteiro — nada de enfeite ocupando a tela. Só
+   aparece enquanto há operação em andamento, enquanto a confirmação está
+   visível, ou enquanto sobra alguma coisa para a pessoa resolver.
+
+   O comportamento está no atividade-rede.js.
+   ===================================================================== */
+
+:root {
+  --fsat-fundo: #FFFFFF;
+  --fsat-borda: #E2DED7;
+  --fsat-texto: #2D2D2D;
+  --fsat-suave: #6B665E;
+  --fsat-teal: #3B6E6A;
+  --fsat-alerta: #A8623F;
+  --fsat-alerta-fundo: #F6EBE4;
+  --fsat-sombra: 0 1px 2px rgba(45, 45, 45, .05), 0 10px 28px rgba(59, 110, 106, .13);
+}
+
+:root[data-tema="escuro"] {
+  --fsat-fundo: #1E2927;
+  --fsat-borda: #33403E;
+  --fsat-texto: #E9E3DB;
+  --fsat-suave: #A8A199;
+  --fsat-teal: #7FB8B2;
+  --fsat-alerta: #E79B82;
+  --fsat-alerta-fundo: #3A241D;
+  --fsat-sombra: 0 1px 2px rgba(0, 0, 0, .34), 0 10px 28px rgba(0, 0, 0, .38);
+}
+
+.fsat {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  /* abaixo do seletor de tema (600) e do aviso do Alveare, que é o que
+     mais importa quando os dois aparecem juntos */
+  z-index: 590;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(330px, calc(100vw - 32px));
+  padding: 9px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--fsat-borda);
+  background: var(--fsat-fundo);
+  box-shadow: var(--fsat-sombra);
+  font-family: 'Montserrat', Calibri, system-ui, sans-serif;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--fsat-texto);
+  /* o selo nunca rouba clique: só o botão de dispensar recebe toque */
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+/* em repouso, fora da tela e fora do caminho */
+.fsat[data-estado="repouso"] {
+  opacity: 0;
+  transform: translateY(6px);
+  visibility: hidden;
+}
+
+.fsat-icone {
+  flex: 0 0 auto;
+  display: flex;
+  width: 16px;
+  height: 16px;
+  color: var(--fsat-teal);
+}
+
+.fsat-texto {
+  min-width: 0;
+  /* o texto quebra em duas linhas em vez de cortar a frase */
+  overflow-wrap: anywhere;
+}
+
+.fsat-detalhe {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fsat-suave);
+}
+
+/* ---------- o que precisa de atenção ---------- */
+
+.fsat[data-tom="alerta"] {
+  border-color: var(--fsat-alerta);
+  background: var(--fsat-alerta-fundo);
+  color: var(--fsat-alerta);
+}
+
+.fsat[data-tom="alerta"] .fsat-icone { color: var(--fsat-alerta); }
+.fsat[data-tom="alerta"] .fsat-detalhe { color: inherit; opacity: .85; }
+
+/* ---------- dispensar ---------- */
+
+.fsat-fechar {
+  flex: 0 0 auto;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px -6px -4px 0;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: .75;
+  transition: opacity .18s ease, background .18s ease;
+}
+
+.fsat[data-fechavel="sim"] { pointer-events: auto; }
+.fsat[data-fechavel="sim"] .fsat-fechar { display: flex; }
+.fsat-fechar:hover { opacity: 1; background: rgba(128, 128, 128, .14); }
+.fsat-fechar:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; opacity: 1; }
+
+/* ---------- o círculo que gira ---------- */
+
+.fsat-gira { transform-origin: 50% 50%; animation: fsat-volta 900ms linear infinite; }
+
+@keyframes fsat-volta { to { transform: rotate(360deg); } }
+
+/* ---------- celular ----------
+   O aviso do Alveare ocupa a largura toda em 76px, e os avisos dos
+   módulos ficam em 26px ao centro. Aqui o selo sobe para 92px: acima dos
+   dois, e longe do teclado virtual, que nasce da base da tela. */
+@media (max-width: 560px) {
+  .fsat {
+    left: 12px;
+    right: 12px;
+    bottom: 92px;
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fsat { transition: none; }
+  .fsat-gira { animation: none; }
+}

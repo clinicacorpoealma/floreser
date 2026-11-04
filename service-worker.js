@@ -25,7 +25,7 @@
    número, a primeira abertura depois de publicar juntaria HTML novo com
    CSS velho. */
 const CACHE_PREFIXO = "alveare-casca-";
-const CACHE_ATUAL = CACHE_PREFIXO + "9";
+const CACHE_ATUAL = CACHE_PREFIXO + "10";
 
 /* A raiz do site, seja ela / ou /floreser/ */
 const RAIZ = new URL("./", self.registration.scope).pathname;
@@ -50,6 +50,8 @@ const PRECACHE = [
   /* os compartilhados, da raiz */
   RAIZ + "version.js",
   RAIZ + "logs.js",
+  RAIZ + "atividade-rede.js",
+  RAIZ + "atividade-rede.css",
   RAIZ + "tema.js",
   RAIZ + "auth.js",
   RAIZ + "painel.js",
