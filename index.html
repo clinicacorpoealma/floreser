@@ -9,7 +9,8 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#3B6E6A">
   <link rel="icon" type="image/png" href="favicon.png">
-  <script src="tema.js"></script>
+  <meta name="floreser-estrutura" content="2">
+  <script src="compartilhado/tema.js"></script>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <!-- Alveare: o nome do aplicativo instalado. O sistema aqui dentro
        continua sendo o FloreSer. -->
@@ -23,8 +24,8 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Montserrat:wght@300;400;500;600&display=swap">
 
-  <link rel="stylesheet" href="portal.css">
-  <link rel="stylesheet" href="atividade-rede.css">
+  <link rel="stylesheet" href="portal/portal.css">
+  <link rel="stylesheet" href="compartilhado/atividade-rede.css">
 </head>
 
 <body>
@@ -143,14 +144,18 @@
   </dialog>
 
   <script src="version.js"></script>
-  <script src="atividade-rede.js"></script>
-  <script src="logs.js"></script>
-<script src="pwa.js"></script>
-  <script src="auth.js"></script>
-  <script src="busca.js"></script>
-  <script src="portal.js"></script>
-
-  <script src="painel.js" defer></script>
+  <script src="compartilhado/config.js"></script>
+  <script src="compartilhado/atividade-rede.js"></script>
+  <script src="compartilhado/logs.js"></script>
+  <script src="compartilhado/rede.js"></script>
+  <script src="compartilhado/pwa.js"></script>
+  <script src="compartilhado/sessao.js"></script>
+  <script src="compartilhado/auth.js"></script>
+  <script src="compartilhado/busca.js"></script>
+  <script src="portal/portal.js"></script>
+  <!-- o painel de manutenção é carregado por último e com defer: ele só
+       acorda quando alguém usa a entrada discreta do rodapé -->
+  <script src="admin/painel.js" defer></script>
 </body>
 
 </html>

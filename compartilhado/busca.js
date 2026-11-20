@@ -248,8 +248,7 @@
         ultimaAtendida = minha;
 
         if (!r || !r.ok) {
-          var erro = r && r.erro;
-          if (erro === "sessao" || erro === "expirada" || erro === "inativo") {
+          if (r && r.categoria === "autenticacao") {
             recado("Sua sessão expirou. Entre novamente para pesquisar.", true);
           } else {
             recado("Não foi possível pesquisar agora.", true);

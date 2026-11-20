@@ -7,10 +7,14 @@
 
    A apresentação fica no entradas.css; a estrutura, no index.html.
 
-   Depende, nesta ordem, de tema.js, version.js, logs.js, pwa.js, auth.js,
-   sync.js e auditoria.js — e por isso entra depois deles, no mesmo ponto
-   do documento onde o <script> estava: no fim do <body>, com o markup já
-   montado.
+   Depende dos compartilhados (compartilhado/: config, rede, sessao, auth,
+   sync, dados, auditoria) — por isso entra depois deles, no fim do <body>,
+   com o markup já montado.
+
+   Desde a 4.0.0 a gravação não leva mais a lista inteira: o motor de
+   dados (compartilhado/dados.js) manda só as entradas que mudaram, cada
+   uma com a revisão de que partiu. Neste aparelho não fica entrada
+   nenhuma — só a data do último backup, por conta.
    ===================================================================== */
 
 (function () {
@@ -42,10 +46,10 @@
   ];
 
   const DOW_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-  /* Endereço do Apps Script publicado — o mesmo que atende o CRM e a agenda */
-  const URL_API = "https://script.google.com/macros/s/AKfycbzy9WCfP4l08dn2h2K34uEL6e0mqFBjVMugcHiTc0oUGmpS7gOJjbxs58CB87AoFUw-/exec";
-  const CHAVE_TOKEN = "floreser.entradas.sessao";
-  const CHAVE_CACHE = "floreser.entradas.copia";
+  /* O endereço do Apps Script mora em compartilhado/config.js. */
+  const CHAVE_BACKUP = "floreser.entradas.backupEm.";
+  /* a 3.5.0 guardava aqui a lista inteira, com nomes e valores */
+  const CHAVE_CACHE_ANTIGA = "floreser.entradas.copia";
 
   /* ==========================================================
      2. Utilidades
@@ -140,30 +144,37 @@
         descricao: String(r.descricao || "").trim(),
         obs: String(r.obs || "").trim(),
         pagamentos: pags,
-        criadoEm: String(r.criadoEm || new Date().toISOString())
+        criadoEm: String(r.criadoEm || new Date().toISOString()),
+        _rev: Number(r._rev) || 0
       });
     }
     return out;
   }
 
-  /* --- cópia neste aparelho: rede de segurança entre um envio e outro,
-         nunca a fonte da verdade, que é sempre a planilha --- */
+  /* --- o que fica neste aparelho: só a data do último backup, por conta.
+         Entradas (nomes e valores) nunca vão para o disco do navegador; a
+         cópia inteira que a 3.5.0 guardava é apagada na primeira abertura. --- */
+  function donoDaCopia() {
+    const S = window.FloreSerSessao;
+    if (!S) return "anonimo";
+    return S.contaId() || (S.tokenDoModulo("entradas") ? "senha-modulo" : "anonimo");
+  }
   function readLocal() {
+    try { localStorage.removeItem(CHAVE_CACHE_ANTIGA); } catch (e) { }
     try {
-      const raw = localStorage.getItem(CHAVE_CACHE);
-      return raw ? JSON.parse(raw) : null;
+      const b = localStorage.getItem(CHAVE_BACKUP + donoDaCopia());
+      return b ? { backupEm: b } : null;
     } catch (e) { return null; }
   }
   function writeLocal() {
-    try { localStorage.setItem(CHAVE_CACHE, JSON.stringify(state)); return true; }
+    try { if (state.backupEm) localStorage.setItem(CHAVE_BACKUP + donoDaCopia(), state.backupEm); return true; }
     catch (e) { return false; }
   }
 
   /* --- conversa com a planilha ---
-     O que fica guardado neste aparelho é um token de sessão, não a senha.
-     Ele é emitido pelo servidor, vale só para as Entradas, expira sozinho
-     e pode ser cancelado sem mexer em nenhum outro aparelho. */
-  const SESSAO = { token: "", rev: 0 };
+     A sessão é do compartilhado/sessao.js: a conta, se houver; senão a
+     senha compartilhada desta aba. Quem decide se vale é o servidor. */
+  let origemSessao = "senhaModulo";
 
   /* Quem administra vê as somas, exporta e exclui; quem não administra
      registra e confere as entradas. O sinal vem do servidor a cada leitura
@@ -182,37 +193,47 @@
     }
   }
 
-  /* Ler pode ser repetido sem consequência; gravar, não — quem grava tem a
-     revisão em mãos e cuida do próprio reenvio. O que se ganha aqui é o
-     tropeço do redirecionamento do Apps Script, que devolve 404 de vez em
-     quando sem nada estar errado. */
-  async function api(dados) {
-    if (window.FloreSerRede) {
-      const soLeitura = String((dados && dados.acao) || "").indexOf("ler") === 0;
-      return await window.FloreSerRede.postar(dados, { repetir: soLeitura });
-    }
-    const resposta = await fetch(URL_API, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(dados),
-      redirect: "follow"
-    });
-    return await resposta.json();
+  function tokenAtual() { return window.FloreSerSessao ? FloreSerSessao.tokenPara("entradas") : ""; }
+
+  /* Leituras repetem sozinhas quando o Google tropeça; gravações são do
+     motor, que repete com o mesmo operacaoId. */
+  function ler(acao, dados) { return FloreSerRede.chamar(acao, dados || {}, { token: tokenAtual(), leitura: true }); }
+
+  /* a resposta no formato antigo, achatada, que a auditoria entende */
+  function achatar(r) {
+    if (!r.ok) return { ok: false, erro: r.erro };
+    const saida = { ok: true };
+    Object.keys(r.dados || {}).forEach(k => { saida[k] = r.dados[k]; });
+    return saida;
   }
 
+  const motor = FloreSerDados.criarSincronizador({
+    modulo: "entradas",
+    acao: "entradas.aplicar",
+    token: tokenAtual,
+    colecoes: {
+      entradas: {
+        criar: "entrada.criar", alterar: "entrada.alterar", remover: "entrada.remover",
+        campos: ["nome", "data", "descricao", "obs"],
+        /* valor e forma de pagamento sobem juntos, inteiros, quando mudam */
+        extras: (b, l) => FloreSerSync.iguais(b.pagamentos, l.pagamentos) ? null : { pagamentos: FloreSerSync.copiar(l.pagamentos) },
+        extrasCriacao: l => ({ criadoEm: l.criadoEm, pagamentos: FloreSerSync.copiar(l.pagamentos) })
+      }
+    }
+  });
+
   async function carregar() {
-    const r = await api({ acao: "ler_entradas", token: SESSAO.token });
-    if (!r.ok) throw new Error(r.erro || "falha");
-    SESSAO.rev = r.rev;
-    podeAdministrar = r.podeAdministrar === true;
+    const r = await ler("entradas.ler");
+    if (!r.ok) { const e = new Error(r.erro.codigo); e.resposta = r; throw e; }
+    podeAdministrar = r.dados.podeAdministrar === true;
     aplicarPermissoes();
     const copia = readLocal();
     state = sanitize(r.dados || {});
     /* o que acabou de chegar é o que o servidor tem */
-    BASE_ENTRADAS = { entradas: FloreSerSync.copiar(state.entradas) };
+    motor.definirBase({ entradas: FloreSerSync.copiar(state.entradas) });
+    BASE_ENTRADAS = motor.base();
     /* a data do último backup é deste aparelho, não da planilha */
     if (copia && copia.backupEm) state.backupEm = copia.backupEm;
-    writeLocal();
   }
 
   /* --- indicador de salvamento ---
@@ -305,89 +326,104 @@
     timerEnvio = setTimeout(enviar, 350);
   }
 
+  function agendarEnvio(ms) { clearTimeout(timerEnvio); timerEnvio = setTimeout(enviar, ms); }
+
+  /* "Salvo" só aparece quando o servidor confirmou e nada sobrou para
+     mandar — inclusive o que foi editado enquanto esta rodada voava. */
   async function enviar() {
     if (travado || emVoo || !precisaSalvar || conflitoPendente) return;
     emVoo = true;
     precisaSalvar = false;
     setStatus("saving");
-    /* copia de verdade: se apontasse para o estado vivo, a BASE mudaria
-       junto com a tela e deixaria de servir de ponto de partida */
-    const instantaneo = { entradas: FloreSerSync.copiar(state.entradas) };
-    try {
-      const r = await api({
-        acao: "salvar_entradas", token: SESSAO.token, rev: SESSAO.rev, dados: instantaneo
-      });
-      if (!r.ok) {
-        if (r.erro === "conflito") { conflito(r); return; }
-        if (r.erro === "sem_permissao") { await devolverApagadas(); return; }
-        if (r.erro === "sem_acesso") {
-          travado = true; setStatus("expirado");
-          toast("Seu acesso a este módulo foi retirado. Recarregue a página.");
-          return;
-        }
-        if (r.erro === "sessao" || r.erro === "expirada" || r.erro === "inativo") {
-          /* não recarrego sozinho: se houver algo digitado agora, seria perdido */
-          travado = true; esquecerToken(); setStatus("expirado");
-          toast("Sua sessão expirou. Recarregue a página e informe a senha.");
-          return;
-        }
-        throw new Error(r.erro || "falha");
-      }
-      SESSAO.rev = r.rev;
+    let r;
+    try { r = await motor.enviar({ entradas: FloreSerSync.copiar(state.entradas) }); }
+    catch (e) { r = { ok: false, transitorio: true }; }
+    emVoo = false;
+
+    if (r.ok) {
       tentativa = 0; tentativasDeMerge = 0;
-      BASE_ENTRADAS = instantaneo;
-      /* "Salvo" só vale se nada entrou na fila enquanto esta gravação
-         voava. Quem lança várias entradas seguidas mexe na próxima antes
-         de a anterior voltar; dizer "salvo" ali é convidar a pessoa a
-         fechar a aba com alteração ainda por subir. */
-      if (precisaSalvar) setStatus("dirty");
+      adotarCorrecoes(r.corrigidas);
+      BASE_ENTRADAS = motor.base();
+      if (precisaSalvar || motor.contar({ entradas: state.entradas })) { precisaSalvar = true; setStatus("dirty"); agendarEnvio(200); }
       else marcarSalvo();
-    } catch (e) {
+      return;
+    }
+    if (r.sessaoPerdida) { precisaSalvar = true; setStatus("expirado"); pedirLoginDeNovo(); return; }
+    if (r.semAcesso) {
+      travado = true; setStatus("expirado");
+      toast("Seu acesso a este módulo foi retirado. O que está na tela continua aqui, mas não sobe mais.");
+      return;
+    }
+    if (r.contaTrocada) {
+      travado = true; setStatus("error");
+      toast("Outra conta entrou neste navegador. Recarregue a página para continuar com ela.");
+      return;
+    }
+    if (r.versao && !(r.erro && r.erro.codigo === "manutencao")) {
+      travado = true; setStatus("error");
+      toast("O site e o servidor estão em versões diferentes. Recarregue a página — o que está na tela fica até lá.");
+      return;
+    }
+    if (r.erros && r.erros.length) tratarRecusas(r.erros);
+    if (r.conflitos && r.conflitos.length) { BASE_ENTRADAS = motor.base(); conflito({ dados: r.servidor }); return; }
+    if (r.transitorio || r.versao) {
       precisaSalvar = true;
       tentativa++;
-      /* rede caída e servidor que recusou são coisas diferentes, e a pessoa
-         precisa saber qual das duas aconteceu */
-      const semRede = (e instanceof TypeError) || !navigator.onLine;
+      const semRede = !navigator.onLine || (r.erro && r.erro.codigo === "sem_conexao");
       setStatus(semRede ? "offline" : "error");
-      clearTimeout(timerEnvio);
-      timerEnvio = setTimeout(enviar, Math.min(20000, 2000 * tentativa));
+      agendarEnvio(Math.min(60000, 2000 * tentativa));
       if (tentativa === 1) {
-        toast(semRede
-          ? "Sem conexão com a planilha — vou tentar de novo."
-          : "Não consegui salvar agora — vou tentar de novo.");
+        toast(r.erro && r.erro.codigo === "manutencao" ? "O sistema está em manutenção — vou tentar de novo sozinho."
+          : semRede ? "Sem conexão com a planilha — vou tentar de novo." : "Não consegui salvar agora — vou tentar de novo.");
       }
-    } finally {
-      emVoo = false;
-      if (precisaSalvar && !travado && !tentativa && !conflitoPendente) {
-        clearTimeout(timerEnvio);
-        timerEnvio = setTimeout(enviar, 200);
-      }
+      return;
     }
+    setStatus("error");
   }
 
-  /* O servidor recusou porque sumiu daqui uma entrada, e quem está usando
-     não pode excluir. As que sumiram voltam do servidor; o resto do que foi
-     feito aqui continua e sobe na próxima gravação — nada é descartado. */
-  async function devolverApagadas() {
-    try {
-      const r = await api({ acao: "ler_entradas", token: SESSAO.token });
-      if (!r || !r.ok) throw new Error((r && r.erro) || "falha");
-      SESSAO.rev = r.rev;
-      podeAdministrar = r.podeAdministrar === true;
-      aplicarPermissoes();
-      const doServidor = sanitize(r.dados || {}).entradas;
-      const aqui = new Set(state.entradas.map(e => e.id));
-      let voltaram = 0;
-      for (const e of doServidor) if (!aqui.has(e.id)) { state.entradas.push(e); voltaram++; }
-      BASE_ENTRADAS = { entradas: FloreSerSync.copiar(doServidor) };
-      render();
-      touch();
-      toast("Só administradores podem excluir entradas." +
-        (voltaram ? (voltaram === 1 ? " A entrada voltou para a lista." : " As entradas voltaram para a lista.") : ""));
-    } catch (e) {
-      setStatus("error");
-      toast("Só administradores podem excluir entradas. Recarregue a página para ver a lista do servidor.");
-    }
+  /* O servidor normalizou alguma entrada: a tela adota, sem desfazer o que
+     foi editado depois do envio. */
+  function adotarCorrecoes(lista) {
+    if (!lista || !lista.length) return;
+    lista.forEach(c => {
+      const i = state.entradas.findIndex(e => e.id === c.id);
+      if (i >= 0) state.entradas[i] = FloreSerDados.adotarCorrecao(state.entradas[i], c.enviado, c.servidor);
+    });
+    render();
+  }
+
+  /* Recusas por entrada. A exclusão de quem não administra volta para a
+     lista (o servidor guardou a entrada); o resto fica na tela com o aviso. */
+  function tratarRecusas(erros) {
+    let voltaram = 0;
+    erros.forEach(e => {
+      if (e.codigo === "sem_permissao" && e.remocao && e.entidadeNaBase) {
+        if (!state.entradas.some(x => x.id === e.id)) { state.entradas.push(e.entidadeNaBase); voltaram++; }
+        return;
+      }
+      if (e.codigo === "na_lixeira") {
+        state.entradas = state.entradas.filter(x => x.id !== e.id);
+        motor.esquecer("entradas", e.id);
+        toast("Uma entrada foi para a lixeira em outro aparelho e saiu desta lista.");
+        return;
+      }
+      toast("O servidor recusou uma alteração: " + (e.mensagem || e.codigo) + " As outras foram salvas.");
+    });
+    if (voltaram) toast("Só administradores podem excluir entradas." + (voltaram === 1 ? " A entrada voltou para a lista." : " As entradas voltaram para a lista."));
+    render();
+  }
+
+  /* A sessão acabou no meio do trabalho. Pede a entrada de novo POR CIMA da
+     tela; o que não foi salvo continua aqui e sobe depois. */
+  let pedindoLogin = false;
+  async function pedirLoginDeNovo() {
+    if (pedindoLogin) return;
+    pedindoLogin = true;
+    const conta = origemSessao === "usuario" || FloreSerSessao.temConta();
+    const ok = conta ? !!(await FloreSerAuth.pedirNovamente("entradas")) : await pedirSenhaDoModulo();
+    pedindoLogin = false;
+    if (ok) { travado = false; precisaSalvar = true; agendarEnvio(0); }
+    else toast("Sem entrar de novo, o que está na tela não sobe para a planilha.");
   }
 
   /* O servidor recusou por revisão diferente e mandou o estado atual dele
@@ -410,7 +446,7 @@
 
     if (!m.conflitos.length) {
       anotarSync("SYNC_CONFLITO_AUTO_MESCLADO", m.automaticos.length + " alteração(ões)");
-      aplicarMerge(m.estado, resposta.rev);
+      aplicarMerge(m.estado, servidor);
       return;
     }
 
@@ -426,7 +462,7 @@
           escolhas.filter(function (e) { return e === "local"; }).length +
           " de " + escolhas.length + " campo(s) ficaram com a versão deste aparelho");
         conflitoPendente = false;
-        aplicarMerge(fim, resposta.rev);
+        aplicarMerge(fim, servidor);
       },
       aoCancelar: function () {
         setStatus("conflito");
@@ -435,10 +471,12 @@
     });
   }
 
-  function aplicarMerge(estado, rev) {
+  /* Conciliado: o servidor sintético (a base com as fichas como estão lá)
+     vira a base, e o que sobrou de diferença sobe com as revisões novas. */
+  function aplicarMerge(estado, servidor) {
     state.entradas = Array.isArray(estado.entradas) ? estado.entradas : [];
-    SESSAO.rev = rev;
-    writeLocal();
+    motor.adotarServidor(servidor);
+    BASE_ENTRADAS = motor.base();
     render();
     renderBackupNote();
     updateExportPreview();
@@ -982,7 +1020,8 @@
     if (window.FloreSerAuditoria) {
       auditoriaMontada = FloreSerAuditoria.montar(el("detalheHistorico"), {
         modulo: "entradas", entidade: "entrada", entidadeId: id,
-        api: corpo => api(Object.assign({ token: SESSAO.token }, corpo)),
+        api: corpo => ler("auditoria.listar", { modulo: corpo.modulo, entidade: corpo.entidade,
+          entidadeId: corpo.entidadeId, inicio: corpo.inicio, quantos: corpo.quantos }).then(achatar),
       });
     }
   }
@@ -1124,20 +1163,19 @@
     const alvo = state.entradas[i];
 
     try {
-      const r = await api({
-        acao: "lixeira_mover", token: SESSAO.token, tipo: "entradas", id: id, motivo: motivo || ""
-      });
-      if (!r || !r.ok) {
-        toast(r && r.erro === "sem_acesso"
-          ? "Você não possui acesso a este módulo."
-          : r && r.erro === "sem_permissao"
-            ? "Só administradores podem excluir entradas."
-            : "Não foi possível concluir a operação. Tente novamente.");
+      /* o mesmo operacaoId nas repetições: mover duas vezes não guarda duas */
+      const r = await FloreSerRede.chamar("lixeira.mover",
+        { tipo: "entradas", id: id, motivo: motivo || "", operacaoId: FloreSerRede.novoId("lx-") },
+        { token: tokenAtual(), tentativas: 2, repetirIncerto: true });
+      if (!r.ok) {
+        toast(r.erro.codigo === "sem_acesso" ? "Você não possui acesso a este módulo."
+          : r.erro.codigo === "sem_permissao" ? "Só administradores podem excluir entradas."
+            : FloreSerAuth.recado(r));
         return;
       }
-      if (typeof r.rev === "number") SESSAO.rev = r.rev;
+      motor.esquecer("entradas", id);
+      BASE_ENTRADAS = motor.base();
       state.entradas = state.entradas.filter(e => e.id !== id);
-      writeLocal();
       render();
       renderBackupNote();
       updateExportPreview();
@@ -1535,14 +1573,6 @@
   const elErro = el("portao-erro");
   const elBtnEntrar = el("portao-btn");
 
-  /* de onde veio a sessão desta aba: a senha do módulo ou um usuário */
-  let origemSessao = "senhaModulo";
-
-  /* sessionStorage: vale para esta aba, neste navegador, neste aparelho */
-  function guardarToken(x) { try { sessionStorage.setItem(CHAVE_TOKEN, x); } catch (e) { } }
-  function tokenGuardado() { try { return sessionStorage.getItem(CHAVE_TOKEN) || ""; } catch (e) { return ""; } }
-  function esquecerToken() { try { sessionStorage.removeItem(CHAVE_TOKEN); } catch (e) { } }
-
   const AVISO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3.8 21 19.5H3L12 3.8Z"/>' +
     '<path d="M12 10v4M12 16.6v.4"/></svg>';
@@ -1558,67 +1588,64 @@
     elSenha.disabled = ligado;
   }
 
-  /* Troca a senha por um token de sessão. A senha não é guardada aqui nem
-     reenviada depois: daqui para a frente só o token viaja. */
+  /* Troca a senha compartilhada por uma sessão desta aba. A senha não fica
+     guardada aqui nem é reenviada: daqui para a frente só o token viaja. */
   async function entrar(senha) {
     if (!senha) { elSenha.focus(); return; }
     ocupado(true);
     avisar("");
-    try {
-      const r = await api({ acao: "entrar", modulo: "entradas", senha: senha });
-      if (!r.ok) {
-        if (r.erro === "bloqueado") {
-          avisar("Muitas tentativas erradas. Tente de novo em " + (r.minutos || 15) + " minutos.");
-        } else if (r.erro === "senha") {
-          avisar("Senha incorreta. Confira e tente de novo." +
-            (r.restam ? " Restam " + r.restam + " tentativas." : ""));
-        } else {
-          avisar("Não foi possível falar com a planilha. Confira sua internet.");
-        }
-        elSenha.value = "";
-        ocupado(false);
-        elSenha.focus();
-        return;
-      }
-      SESSAO.token = r.token;
-      guardarToken(r.token);
-      await carregar();
-      abrirApp();
-    } catch (e) {
-      const erro = String((e && e.message) || e);
-      avisar(erro === "ocupado"
-        ? "A planilha está ocupada. Tente de novo em instantes."
-        : "Não foi possível falar com a planilha. Confira sua internet.");
+    const r = await FloreSerSessao.entrarModulo("entradas", senha);
+    if (!r.ok) {
+      avisar(FloreSerAuth.recado(r));
       elSenha.value = "";
       ocupado(false);
       elSenha.focus();
+      return;
     }
+    elSenha.value = "";
+    if (reentrada) { concluirReentrada(true); return; }
+    origemSessao = "senhaModulo";
+    try { await carregar(); abrirApp(); }
+    catch (e) { ocupado(false); avisar("Não foi possível carregar os dados agora. " + FloreSerAuth.recado(e.resposta)); }
   }
 
-  /* volta com o token guardado; se ele já não valer, o portão reaparece */
-  async function retomar(token) {
+  /* volta com a sessão da senha desta aba; se ela já não valer, o portão fica */
+  async function retomarModulo() {
     ocupado(true);
-    SESSAO.token = token;
     try {
       await carregar();
       abrirApp();
     } catch (e) {
-      esquecerToken();
-      SESSAO.token = "";
       ocupado(false);
-      if (String((e && e.message) || e) === "sessao") {
-        avisar("Sua sessão expirou. Informe a senha de novo.");
-      }
+      avisar(FloreSerAuth.recado(e.resposta));
       elSenha.focus();
     }
   }
 
   async function sair() {
-    const token = SESSAO.token;
-    esquecerToken();
-    SESSAO.token = "";
-    try { await api({ acao: "sair", token: token }); } catch (e) { /* segue assim mesmo */ }
+    await FloreSerSessao.sairDoModulo("entradas");
     location.reload();
+  }
+
+  /* A senha do módulo venceu no meio do trabalho: o portão volta por cima
+     da tela, e entrar de novo só retoma o envio — nada é recarregado. */
+  let portaoGuardado = null, reentrada = null;
+  function pedirSenhaDoModulo() {
+    return new Promise(resolver => {
+      if (!portaoGuardado) { resolver(false); return; }
+      reentrada = resolver;
+      document.body.appendChild(portaoGuardado);
+      ocupado(false);
+      avisar("A sessão da senha do módulo expirou. Informe a senha para salvar o que está na tela — nada foi perdido.");
+      elSenha.focus();
+    });
+  }
+  function concluirReentrada(ok) {
+    const fim = reentrada;
+    reentrada = null;
+    if (portaoGuardado && portaoGuardado.parentNode) portaoGuardado.remove();
+    ocupado(false);
+    if (fim) fim(ok);
   }
 
   /* ---------- entrada por usuário ----------
@@ -1631,11 +1658,11 @@
     avisar("");
     window.FloreSerAuth.abrirLogin({
       modulo: "entradas",
-      aoEntrar: async function (r) {
-        SESSAO.token = r.token;
+      aoEntrar: async function () {
         origemSessao = "usuario";
+        if (reentrada) { concluirReentrada(true); return; }
         try { await carregar(); abrirApp(); }
-        catch (e) { avisar("Não foi possível carregar os dados. Tente de novo."); }
+        catch (e) { avisar("Não foi possível carregar os dados agora. " + FloreSerAuth.recado(e.resposta)); }
       },
     });
   }
@@ -1646,17 +1673,15 @@
   async function retomarUsuario() {
     const entrou = await window.FloreSerAuth.tentarRetomar("entradas", {
       aoPedirSenha() { elSenha.focus(); },
-      aoEntrar(r) {
-        SESSAO.token = r.token;
+      aoEntrar() {
         origemSessao = "usuario";
-        carregar().then(abrirApp).catch(() => {
-          avisar("Não foi possível carregar os dados. Tente de novo.");
+        carregar().then(abrirApp).catch(e => {
+          avisar("Não foi possível carregar os dados agora. " + FloreSerAuth.recado(e.resposta));
         });
       },
     });
     if (!entrou) return false;
 
-    SESSAO.token = window.FloreSerAuth.token();
     origemSessao = "usuario";
     try {
       await carregar();
@@ -1676,6 +1701,7 @@
   }
 
   function abrirApp() {
+    portaoGuardado = elPortao;
     elPortao.remove();
     document.body.style.overflow = "";
     /* a animação de entrada só faz sentido depois da senha, quando a tela
@@ -1736,13 +1762,17 @@
        a tela do erro fica no ar. Deixar a sessão antiga da senha entrar por
        baixo esconderia o motivo. */
     (async function () {
-      if (window.FloreSerAuth && window.FloreSerAuth.token()) {
-        await retomarUsuario();
-        return;
-      }
-      const guardado = tokenGuardado();
-      if (guardado) retomar(guardado); else elSenha.focus();
+      if (FloreSerSessao.temConta()) { await retomarUsuario(); return; }
+      if (FloreSerSessao.tokenDoModulo("entradas")) retomarModulo(); else elSenha.focus();
     })();
+
+    /* o servidor recusou a sessão em outra chamada, ou outra aba trocou a
+       conta: o que está na tela fica, e a tela diz o que fazer */
+    FloreSerSessao.ouvir(function (tipo) {
+      if (!document.body.classList.contains("entrou")) return;
+      if (tipo === "perdida") { setStatus("expirado"); if (precisaSalvar || emVoo || motor.contar({ entradas: state.entradas })) pedirLoginDeNovo(); }
+      if (tipo === "trocou") toast("Outra conta entrou neste navegador. Recarregue a página para usar a conta nova.");
+    });
   }
 
   /* Fechar a aba com algo por enviar apagaria o trabalho: o navegador

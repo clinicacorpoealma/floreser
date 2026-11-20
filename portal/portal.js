@@ -236,10 +236,15 @@
   var faixaBusca = document.getElementById("faixa-busca");
   var buscaMontada = null;
 
+  /* leitura pura: a rede repete sozinha se o Google tropeçar no caminho */
   function chamarBusca(corpo) {
-    corpo.token = Auth.token();
-    /* leitura pura: pode repetir se o Google tropeçar no caminho */
-    return window.FloreSerRede.postar(corpo, { repetir: true });
+    return window.FloreSerRede.chamar("busca.global", { termo: corpo.termo },
+      { token: Auth.token(), leitura: true }).then(function (r) {
+        if (!r.ok) return { ok: false, erro: r.erro.codigo, categoria: r.erro.categoria };
+        var saida = { ok: true };
+        Object.keys(r.dados || {}).forEach(function (k) { saida[k] = r.dados[k]; });
+        return saida;
+      });
   }
 
   function mostrarBusca(quem) {
@@ -291,23 +296,30 @@
     }
   }
 
+  /* Quem está: a confirmação é do servidor, mas falha passageira (sem
+     rede, Google tropeçando) não desenha "Entrar" — a conta continua
+     guardada e o retrato local fica no canto até a próxima confirmação. */
   (async function conferirConta() {
     if (!Auth) { limparCanto(); return; }
     if (!Auth.token()) { desenharEntrar(); return; }
-    try {
-      var r = await Auth.retomar();
-      if (r && r.ok) {
-        desenharQuem(r.usuario);
-        registrar("SESSAO_RETOMADA", { mensagem: "Portal reconheceu a sessão de usuário" });
-      } else {
-        desenharEntrar(r && r.erro === "expirada"
-          ? "Sua sessão expirou por inatividade. Entre novamente."
-          : "");
-      }
-    } catch (e) {
-      /* servidor fora do ar: sem inventar quem está, oferece entrar */
-      desenharEntrar("Não foi possível confirmar sua sessão agora.");
+    var r = await Auth.retomar();
+    if (r && r.ok) {
+      desenharQuem(r.conta || Auth.usuario());
+      registrar("SESSAO_RETOMADA", { mensagem: "Portal reconheceu a sessão de usuário" });
+    } else if (r && r.temporario && Auth.usuario()) {
+      desenharQuem(Auth.usuario());
+      registrar("SESSAO_NAO_CONFIRMADA", { nivel: "WARNING", mensagem: "Sem confirmação agora: " + (r.erro && r.erro.codigo) });
+    } else {
+      desenharEntrar(Auth.recado(r));
     }
   })();
+
+  /* outra aba entrou, saiu ou trocou de conta: o canto acompanha */
+  if (window.FloreSerSessao) {
+    FloreSerSessao.ouvir(function (tipo, d) {
+      if (tipo === "saiu" || tipo === "perdida") desenharEntrar(tipo === "perdida" ? Auth.recado({ erro: d.erro }) : "");
+      else if (tipo === "entrou" || tipo === "trocou") desenharQuem(Auth.usuario());
+    });
+  }
 })();
   

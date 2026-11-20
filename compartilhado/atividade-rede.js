@@ -47,40 +47,39 @@
      tipo decide o texto do fim; verbo, o texto de enquanto corre. O que
      não estiver aqui vira uma consulta genérica — nunca uma gravação,
      para o selo não prometer salvamento que não houve. */
+  /* As ações da API v2. Um prefixo "painel." ou um sufixo ".ler" bastam
+     para classificar o que não estiver na lista. */
   var ACOES = {
-    ler: ["leitura", "Consultando"],
-    ler_agenda: ["leitura", "Consultando"],
-    ler_entradas: ["leitura", "Consultando"],
-    salvar: ["gravacao", "Salvando"],
-    salvar_agenda: ["gravacao", "Salvando"],
-    salvar_entradas: ["gravacao", "Salvando"],
-    crm_agenda_agendar: ["gravacao", "Salvando"],
-    lixeira_mover: ["gravacao", "Salvando"],
-    lixeira_restaurar: ["gravacao", "Salvando"],
-    lixeira_excluir: ["gravacao", "Salvando"],
-    lixeira_limpar: ["gravacao", "Salvando"],
-    entrar: ["sessao", "Entrando"],
-    dev_entrar: ["sessao", "Entrando"],
-    login_usuario: ["sessao", "Entrando"],
-    logout_usuario: ["sessao", "Saindo"],
-    sair: ["sessao", "Saindo"],
-    sessao_usuario: ["sessao", "Conferindo o acesso"],
-    busca_global: ["leitura", "Buscando"],
-    auditoria_listar: ["leitura", "Consultando o histórico"],
-    auditoria_geral: ["leitura", "Consultando o histórico"],
-    repetido_na_lixeira: ["leitura", "Conferindo"],
-    lixeira_listar: ["leitura", "Consultando"],
-    dev_dados: ["leitura", "Consultando"],
-    dev_limpar: ["gravacao", "Limpando"],
-    usuarios_listar: ["leitura", "Consultando"],
-    usuario_criar: ["gravacao", "Salvando"],
-    usuario_editar: ["gravacao", "Salvando"],
-    usuario_status: ["gravacao", "Salvando"],
-    usuario_senha: ["gravacao", "Salvando"],
+    "crm.aplicar": ["gravacao", "Salvando"],
+    "agenda.aplicar": ["gravacao", "Salvando"],
+    "entradas.aplicar": ["gravacao", "Salvando"],
+    "crm.agendarNaAgenda": ["gravacao", "Salvando"],
+    "lixeira.mover": ["gravacao", "Salvando"],
+    "painel.lixeira.restaurar": ["gravacao", "Salvando"],
+    "painel.lixeira.excluir": ["gravacao", "Salvando"],
+    "painel.lixeira.limpar": ["gravacao", "Salvando"],
+    "painel.limpar": ["gravacao", "Limpando"],
+    "painel.senhaModulo": ["gravacao", "Salvando"],
+    "painel.usuarios.criar": ["gravacao", "Salvando"],
+    "painel.usuarios.editar": ["gravacao", "Salvando"],
+    "painel.usuarios.status": ["gravacao", "Salvando"],
+    "painel.usuarios.senha": ["gravacao", "Salvando"],
+    "painel.usuarios.encerrarSessoes": ["gravacao", "Salvando"],
+    "sessao.entrar": ["sessao", "Entrando"],
+    "sessao.entrarModulo": ["sessao", "Entrando"],
+    "sessao.sair": ["sessao", "Saindo"],
+    "sessao.conferir": ["sessao", "Conferindo o acesso"],
+    "busca.global": ["leitura", "Buscando"],
+    "auditoria.listar": ["leitura", "Consultando o histórico"],
+    "painel.auditoria": ["leitura", "Consultando o histórico"],
+    "lixeira.repetido": ["leitura", "Conferindo"],
   };
 
+
   function classificar(acao) {
-    var a = ACOES[String(acao || "")];
+    var nome = String(acao || "");
+    var a = ACOES[nome];
+    if (!a && /\.aplicar$/.test(nome)) a = ["gravacao", "Salvando"];
     return { tipo: a ? a[0] : "leitura", verbo: a ? a[1] : "Consultando" };
   }
 
@@ -317,6 +316,21 @@
      ela aqui e o selo decide o que dizer. */
   var MOTIVOS = {
     conflito: ["Conflito de alterações", "Alguém alterou os mesmos dados."],
+    sessao_ausente: ["Entre para continuar", ""],
+    sessao_invalida: ["Sessão expirada", "Entre novamente para continuar."],
+    sessao_expirada: ["Sessão expirada", "Entre novamente para continuar."],
+    sessao_revogada: ["Sessão encerrada", "Entre novamente para continuar."],
+    conta_inativa: ["Acesso inativo", "Fale com quem administra o sistema."],
+    senha_modulo_desligada: ["Senha do módulo desligada", "Entre com a sua conta."],
+    dados_invalidos: ["Dados recusados", "O servidor não aceitou este formato."],
+    operacao_divergente: ["Operação recusada", "Recarregue a página."],
+    manutencao: ["Sistema em manutenção", "Tente de novo em alguns minutos."],
+    versao_cliente: ["Site desatualizado", "Recarregue a página."],
+    versao_servidor: ["Servidor em outra versão", "Avise quem administra o sistema."],
+    resultado_desconhecido: ["Sem confirmação do servidor", "O envio será repetido com segurança."],
+    sem_conexao: ["Sem conexão com o servidor", "As alterações continuam neste aparelho."],
+    prazo: ["O servidor demorou demais", "Tente de novo."],
+    resposta_invalida: ["Resposta inesperada do servidor", "Nada foi confirmado."],
     sessao: ["Sessão expirada", "Entre novamente para continuar."],
     expirada: ["Sessão expirada", "Entre novamente para continuar."],
     inativo: ["Acesso inativo", "Fale com quem administra o sistema."],
@@ -326,7 +340,7 @@
     credenciais: ["Usuário ou senha incorretos", ""],
     bloqueado: ["Acesso bloqueado por tentativas", ""],
     ocupado: ["O servidor está ocupado", "Tente de novo em instantes."],
-    servidor_falhou: ["O servidor não respondeu", "Nada foi alterado."],
+    servidor_falhou: ["O servidor não respondeu", "Tente de novo em instantes."],
   };
 
   var FIM_BOM = {
@@ -342,7 +356,9 @@
     if (!resposta || typeof resposta !== "object") { op.fim(); return resposta; }
 
     if (resposta.ok === false) {
-      var m = MOTIVOS[String(resposta.erro || "")] || ["Falha na operação", ""];
+      /* a API v2 manda { codigo, categoria, mensagem }; a antiga, um texto */
+      var codigo = resposta.erro && typeof resposta.erro === "object" ? resposta.erro.codigo : resposta.erro;
+      var m = MOTIVOS[String(codigo || "")] || ["Falha na operação", ""];
       op.falhou(m[0], m[1]);
       return resposta;
     }

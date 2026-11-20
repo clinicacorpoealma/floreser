@@ -1,37 +1,30 @@
 /* =====================================================================
-   FloreSer · Corpo e Alma — entrada por usuário individual
+   FloreSer · Corpo e Alma — telas da conta: entrar, retomar, quem está
    ---------------------------------------------------------------------
-   Um lugar só para tudo o que diz respeito à conta de uma pessoa: a tela
-   de entrar, a sessão guardada neste aparelho, a marca de quem está usando
-   e a saída. O portal e os três módulos chamam este arquivo — nenhum deles
-   tem tela de usuário própria, para não existirem duas maneiras de entrar.
+   A INTERFACE da conta individual, comum ao portal e aos três módulos: a
+   caixa de entrar, a tela de retomada e a marca de quem está usando.
 
-   Convive com a senha compartilhada de cada módulo: quem prefere a senha
-   continua entrando por ela. A diferença é que a sessão de um usuário sabe
-   quem é a pessoa, e o servidor confere, a cada chamada, se ela pode abrir
-   aquele módulo.
+   A sessão em si — guardar o token, conferir, renovar, sair — é do
+   compartilhado/sessao.js. Este arquivo pergunta a ele e desenha. Nada
+   aqui decide permissão: quem decide é o Apps Script, em toda chamada.
 
-   O que fica neste aparelho é o token e um retrato do perfil, no
-   localStorage — por isso a sessão sobrevive a fechar o navegador e vale
-   para o portal e para os três módulos ao mesmo tempo (mesmo endereço,
-   mesmo armazenamento). Senha nunca é guardada, em lugar nenhum. O prazo é
-   de trinta dias de inatividade, contados e renovados pelo servidor.
-
-   Nada aqui decide permissão: o que este arquivo mostra ou esconde é
-   conveniência. Quem decide é o Apps Script, em toda leitura e gravação.
+   O que mudou na 4.0.0, e por quê (docs/SESSOES.md):
+     · erro passageiro na retomada (sem rede, 404 do Google, servidor
+       ocupado) tenta de novo sozinho e, se persistir, oferece "Tentar
+       novamente" — nunca "entre de novo", porque a sessão continua boa;
+     · conta sem acesso ao módulo NÃO encerra a conta: a tela diz o que
+       houve e oferece voltar, a senha do módulo ou trocar de conta;
+     · só uma recusa de autenticação do servidor pede login, e o que está
+       na tela fica (pedirNovamente).
    ===================================================================== */
 
 (function (global) {
   "use strict";
 
-  var URL_API = "https://script.google.com/macros/s/AKfycbzy9WCfP4l08dn2h2K34uEL6e0mqFBjVMugcHiTc0oUGmpS7gOJjbxs58CB87AoFUw-/exec";
-
-  var CHAVE_TOKEN = "floreser.usuario.sessao";
-  var CHAVE_PERFIL = "floreser.usuario.perfil";
-  var CHAVE_ATIVIDADE = "floreser.usuario.atividade";
-
   var DIAS = 30;
   var NOMES = { crm: "CRM", agenda: "Agenda", entradas: "Entradas" };
+
+  function S() { return global.FloreSerSessao; }
 
   function tentar(f, padrao) {
     try {
@@ -48,184 +41,63 @@
     });
   }
 
-  /* ---------- o que fica guardado neste aparelho ----------
-     Só o necessário para saber quem está e para o servidor reconhecer a
-     sessão: identificação, nome, foto, token e a data do último uso.
-     Senha, hash e tempero nunca chegam aqui. */
+  /* ---------- o que este aparelho sabe da conta (do sessao.js) ---------- */
 
-  function token() {
-    return tentar(function () { return localStorage.getItem(CHAVE_TOKEN); }, "");
-  }
+  function token() { return S() ? S().token() : ""; }
+  function perfil() { return S() ? S().conta() : null; }
 
-  function perfil() {
-    return tentar(function () { return JSON.parse(localStorage.getItem(CHAVE_PERFIL)); }, null);
-  }
+  /* Mantidas por compatibilidade: a atividade agora é do servidor, e
+     "esquecer" é sair só deste aparelho. */
+  function marcarAtividade() { }
+  function esquecer() { if (S()) S().sair(); }
 
-  function atividade() {
-    return Number(tentar(function () { return localStorage.getItem(CHAVE_ATIVIDADE); }, 0)) || 0;
-  }
-
-  function marcarAtividade() {
-    tentar(function () {
-      localStorage.setItem(CHAVE_ATIVIDADE, String(Date.now()));
-      return true;
-    }, false);
-  }
-
-  /* O perfil guardado é um retrato para a tela desenhar depressa, não uma
-     credencial: a permissão que vale é a que o servidor confere na hora. */
-  function guardar(tk, quem) {
-    tentar(function () {
-      localStorage.setItem(CHAVE_TOKEN, tk);
-      localStorage.setItem(CHAVE_PERFIL, JSON.stringify({
-        id: quem.id,
-        nome: quem.nome,
-        usuario: quem.usuario,
-        foto: quem.foto || "",
-        admin: !!quem.admin,
-        permissoes: quem.permissoes || {},
-      }));
-      return true;
-    }, false);
-    marcarAtividade();
-  }
-
-  function esquecer() {
-    tentar(function () {
-      localStorage.removeItem(CHAVE_TOKEN);
-      localStorage.removeItem(CHAVE_PERFIL);
-      localStorage.removeItem(CHAVE_ATIVIDADE);
-      return true;
-    }, false);
-  }
-
-  /* Trinta dias parados: nem tentamos falar com o servidor, já apagamos.
-     O servidor tem a palavra final e conta o mesmo prazo — isto aqui só
-     evita mandar um token que já sabemos vencido. */
-  function venceuLocalmente() {
-    var quando = atividade();
-    if (!quando) return false;
-    return Date.now() - quando > DIAS * 86400000;
-  }
-
-  /* Quando algo estoura do lado do Apps Script, ele devolve uma página de
-     erro em HTML, não o JSON de sempre. Antes isso virava exceção aqui e a
-     tela mandava conferir a internet — que estava ótima. Agora a resposta
-     estranha é reconhecida pelo que é, e o texto do servidor fica guardado
-     para o painel de manutenção mostrar. */
-  /* repetir:true para o que pode ser repetido sem consequência.
-
-     A dúvida era o login, porque cada recusa conta para o bloqueio. Mas a
-     repetição só acontece quando o Google NÃO devolve resposta (404, 5xx).
-     Senha errada volta como resposta de verdade e para ali mesmo — não é
-     repetida uma vez sequer. Então repetir o login não gasta tentativa de
-     quem errou a senha: gasta, no máximo, de quem esbarrou em dois
-     tropeços seguidos, que é raro o bastante para valer a troca. */
-  async function api(dados, repetir) {
-    if (global.FloreSerRede) {
-      return await global.FloreSerRede.postar(dados, { repetir: !!repetir });
-    }
-
-    /* sem o logs.js por perto, segue pelo caminho simples */
-    var resposta = await fetch(URL_API, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(dados),
-      redirect: "follow",
+  function entrar(usuario, senha) {
+    return S().entrar(usuario, senha).then(function (r) {
+      if (!r.ok) anotarFalha(r);
+      return r;
     });
-
-    var texto = await resposta.text();
-    try {
-      return JSON.parse(texto);
-    } catch (e) {
-      return { ok: false, erro: "servidor_falhou", detalhe: motivoDaPagina(texto) };
-    }
   }
 
-  /* Tira o texto visível da página de erro do Google, para o log técnico. */
-  function motivoDaPagina(html) {
-    var limpo = String(html || "")
-      .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&quot;/g, '"').replace(/&amp;/g, "&")
-      .replace(/\s+/g, " ")
-      .trim();
-    return limpo.slice(0, 180);
-  }
-
-  /* ---------- entrar, retomar e sair ---------- */
-
-  async function entrar(usuario, senha) {
-    var r = await api({ acao: "login_usuario", usuario: usuario, senha: senha }, true);
-    if (r && r.ok) guardar(r.token, r.usuario);
-    else anotarFalha(r);
-    return r;
-  }
-
-  /* O que o servidor disse vai para o log técnico, que o painel de
-     manutenção mostra. Sem senha, sem token, sem usuário: só o motivo. */
   function anotarFalha(r) {
-    if (!r || r.erro === "credenciais" || r.erro === "bloqueado") return;
+    var codigo = r && r.erro ? r.erro.codigo : "";
+    if (codigo === "credenciais" || codigo === "bloqueado") return;
     var registrar = global.FloreSerLogs && global.FloreSerLogs.registrar;
-    if (!registrar) return;
-    registrar("LOGIN_SERVIDOR_FALHOU", {
-      nivel: "ERROR",
-      mensagem: "Login recusado pelo servidor: " + (r.detalhe || r.erro || "sem motivo"),
-    });
+    if (registrar) registrar("LOGIN_FALHOU", { nivel: "WARNING", mensagem: "Login não completou: " + (codigo || "sem resposta") });
   }
 
-  /* Chamada quando a página abre com um token guardado. O servidor diz se a
-     sessão ainda vale e, quando um módulo é informado, se esta pessoa pode
-     abri-lo. Passar módulo nenhum é o caso do portal: só queremos saber
-     quem está. */
-  async function retomar(modulo) {
-    var tk = token();
-    if (!tk) return { ok: false, erro: "sem_token" };
-    if (venceuLocalmente()) { esquecer(); return { ok: false, erro: "expirada" }; }
-
-    /* este é o caminho da entrada automática, o que mais sofria com o 404
-       do redirecionamento: conferir a sessão é leitura, pode repetir */
-    var r = await api({ acao: "sessao_usuario", token: tk, modulo: modulo || "" }, true);
-    if (r && r.ok) {
-      guardar(tk, r.usuario);
-    } else if (r && r.erro === "sem_acesso") {
-      /* a sessão continua boa; só este módulo é que não é dela */
-      if (r.usuario) guardar(tk, r.usuario);
-    } else if (r && (r.erro === "expirada" || r.erro === "sessao" || r.erro === "inativo")) {
-      esquecer();
-    }
-    return r;
+  /* Usada quando a página abre com uma conta guardada. */
+  function retomar(modulo) {
+    if (!S() || !S().temConta()) return Promise.resolve({ ok: false, semSessao: true });
+    return S().conferir({ modulo: modulo || "", comFoto: !perfilTemFoto() });
   }
 
-  async function sair() {
-    var tk = token();
-    esquecer();
-    if (tk) { try { await api({ acao: "logout_usuario", token: tk }, true); } catch (e) { } }
-  }
+  function perfilTemFoto() { var p = perfil(); return !!(p && p.foto !== undefined); }
 
+  function sair() { return S().sair(); }
+
+  /* A frase para cada resposta, com o que a pessoa pode fazer. */
   function recado(r) {
+    var e = (r && r.erro) || {};
+    switch (e.codigo) {
+      case "bloqueado": return "Muitas tentativas erradas. Tente de novo em " + (e.minutos || 15) + " minutos.";
+      /* o servidor diz qual dos dois: "Senha incorreta." (senha do módulo)
+         ou "Usuário ou senha incorretos." (conta) */
+      case "credenciais": return (e.mensagem || "Usuário ou senha incorretos.") +
+        (e.restam ? " Restam " + e.restam + " tentativas." : "");
+      case "sem_acesso": return "Esta conta não possui acesso a este módulo.";
+      case "conta_inativa": return "Este usuário está desativado.";
+      case "sessao_expirada": return "Sua sessão expirou. Entre novamente para continuar.";
+      case "sessao_revogada": case "sessao_invalida": return "Sua sessão foi encerrada. Entre novamente para continuar.";
+      case "senha_modulo_desligada": return e.mensagem || "A senha compartilhada deste módulo foi desligada. Entre com a sua conta.";
+      case "manutencao": return e.mensagem || "O sistema está em manutenção. Tente de novo em alguns minutos.";
+      case "versao_cliente": return "Este site está desatualizado. Recarregue a página.";
+      case "versao_servidor": return "O servidor está numa versão diferente deste site. Avise quem administra o sistema.";
+      case "sem_conexao": return "Sem conexão com o servidor. Confira a internet e tente de novo.";
+      case "prazo": case "resposta_invalida": case "servidor_falhou": case "ocupado": case "resultado_desconhecido":
+        return "O servidor não respondeu desta vez — acontece de vez em quando e não é problema seu. Tente de novo em alguns segundos.";
+    }
     if (!r) return "Não foi possível falar com o servidor.";
-    if (r.erro === "bloqueado") {
-      return "Muitas tentativas erradas. Tente de novo em " + (r.minutos || 15) + " minutos.";
-    }
-    if (r.erro === "credenciais") {
-      return "Usuário ou senha incorretos." +
-        (r.restam ? " Restam " + r.restam + " tentativas." : "");
-    }
-    if (r.erro === "sem_acesso") return "Esta conta não possui acesso a este módulo.";
-    if (r.erro === "inativo") return "Este usuário está desativado.";
-    if (r.erro === "expirada") return "Sua sessão expirou por inatividade. Entre novamente para continuar.";
-
-    /* O servidor respondeu — e o que ele respondeu foi um erro dele. Dizer
-       "sem conexão" aqui manda procurar o problema no lugar errado. */
-    if (r.erro === "servidor_falhou") {
-      if (r.status === 404) {
-        return "O Google não devolveu a resposta desta vez. Tente de novo em alguns segundos.";
-      }
-      return "O servidor respondeu com um erro. A planilha pode estar sem " +
-        "permissão de escrita. Avise o suporte.";
-    }
-    return "O servidor recusou a operação. Se continuar, avise o suporte.";
+    return e.mensagem || "O servidor recusou a operação. Se continuar, avise o suporte.";
   }
 
   /* ---------- avatar ----------
@@ -565,12 +437,9 @@
   var moduloPedido = "";
   var raizArquivos = "";
 
+  /* a raiz do site vem do config.js — vale da raiz, de uma pasta e de file:// */
   function caminhoDaLogo() {
-    if (raizArquivos) return raizArquivos + "logo.png";
-    /* o auth.js pode estar na raiz enquanto a página está numa pasta */
-    var meu = document.querySelector('script[src$="auth.js"]');
-    var src = meu ? meu.getAttribute("src") : "";
-    raizArquivos = src.replace(/auth\.js$/, "");
+    if (!raizArquivos) raizArquivos = (global.FLORESER_CONFIG && global.FLORESER_CONFIG.raiz) || "";
     return raizArquivos + "logo.png";
   }
 
@@ -708,7 +577,9 @@
       /* Entrou, mas o módulo pedido não é desta conta: a sessão continua
          valendo para o resto do sistema, e a tela avisa em vez de fingir
          que a entrada falhou. */
-      if (moduloPedido && !(r.usuario.permissoes || {})[moduloPedido]) {
+      var conta = r.dados.conta;
+      r = { ok: true, token: r.dados.token, usuario: conta, sessao: r.dados.sessao };
+      if (moduloPedido && !(conta.permissoes || {})[moduloPedido]) {
         avisar("Esta conta não possui acesso a " + (NOMES[moduloPedido] || moduloPedido) +
           ". Entre com a senha do módulo ou com outra conta.");
         dlg.querySelector("#fs-login-senha").value = "";
@@ -951,109 +822,92 @@
      caso a tela CONTINUA no ar com o erro, de propósito: sem isto, uma
      sessão antiga da senha compartilhada entraria por baixo e esconderia
      o que aconteceu. Quem chama só precisa saber que não deve seguir. */
+  function dormir(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); }
+
+  function anotarRetomada(evento, modulo, motivo) {
+    var registrar = global.FloreSerLogs && global.FloreSerLogs.registrar;
+    if (registrar) registrar(evento, { nivel: "WARNING", mensagem: "Retomada em " + modulo + ": " + motivo });
+  }
+
+  function voltarAoInicio() {
+    location.href = (global.FLORESER_CONFIG && global.FLORESER_CONFIG.raiz) || "../";
+  }
+
+  /* Retoma a conta guardada ao abrir um módulo.
+     Devolve true quando pode seguir — e a tela, se chegou a aparecer, fica
+     até o módulo chamar encerrarRetomada(). Devolve false quando não pode,
+     e a tela fica com o motivo e as saídas certas para cada caso. */
   async function tentarRetomar(modulo, opcoes) {
     var o = opcoes || {};
-    if (!token()) return false;
+    if (!S() || !S().temConta()) return false;
 
-    mostrarRetomada(modulo);
-
-    var r;
-    try {
+    /* sem piscar: a tela de espera só aparece se a confirmação demorar */
+    var mostrou = false;
+    var timer = setTimeout(function () { mostrou = true; mostrarRetomada(modulo); }, 450);
+    var r = null;
+    var esperas = [0, 1500, 4000];
+    for (var i = 0; i < esperas.length; i++) {
+      if (esperas[i]) await dormir(esperas[i]);
       r = await retomar(modulo);
-    } catch (e) {
-      /* aqui o fetch falhou de verdade: é rede, não resposta do servidor */
-      atualizarRetomada({
-        etapa: "erro", modulo: modulo,
-        mensagem: "Não foi possível confirmar sua sessão. Verifique sua conexão e tente novamente.",
-        acoes: saidas(modulo, o, true),
-      });
-      anotarRetomadaFalhou(modulo, "rede");
+      if (r.ok || !r.temporario) break;
+    }
+    clearTimeout(timer);
+
+    if (r.ok && r.acessoModulo !== false) return true;
+
+    if (r.ok && r.acessoModulo === false) {
+      anotarRetomada("RETOMADA_SEM_ACESSO", modulo, "conta sem este módulo");
+      if (!mostrou) mostrarRetomada(modulo);
+      var saidas = [{ texto: "Voltar ao início", fn: voltarAoInicio }];
+      if (typeof o.aoPedirSenha === "function") saidas.push({ texto: "Usar a senha do módulo", fn: function () { encerrarRetomada(); o.aoPedirSenha(); } });
+      saidas.push({ texto: "Trocar de conta", fn: function () { trocarDeConta(modulo, o); } });
+      atualizarRetomada({ etapa: "erro", modulo: modulo,
+        mensagem: "Sua conta continua ativa, mas não tem acesso a " + (NOMES[modulo] || modulo) + ". Fale com quem administra o sistema se precisar dele.",
+        acoes: saidas });
       return false;
     }
 
-    /* Deu certo com o servidor — mas o módulo ainda vai carregar os dados,
-       e isso também pode falhar. A tela FICA no ar até quem chamou dizer
-       que o módulo abriu de verdade, chamando encerrarRetomada(). Fechar
-       aqui deixaria um erro do carregamento sem lugar para aparecer, e o
-       portão de senha surgiria sem explicação. */
-    if (r && r.ok) return true;
+    if (r.semSessao || (r.erro && r.erro.categoria === "autenticacao")) {
+      /* a sessão acabou de verdade: direto para entrar, sem tela de erro */
+      encerrarRetomada();
+      anotarRetomada("RETOMADA_SESSAO_ENCERRADA", modulo, (r.erro && r.erro.codigo) || "sem sessão");
+      abrirLogin({ modulo: modulo, aviso: recado(r), aoEntrar: function (x) { if (typeof o.aoEntrar === "function") o.aoEntrar(x); } });
+      return false;
+    }
 
-    atualizarRetomada({
-      etapa: "erro", modulo: modulo,
-      mensagem: motivoDaRetomada(r),
-      acoes: saidas(modulo, o, false),
-    });
-    anotarRetomadaFalhou(modulo, (r && r.erro) || "sem_resposta");
+    /* passageiro que não passou: a conta continua guardada */
+    anotarRetomada("RETOMADA_ADIADA", modulo, (r.erro && r.erro.codigo) || "sem resposta");
+    if (!mostrou) mostrarRetomada(modulo);
+    atualizarRetomada({ etapa: "erro", modulo: modulo,
+      mensagem: "Não foi possível confirmar sua sessão agora. " + recado(r) + " Sua conta continua conectada — nada foi perdido.",
+      acoes: [{ texto: "Tentar novamente", fn: function () { location.reload(); } },
+        { texto: "Voltar ao início", fn: voltarAoInicio }] });
     return false;
   }
 
-  function motivoDaRetomada(r) {
-    if (!r) return "Não foi possível confirmar sua sessão.";
-    if (r.erro === "sem_acesso") {
-      return "Não foi possível entrar automaticamente. Sua conta não possui acesso a este módulo.";
-    }
-    if (r.erro === "expirada") {
-      return "Sua sessão expirou por inatividade. Entre novamente para continuar.";
-    }
-    if (r.erro === "inativo") return "Este usuário está desativado.";
-    if (r.erro === "servidor_falhou") {
-      /* O 404 aqui não é endereço errado: é o Google falhando no segundo
-         salto da resposta. Já tentamos três vezes antes de chegar neste
-         texto, então mandar "verifique a internet" seria mentira. */
-      if (r.status === 404) {
-        return "O Google não devolveu a resposta desta vez — acontece de " +
-          "vez em quando e não é problema seu. Tente de novo em alguns segundos.";
-      }
-      return "Não foi possível confirmar sua sessão. O servidor respondeu com um erro" +
-        (r.status ? " (" + r.status + ")" : "") + ".";
-    }
-    if (r.erro === "sessao") return "Sua sessão não vale mais. Entre novamente para continuar.";
-    return "Não foi possível confirmar sua sessão.";
+  function trocarDeConta(modulo, o) {
+    encerrarRetomada();
+    abrirLogin({ modulo: modulo, aoEntrar: function (r) { if (typeof o.aoEntrar === "function") o.aoEntrar(r); } });
   }
 
-  /* As saídas são sempre as mesmas do portão: a senha do módulo continua
-     valendo, e trocar de conta também. */
-  function saidas(modulo, o, foiRede) {
-    var lista = [];
-
-    if (foiRede) {
-      lista.push({
-        texto: "Tentar novamente",
-        fn: function () { location.reload(); },
-      });
-    }
-
-    lista.push({
-      texto: "Entrar com senha",
-      fn: function () {
-        encerrarRetomada();
-        if (typeof o.aoPedirSenha === "function") o.aoPedirSenha();
-      },
+  /* A sessão acabou no meio do trabalho (uma gravação foi recusada por
+     autenticação). Abre a caixa de entrar POR CIMA do que está na tela;
+     o que não foi salvo continua na memória e sobe depois. Resolve com o
+     token novo, ou null se a pessoa cancelar. Só uma caixa por vez. */
+  var pedindo = null;
+  function pedirNovamente(modulo, motivo) {
+    if (pedindo) return pedindo;
+    pedindo = new Promise(function (resolver) {
+      var feito = false;
+      abrirLogin({ modulo: modulo,
+        aviso: motivo || "Sua sessão terminou. Entre de novo para salvar o que está na tela — nada foi perdido.",
+        aoEntrar: function (r) { feito = true; pedindo = null; resolver(r && r.token ? r.token : token()); } });
+      var acompanhar = setInterval(function () {
+        if (feito) { clearInterval(acompanhar); return; }
+        if (dlg && !dlg.open) { clearInterval(acompanhar); pedindo = null; resolver(null); }
+      }, 400);
     });
-
-    lista.push({
-      texto: "Entrar com outra conta",
-      fn: function () {
-        encerrarRetomada();
-        abrirLogin({
-          modulo: modulo,
-          aoEntrar: function (r) {
-            if (typeof o.aoEntrar === "function") o.aoEntrar(r);
-          },
-        });
-      },
-    });
-
-    return lista;
-  }
-
-  function anotarRetomadaFalhou(modulo, motivo) {
-    var registrar = global.FloreSerLogs && global.FloreSerLogs.registrar;
-    if (!registrar) return;
-    registrar("AUTOLOGIN_USUARIO_FALHOU", {
-      nivel: "WARNING",
-      mensagem: "Entrada automática em " + modulo + " não completou: " + motivo,
-    });
+    return pedindo;
   }
 
   global.FloreSerAuth = {
@@ -1071,6 +925,7 @@
     iniciais: iniciais,
     montarIdentidade: montarIdentidade,
     tentarRetomar: tentarRetomar,
+    pedirNovamente: pedirNovamente,
     mostrarRetomada: mostrarRetomada,
     atualizarRetomada: atualizarRetomada,
     encerrarRetomada: encerrarRetomada,

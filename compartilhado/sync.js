@@ -52,8 +52,10 @@
     }
 
     if (typeof v === "object") {
-      /* chaves em ordem: a mesma informação tem sempre a mesma assinatura */
-      var chaves = Object.keys(v).filter(function (k) { return !ehVazio(v[k]); }).sort();
+      /* chaves em ordem: a mesma informação tem sempre a mesma assinatura.
+         Campos técnicos (começam com "_", como a revisão _rev) não são
+         informação de ninguém: ficam fora da comparação. */
+      var chaves = Object.keys(v).filter(function (k) { return k.charAt(0) !== "_" && !ehVazio(v[k]); }).sort();
       return "o:{" + chaves.map(function (k) {
         return k + ":" + canonico(v[k]);
       }).join(",") + "}";
@@ -85,6 +87,8 @@
     });
 
     Object.keys(campos).forEach(function (campo) {
+      /* a revisão é do servidor, sempre */
+      if (campo.charAt(0) === "_") { if (servidor && servidor[campo] !== undefined) saida[campo] = copiar(servidor[campo]); return; }
       var b = base ? base[campo] : undefined;
       var l = local ? local[campo] : undefined;
       var s = servidor ? servidor[campo] : undefined;
@@ -231,6 +235,7 @@
 
     Object.keys(resto).forEach(function (campo) {
       var b = (base || {})[campo], l = (local || {})[campo], s = (servidor || {})[campo];
+      if (campo.charAt(0) === "_") { saida[campo] = copiar(s); return; }
       if (ehObjeto(b) || ehObjeto(l) || ehObjeto(s)) {
         var mm = mesclarRegistro(b || {}, l || {}, s || {});
         saida[campo] = mm.registro;
@@ -980,11 +985,25 @@
   /* O selo global (atividade-rede.js) precisa saber o que o rodapé do
      módulo concluiu, para nunca dizer "Alterações salvas" com coisa ainda
      na fila. Quem decide continua sendo este arquivo: ali é só eco. */
+  /* O estado de salvamento desta página, para quem precisa saber se pode
+     recarregar: a atualização do Alveare (pwa.js) espera o "salvo" antes
+     de trocar de versão, em vez de recarregar por cima de uma edição. */
+  var ESTADOS_COM_PENDENCIA = ["pendente", "salvando", "offline", "erro", "conflito", "expirado"];
+  var estadoDaPagina = "";
+  var aoFicarSalvo = [];
+
   function avisarAtividade(estado) {
+    estadoDaPagina = estado;
     try {
       if (global.FloreSerAtividade) global.FloreSerAtividade.estadoDoModulo(estado);
     } catch (e) { /* o indicador nunca pode atrapalhar o salvamento */ }
+    if (estado === "salvo" && aoFicarSalvo.length) {
+      var fila = aoFicarSalvo.splice(0);
+      fila.forEach(function (fn) { try { fn(); } catch (e) { } });
+    }
   }
+
+  function temPendencias() { return ESTADOS_COM_PENDENCIA.indexOf(estadoDaPagina) >= 0; }
 
   function criarStatus(elemento, opcoes) {
     var o = opcoes || {};
@@ -1063,6 +1082,8 @@
   }
 
   global.FloreSerSync = {
+    temPendencias: temPendencias,
+    quandoSalvo: function (fn) { if (!temPendencias()) fn(); else aoFicarSalvo.push(fn); },
     iguais: iguais,
     canonico: canonico,
     copiar: copiar,

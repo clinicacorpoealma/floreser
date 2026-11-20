@@ -1,8 +1,13 @@
 # Site interno — FloreSer · Corpo e Alma
 
-Site estático servido pelo GitHub Pages, sem build. O portal fica na raiz e
+Site estático servido pelo GitHub Pages, sem build, falando com um Google
+Apps Script que guarda tudo numa planilha do Google. O portal fica na raiz e
 cada módulo mora numa pasta, para o endereço não mostrar `.html`:
 `/`, `/crm/`, `/agenda/`, `/entradas/`.
+
+Documentação completa em `docs/`: [ARQUITETURA](docs/ARQUITETURA.md),
+[API](docs/API.md), [ESQUEMA](docs/ESQUEMA.md), [SESSOES](docs/SESSOES.md),
+[PUBLICACAO](docs/PUBLICACAO.md). Leia o documento da área antes de mexer nela.
 
 ## Onde cada coisa mora
 
@@ -10,131 +15,137 @@ cada módulo mora numa pasta, para o endereço não mostrar `.html`:
 que a página *é*, o CSS diz como ela *se parece*, o JS diz como ela *se
 comporta*. Nenhum dos três volta a morar dentro do outro.
 
-### O portal e os arquivos compartilhados, na raiz
+### Raiz (endereços públicos e o que precisa ficar na raiz)
 
 | Arquivo | Papel |
 |---|---|
-| `index.html` | portal: estrutura dos três quadrados (CRM, Agendamentos e Entradas), do rodapé e das duas janelas |
-| `portal.css` | apresentação do portal, incluindo o painel de manutenção |
-| `portal.js` | comportamento do portal: data, histórico de versões, janela Sobre, faixa da busca |
+| `index.html` | portal: os três quadrados (CRM, Agendamentos, Entradas), o rodapé e as duas janelas |
 | `crm.html` `agenda.html` `entradas.html` | atalhos de uma linha para os endereços antigos |
-| `version.js` | **fonte única** de versão, codinome e changelog |
-| `logs.js` | registro técnico e `FloreSerRede.postar` — a camada de rede compartilhada |
-| `atividade-rede.js` | o selo que mostra quando o sistema está falando com a planilha |
-| `atividade-rede.css` | apresentação do selo de atividade, nos dois temas |
-| `tema.js` | tema claro/escuro/automático: paleta, seletor e preferência local |
-| `auth.js` | conta de usuário: tela de entrar, sessão de 30 dias, avatar e menu |
-| `painel.js` | painel de manutenção do portal (entrada discreta + senha no servidor) |
-| `sync.js` | conciliação de conflitos, detector de cadastro repetido e indicador de estado |
-| `auditoria.js` | histórico de alterações mostrado dentro de cada ficha |
-| `busca.js` | busca global do portal, por cima dos três módulos |
-| `pwa.js` | camada do aplicativo: registra o Service Worker, oferece instalar, avisa de versão nova e de conexão |
-| `service-worker.js` | cache da casca do sistema; **um só**, na raiz, para todo o Alveare |
-| `manifest.webmanifest` | identidade do aplicativo instalado: nome Alveare, ícones, atalhos |
-| `offline.html` | tela de sem conexão, sem nenhuma dependência externa |
-| `icons/` | ícones do aplicativo, gerados a partir de `logo.png` |
-| `logo.png` / `favicon.png` | marca |
+| `version.js` | **fonte única** dos metadados de lançamento: versão, codinome, changelog, `compat` (API e schema que o site espera) e `casca` (cache da PWA). O Service Worker importa este arquivo; ele não pode depender de `window` |
+| `service-worker.js` | cache da casca; **um só**, na raiz, para todo o Alveare |
+| `manifest.webmanifest` · `offline.html` · `icons/` · `logo.png` · `favicon.png` | aplicativo instalável e marca |
 
-### Cada módulo, na sua pasta
+### `compartilhado/` — o frontend comum
 
 | Arquivo | Papel |
 |---|---|
-| `crm/index.html` | casca do CRM, as bibliotecas e a aplicação React em JSX — que fica aqui dentro de propósito, ver abaixo |
-| `crm/crm.css` | paleta `--crm-*` dos dois temas, o portão de entrada `.pt-*`, os resumos `.crm-resumo-*` e a fila do Comercial 2, a ficha e o diálogo da data do atendimento (`.crm-c2-*`, `.crm-bloco-*`, `.crm-dialogo-*`, `.crm-botao`) |
-| `crm/crm-core.js` | infraestrutura: endereço da API, sessão, `chamarAPI`, `window.storage` |
-| `agenda/index.html` | estrutura da Agenda |
-| `agenda/agenda.css` | as seis `@font-face` locais e toda a apresentação da Agenda, incluindo a série de atendimentos (`.serie-*`, `.sp-*`, `.sf-*`) e o campo de intervalo `.dias-campo` |
-| `agenda/agenda.js` | comportamento da Agenda |
-| `entradas/index.html` | estrutura das Entradas |
-| `entradas/entradas.css` | apresentação das Entradas |
-| `entradas/entradas.js` | comportamento das Entradas |
+| `config.js` | **o endereço do Apps Script, num lugar só**; a raiz do site; a versão do contrato (`api`) |
+| `tema.js` | tema claro/escuro/automático |
+| `rede.js` | `FloreSerRede` — o único caminho até o servidor: envelope v2, prazo, repetição de leitura, leituras iguais viram uma, categorias de erro, avisa a sessão |
+| `sessao.js` | `FloreSerSessao` — guarda e confere a sessão (conta e senha de módulo), comparar antes de apagar, eventos entre abas |
+| `dados.js` | `FloreSerDados` — motor de sincronização: operações por entidade a partir da base confirmada, conflito localizado, reenvio com o mesmo `operacaoId` |
+| `auth.js` | `FloreSerAuth` — só interface: caixa de entrar, retomada, quem está, `pedirNovamente` |
+| `sync.js` | `FloreSerSync` — conciliação de três vias, repetidos, indicador de salvamento, `temPendencias` |
+| `auditoria.js` · `busca.js` | histórico da ficha · busca global |
+| `pwa.js` | registra o Service Worker, instalar, versão nova (espera o "salvo"), conexão |
+| `logs.js` | registro técnico (telemetria), com envio próprio |
+| `atividade-rede.js` / `.css` | o selo que mostra quando o sistema fala com a planilha |
 
-### Terceiros e recursos
+### Módulos
+
+| Arquivo | Papel |
+|---|---|
+| `portal/portal.css` · `portal/portal.js` | apresentação e comportamento do portal (o CSS também veste o painel) |
+| `admin/painel.js` | painel de manutenção (entrada discreta + senha `dev` no servidor) |
+| `crm/index.html` | casca do CRM, as bibliotecas e a aplicação React em JSX — que fica aqui dentro de propósito, ver abaixo |
+| `crm/crm.css` | paleta `--crm-*`, portão `.pt-*`, resumos, fila do Comercial 2, ficha, diálogos (`.crm-dialogo-*`, `.crm-botao`) |
+| `crm/crm-core.js` | a ponte do JSX com o compartilhado: `window.storage` sobre o motor, `chamarAPI` (tradução das chamadas antigas), `motorCRM` |
+| `agenda/index.html` · `agenda.css` · `agenda.js` | Agenda (as seis `@font-face` locais ficam no CSS) |
+| `entradas/index.html` · `entradas.css` · `entradas.js` | Entradas |
+
+### Backend, testes e ferramentas
 
 | Pasta | Papel |
 |---|---|
-| `vendor/` | bibliotecas de terceiros, **intocadas**: `xlsx.full.min.js` (SheetJS 0.18.5), usado pela Agenda e pelo CRM |
-| `assets/fonts/` | as seis WOFF2 da marca — Cormorant Garamond 600/700 e Montserrat 300/400/500/600 |
+| `backend/` | Apps Script (V8), **sem segredo nenhum**: `00_Config` · `01_Http` (contrato e rotas) · `02_Tabelas` (acesso às abas, tipos) · `03_Concorrencia` (trava, revisão, operações, diário) · `04_Sessoes` · `05_Autorizacao` · `10_Esquema` · `20`–`29` regras e serviços · `40_Migracoes` · `41_Manutencao` |
+| `backend/legado/` | o `Codigo.gs` da 3.5.0, com as senhas — **só no computador, fora do GitHub** |
+| `testes/` | simulador do Apps Script, testes (`backend.js`, `migracao.js`, `frontend.js`), servidor local |
+| `ferramentas/` | `conferir-publicacao.js`, `preparar-publicacao.js`, `ensaiar-migracao-xlsx.js`, `medir-antes-depois.js` |
+| `vendor/` | bibliotecas de terceiros, **intocadas**: `xlsx.full.min.js` (SheetJS 0.18.5) |
+| `assets/fonts/` | as seis WOFF2 da marca |
 
 ### As regras
 
-Os arquivos compartilhados ficam **sempre na raiz**. Como as páginas dos módulos
-estão um nível abaixo, elas os chamam com `../` — `../logo.png`, `../tema.js`,
-`../vendor/xlsx.full.min.js`. Página nova dentro de pasta segue a mesma regra, e
-a volta para o portal é `href="../"`, nunca `index.html`.
+Páginas dos módulos estão um nível abaixo da raiz: chamam o resto com `../`
+(`../compartilhado/rede.js`, `../logo.png`), e a volta para o portal é
+`href="../"`. CSS que muda de pasta leva os `url()` junto. Nada de caminho
+absoluto — o site mora em `/floreser/`.
 
-**Código compartilhado vai para a raiz; código exclusivo de um módulo fica na
-pasta dele.** Um arquivo compartilhado novo só se justifica quando a
-responsabilidade é mesmo de todos — não crie um `utils.js` para juntar funções
-sem parentesco.
+**Código compartilhado vai para `compartilhado/`; código de um módulo fica na
+pasta dele.** Arquivo compartilhado novo só quando a responsabilidade é mesmo
+de todos — nada de `utils.js` para juntar funções sem parentesco.
 
-**Ao mudar alguma coisa:** o visual está no `.css` do módulo, a lógica no `.js`,
-a estrutura no `index.html`. Não devolva CSS nem JavaScript para dentro do HTML,
-e não gere markup estrutural por `innerHTML` só para encurtar o HTML — markup que
-é estrutura pertence ao HTML.
+**Nenhum módulo fala com o servidor sem `FloreSerRede`, e nenhum guarda token
+sem `FloreSerSessao`.** O endereço do Apps Script só existe em
+`compartilhado/config.js` (a conferência de publicação recusa outro lugar).
 
-**Não edite nada dentro de `vendor/`.** Aquilo é a biblioteca original, byte a
-byte, com o cabeçalho de licença. Atualizar uma biblioteca é outra tarefa, com
-teste próprio.
+**Não devolva CSS nem JavaScript para dentro do HTML**, e não gere markup
+estrutural por `innerHTML` só para encurtar o HTML.
+
+**Não edite nada dentro de `vendor/`.**
 
 O projeto continua **sem build**: HTML, CSS e JavaScript clássicos, globais
-controlados (`window.FLORESER`, `window.FloreSerAuth`, `window.FloreSerSync`,
-`window.FloreSerAuditoria`, `window.FloreSerBusca`, `window.FloreSerRede`) e o
-Babel Standalone só no CRM. Sem npm, sem bundler, sem ES modules. Publicar
-continua sendo enviar os arquivos ao GitHub.
+controlados (`window.FLORESER`, `FLORESER_CONFIG`, `FloreSerRede`,
+`FloreSerSessao`, `FloreSerDados`, `FloreSerAuth`, `FloreSerSync`,
+`FloreSerAuditoria`, `FloreSerBusca`, `FloreSerLogs`, `FloreSerAtividade`) e o
+Babel Standalone só no CRM. Sem npm, sem bundler, sem ES modules. Os testes e
+ferramentas rodam com `node` puro, sem dependências.
 
-**A ordem dos `<script>` importa** e não é alfabética: `tema.js` primeiro, no
-`<head>`, para o tema já estar carimbado antes da primeira pintura; depois
-`version.js`, `logs.js`, `pwa.js`, `auth.js` e, nos módulos, `sync.js` e
-`auditoria.js`; o script do próprio módulo por último, no fim do `<body>`, com o
-markup já montado. Nenhum deles leva `defer` ou `async` — a única exceção é o
-`painel.js`, que sempre teve `defer`. Não acrescente esses atributos sem
-verificar quem depende de quem.
+**A ordem dos `<script>` importa:** `compartilhado/tema.js` primeiro, no
+`<head>`; depois `version.js`, `config.js`, `atividade-rede.js`, `logs.js`,
+`rede.js`, `pwa.js`, `sessao.js`, `auth.js` e, nos módulos, `sync.js`,
+`dados.js`, `auditoria.js`; o script do módulo por último, no fim do `<body>`.
+Nenhum leva `defer`/`async`, exceto `admin/painel.js` (sempre teve `defer`).
+Toda página leva `<meta name="floreser-estrutura" content="2">` — sem ela o
+`version.js` entende que é uma página velha em cache e recarrega uma vez.
 
 ### O CRM é a exceção, e por um motivo concreto
 
-**O JSX do CRM mora dentro do `crm/index.html`, e deve continuar lá.** Não o
-mova para um arquivo próprio.
+**O JSX do CRM mora dentro do `crm/index.html`, e deve continuar lá.** O
+Babel Standalone busca `<script type="text/babel" src>` por XHR, e o Chrome
+bloqueia XHR entre arquivos locais: por `file://` o CRM abriria em branco.
+O `crm.css` e o `crm-core.js` são separados porque entram por `<link>` e
+`<script src>` comuns. O `crm-core.js` é **clássico** de propósito: roda antes
+do bloco compilado.
 
-O Babel Standalone compila `<script type="text/babel">` no navegador. Quando
-esse script tem `src`, o Babel busca o arquivo por `XMLHttpRequest` — e o Chrome
-bloqueia XHR entre arquivos locais. O resultado é o CRM abrindo em branco por
-`file://`, enquanto os outros três módulos abrem normalmente. Servido por HTTP
-funciona; do disco, não. Como abrir do disco faz parte do jeito de trabalhar
-aqui, o JSX fica inline: assim não há busca nenhuma para ser bloqueada.
+## Os dados
 
-O `crm.css` e o `crm-core.js` continuam separados porque entram por `<link>` e
-por `<script src>` comuns, e essas duas tags o `file://` permite. O
-`crm-core.js` é um script **clássico** de propósito: precisa rodar antes do
-bloco compilado, e o Babel não deve compilar o que não precisa ser compilado.
+O desenho das abas é o **schema 2** (`backend/10_Esquema.gs`,
+[ESQUEMA](docs/ESQUEMA.md)): uma aba por entidade, id estável, cabeçalho manda,
+tipos conferidos, tudo gravado como texto. Datas de calendário `AAAA-MM-DD`;
+instantes em UTC; dinheiro em **centavos inteiros** na lógica e `"350.00"` na
+planilha, convertido por texto. As abas da 3.5.0 ficam intactas para retorno.
+
+**Salvar não manda o módulo inteiro.** O motor (`compartilhado/dados.js`)
+compara a base confirmada com a tela e manda operações por entidade, cada uma
+com a revisão de que partiu e um `operacaoId` estável. Conflito é por ficha.
+Ao mexer no estado de um módulo:
+- coleção nova com id próprio entra **no motor do módulo** (`colecoes`) e no
+  esquema de conciliação (`ESQUEMA_CRM`, `ESQUEMA_AGENDA`, `ESQUEMA_ENTRADAS`);
+  fora deles, a lista vira um campo só;
+- campo novo de uma entidade entra na lista `campos` do motor, no esquema do
+  backend e na validação da operação no serviço — campo fora da lista é
+  recusado pelo servidor;
+- regra de negócio nova é conferida **no servidor** (serviço + regras puras),
+  não só na tela.
 
 ### O estado do CRM
 
-O CRM grava três partes juntas: `leads`, `dias` (intervalos das cadências) e
-`contatos`. Na conciliação de conflitos, `leads` e `contatos` são listas por id
-(`ESQUEMA_CRM`): dois aparelhos que acrescentam itens diferentes somam os dois.
-Toda lista nova com id próprio precisa entrar ali — fora dela, a lista inteira
-vira um campo só e um aparelho sobrescreve o outro.
-
-`contatos` são eventos `{ id, leadId, data, criadoEm }`, um por toque em
-"Contatei". **A única origem é `registrarContato`**, e é daí que sai "contatos
-feitos hoje". Não calcule isso por `ultimoContato`: lead novo nasce com ele
-preenchido, importação traz a data pronta, e dá para editar à mão. `data` é o dia
-local de `hojeISO()`, nunca `toISOString()`.
-
-No Apps Script, os contatos moram na aba `Leads_Contatos`, que **só cresce**: o
-servidor acrescenta ids que não conhece, nunca apaga, e carimba o autor pelo
-`autorizar()`. Eles não passam pelo `gravarCRM` nem pela auditoria da ficha, e
-não saem na exclusão definitiva do lead — não guardam nome, telefone nem valor.
-A leitura devolve só os últimos 62 dias. **Publique o Apps Script antes do site,
-ou junto:** um servidor antigo descarta a lista, e a contagem volta a zero a cada
-recarregamento.
+O CRM grava três partes: `leads`, `dias` (intervalos das cadências, em
+`sis_config`) e `contatos`. `contatos` são eventos `{ id, leadId, data,
+criadoEm }`, um por toque em "Contatei". **A única origem é
+`registrarContato`**, e é daí que sai "contatos feitos hoje". Não calcule isso
+por `ultimoContato`. `data` é o dia local de `hojeISO()`, nunca
+`toISOString()`. O evento sobe **dentro da operação da lead** que mudou junto
+(`anexarEm`). No servidor, `crm_contatos` só cresce: acrescenta ids que não
+conhece, nunca apaga, carimba o autor pela sessão, fica fora da auditoria da
+ficha e da exclusão definitiva da lead. A leitura devolve os últimos 62 dias.
 
 ### Comercial 1, Comercial 2 e as etapas
 
-O CRM tem duas filas de trabalho. **Quem cuida da lead sai da etapa, sempre**
-— `comercialDaEtapa()`, lendo a propriedade `comercial` de `ETAPAS`. Não grave
-"responsável" na lead: seriam duas verdades, e um dia elas discordam.
+**Quem cuida da lead sai da etapa, sempre** — `comercialDaEtapa()` no site e
+`comercialDaEtapaCRM()` no servidor. Não grave "responsável" na lead (o
+servidor recusa o campo).
 
 | Etapa | Fila |
 |---|---|
@@ -142,160 +153,121 @@ O CRM tem duas filas de trabalho. **Quem cuida da lead sai da etapa, sempre**
 | Agendado, Fazer orçamento | Comercial 2 — sem cadência: prioridade e data do atendimento |
 | Venda, Venda reprovada, Recusado | Arquivo |
 
-Quando existirem contas presas a uma fila, a regra entra em `COMERCIAIS`; o
-resto do CRM já pergunta tudo por `comercialDaEtapa()`.
-
 **Fazer orçamento ≠ Em aberto.** Fazer orçamento = compareceu e o orçamento
-*ainda precisa ser preparado* (Comercial 2, sem cadência, sempre no topo da
-fila até "Orçamento feito"). Em aberto = o orçamento *já existe e foi
-apresentado*, e o Comercial 1 acompanha a decisão com cadência. A antiga
-"Com orçamento" (`com_orcamento`) era Em aberto e continua migrando para Em
-aberto — nunca para Fazer orçamento.
+*ainda precisa ser preparado*. Em aberto = o orçamento *já existe e foi
+apresentado*. A antiga `com_orcamento` vira Em aberto — nunca Fazer orçamento
+(também na migração).
 
-**`dtAgendamento` ≠ `dataAgendada`.** `dtAgendamento` é marco do funil: o dia
-em que a lead *foi agendada*, carimbado uma vez. `dataAgendada` é o dia em que a
-pessoa *vem à clínica* — a data do atendimento comercial inicial. Agendar hoje
-para daqui a uma semana dá `dtAgendamento` hoje e `dataAgendada` daqui a uma
-semana. Nunca deduza uma da outra: lead antiga em Agendado fica sem
-`dataAgendada` e aparece no Comercial 2 pedindo a data.
+**`dtAgendamento` ≠ `dataAgendada`.** `dtAgendamento` é o marco do dia em que
+a lead *foi agendada*; `dataAgendada` é o dia em que a pessoa *vem à
+clínica*. Nunca deduza uma da outra.
 
-As regras do fluxo:
-
-- Toda troca de etapa passa por `aplicarEtapa()`: ajusta a cadência (quem volta
-  ao Comercial 1 vindo de etapa sem cadência entra na mais quente) e carimba os
-  marcos. Fazer orçamento carimba o comparecimento — com a data do atendimento,
-  se ela já chegou; comparecimento existente nunca é reescrito. Falta não
-  carimba nada e não apaga `dtAgendamento` nem `dataAgendada`.
-- Entrar em Agendado sempre pede a data do atendimento (`DialogoAtendimento`,
-  ou o campo no formulário). Voltar de Falta para Agendado pede uma data *nova*.
-- Depois do dia do atendimento, a ficha e o cartão oferecem só
-  `DESFECHOS_DO_ATENDIMENTO` (Falta ou Fazer orçamento). O seletor de etapa
-  mostra `PROXIMAS_ETAPAS`; a lista inteira é "Corrigir etapa manualmente".
-- A fila do Comercial 2 é `situacaoComercial2()` + `FILA_COMERCIAL2` + uma
-  ordenação só, `compararComercial2()`: Fazer orçamento (mais antigo primeiro),
-  sem data, atendimento que passou, hoje, futuros (mais próximo primeiro). O
-  badge conta só o que pede ação — atendimento futuro e o de hoje não.
-- `situacao()` é só da cadência. Etapa sem cadência nunca entra nela, nem com
-  uma cadência que sobrou gravada.
-- Num conflito, a etapa é **uma** pergunta e arrasta junto `CAMPOS_DA_ETAPA`
-  (cadência, data do atendimento e marcos) do lado escolhido —
-  `amarrarEtapas()`. Etapa mudada de um lado enquanto o outro remarcava também
-  vira pergunta. O que não se cruza continua somando sozinho.
+- Toda troca de etapa passa por `aplicarEtapa()` (site) e é conferida por
+  `conferirLeadCRM()` (servidor): cadência só onde a etapa tem; marcos até o
+  nível da etapa; entrar em Agendado exige a data do atendimento; Falta não
+  carimba nada nem apaga `dtAgendamento`/`dataAgendada`; comparecimento
+  existente não é reescrito por troca de etapa.
+- Depois do dia do atendimento, a ficha oferece só `DESFECHOS_DO_ATENDIMENTO`;
+  o seletor mostra `PROXIMAS_ETAPAS`; a lista inteira é "Corrigir etapa".
+- A fila do Comercial 2 é `situacaoComercial2()` + `FILA_COMERCIAL2` +
+  `compararComercial2()`. `situacao()` é só da cadência.
+- Num conflito, a etapa é **uma** pergunta e arrasta `CAMPOS_DA_ETAPA` do lado
+  escolhido — `amarrarEtapas()`.
 
 ### A Agenda e o CRM
 
 **A Agenda é a fonte operacional dos atendimentos; o CRM guarda só o
-atendimento comercial inicial** (`dataAgendada`). A Agenda pode ter várias
-sessões futuras — elas nunca reiniciam o funil.
+atendimento comercial inicial** (`dataAgendada`).
 
-- Cada área da paciente tem `agendamento` (o **próximo** atendimento — é dele
-  que o painel, os follow-ups e a integração falam) e `proximos` (as datas
-  seguintes de uma série, em ordem). `arrumarSerie()` garante que o próximo é
-  sempre o mais cedo. Na planilha, `proximos` é uma coluna de
-  `Pacientes_Ciclos`, datas separadas por vírgula — vai e volta com o ciclo, na
-  lixeira e na restauração.
-- A série é uma lista de datas, não uma regra: `datasDaSerie()` gera as datas
-  pelo calendário (`D.add`, meio-dia local), nunca somando milissegundos.
-  Alterar ou desmarcar uma data mexe só nela.
-- Intervalos — o de retorno ("Ela vem a cada") e o espaçamento da série — são
-  7, 14, 30 ou personalizado: qualquer inteiro de **1 a 365** dias
-  (`INTERVALOS`, `lerIntervalo()`). O valor real vai gravado em `freq`; a série
-  guarda só as datas, e o passo é lido delas. A quinzena é **14**, não 15:
-  duas semanas certas mantêm o dia da semana. Os ciclos de 15 gravados antes
-  da 3.3.1 viraram 14 numa migração única do servidor
-  (`migrarQuinzenaPara14`); depois dela, 15 é um intervalo personalizado
-  como qualquer outro.
-- O tratamento tem **fim previsto** (`fimPrevisto`, a última data quando a
-  série é marcada ou ampliada com "Marcar mais") e **sessões a remarcar**
-  (`aRemarcar`). Desmarcar uma sessão de série não a apaga do tratamento: soma
-  uma a remarcar, e a paciente aparece em "Sessões a remarcar" no painel até
-  "Remarcar sessão" (que não mexe no fim previsto) ou "Não vai remarcar".
-  `situacaoTratamento()` compara o fim de agora — a última data, mais um passo
-  por sessão pendente — com o previsto, e isso é o atraso. "Desmarcar todos" é
-  encerrar o tratamento: zera os dois. Na planilha, são as colunas
-  `fimPrevisto` e `aRemarcar` de `Pacientes_Ciclos`.
-- `maturar()` transforma o atendimento cujo dia passou em "sessão" **pelo
-  relógio**, sem ninguém confirmar presença. Por isso a sessão da Agenda nunca
-  vira comparecimento nem Fazer orçamento no CRM: passado o dia, quem decide é
-  o Comercial 2. A Agenda não tem "faltou".
-- No servidor, `ecoDaAgendaNoCRM()` só olha leads **em Agendado**, pelo vínculo
-  `Pacientes.crmLeadId` (nunca pelo nome), e só mexe na `dataAgendada`:
-  remarcou o atendimento que tinha a data do CRM → o CRM acompanha; desmarcou →
-  a lead fica sem data; lead sem data ganhou agendamento → é ele. Sessão pela
-  passagem do dia, mais de um candidato ou lead em outra etapa: nada muda.
-- Do CRM para a Agenda, a data vai por `crm_agenda_agendar` (exige as duas
-  permissões). O CRM grava primeiro e só leva a data à Agenda com a gravação
-  confirmada; com a paciente já vinculada, `atualizarData` remarca o
-  atendimento que tinha a data anterior, sem mexer no ciclo dela.
+- Cada área tem `agendamento` (o **próximo**) e `proximos`. No schema 2 cada
+  data é uma linha de `agenda_agendamentos`, com identidade; o mais cedo é o
+  próximo (`arrumarSerie()` no site, `arrumarSerieAgenda()` no servidor).
+- A série é uma lista de datas pelo calendário (`D.add`), nunca milissegundos.
+- Intervalos: inteiro de **1 a 365** dias; a quinzena é **14**.
+- Fim previsto e sessões a remarcar como sempre (`situacaoTratamento()`).
+- O histórico só cresce: cada item ganha id no estado vivo
+  (`garantirIdsDoHistorico`) e só os novos sobem (`historicoNovos`).
+- `maturar()` transforma em sessão pelo relógio e **nunca** confirma presença
+  no CRM.
+- No servidor, a ponte Agenda → CRM (`ecoDaPacienteNoCRM`) só olha leads
+  **em Agendado**, pelo vínculo `crmLeadId` (nunca pelo nome), só mexe na
+  `dataAgendada`, e entra na **mesma operação** da paciente.
+- CRM → Agenda: `crm.agendarNaAgenda` (exige as duas permissões; parecida
+  por nome pede decisão — vínculo só explícito). O CRM grava primeiro e só
+  leva a data à Agenda com a gravação confirmada.
 
 ### Quem administra
 
-**Administrador é só a conta de usuário marcada como `admin` no painel de
-manutenção** — `eAdministrador(auth)` no Apps Script. A senha compartilhada de
-um módulo nunca conta: ela não diz quem é a pessoa.
+**Administrador é só a conta marcada como `admin` no painel** —
+`eAdministrador(auth)`. A senha compartilhada de um módulo nunca administra.
+Nas Entradas, quem não administra registra, edita e confere, mas não vê
+somas, não exporta e não exclui. A tela decide por `podeAdministrar` (vem de
+cada `entradas.ler`); a trava de verdade é do servidor: `entrada.remover` e
+`lixeira.mover` de entrada são recusados (`sem_permissao`) e vão para o log
+de segurança (`EXCLUSAO_NEGADA`). Nas Entradas não fica entrada nenhuma no
+disco do navegador — só a data do último backup, por conta.
 
-Nas Entradas, quem não administra registra, edita e confere as entradas, mas
-não vê somas (resumo do período, recebido, em haver, contagem com ticket médio,
-divisão por forma de pagamento, total de cada dia), não exporta (planilha, cópia
-e backup) e não exclui. A tela decide pelo `podeAdministrar` que o servidor
-devolve em cada `ler_entradas` — nunca pelo perfil guardado no navegador. E a
-trava de verdade é do servidor: `lixeira_mover` de entrada e uma
-`salvar_entradas` que some com alguma entrada são recusados (`sem_permissao`)
-para quem não administra, e cada tentativa vai para o log de segurança
-(`EXCLUSAO_NEGADA`). O valor de cada entrada continua visível a quem trabalha
-no módulo — ele é necessário para registrar e conferir.
+## Sessões
 
-### O selo de atividade
+[SESSOES](docs/SESSOES.md) tem o diagnóstico e a política. O essencial:
+- conta individual é o caminho principal (30 dias sem uso, 180 de teto);
+  senha compartilhada é transição (30 min, por aba) e pode ser desligada por
+  módulo no painel;
+- quem decide é o servidor; **só uma resposta de categoria `autenticacao`
+  apaga a sessão, e só se o token ainda for o guardado**;
+- sem acesso, ocupado, sem rede, prazo, versão: a sessão fica;
+- sessão perdida no meio do trabalho: entrar de novo por cima da tela, sem
+  perder o que não foi salvo; nada vai para o disco;
+- sem polling; atualização e limpeza de cache não tocam na sessão.
 
-`atividade-rede.js` mostra, no canto inferior esquerdo das quatro telas,
-quando há conversa com o Apps Script. Ele é **instrumentado na camada
-compartilhada, nunca botão a botão**: o `FloreSerRede.postar` abre e fecha uma
-operação em volta de toda a chamada — as repetições internas dentro da mesma
-operação, para não piscar entre erro e sucesso. O painel de manutenção tem um
-`fetch` próprio (ele não repete leitura sozinho) e por isso abre e fecha o selo
-à mão, em `chamar()`. O envio do registro técnico fica de fora: ele não passa
-pelo `postar`, e um selo que piscasse a cada log seria ruído.
+## O selo de atividade
 
-Três regras sustentam o arquivo, e mexer nele sem elas quebra a honestidade da
-tela:
+`compartilhado/atividade-rede.js` mostra, no canto inferior esquerdo, quando
+há conversa com o Apps Script. É **instrumentado na camada compartilhada**:
+`FloreSerRede.chamar` abre e fecha a operação em volta da chamada inteira
+(repetições incluídas). O registro técnico fica de fora (tem envio próprio).
+- **Atividade não é garantia.** "Alterações salvas" só quando o rodapé do
+  módulo (`FloreSerSync.criarStatus`) diz `salvo`.
+- **Sucesso se confirma lendo a resposta:** só `ok === true`; o erro v2 vem
+  como `{ codigo, categoria }` e o selo lê o código.
+- **Falha não some sozinha.**
+Nada do que aparece ali tem nome, valor, token ou resposta do servidor.
 
-- **Atividade não é garantia.** Quem sabe se está guardado é o rodapé do módulo
-  (`FloreSerSync.criarStatus`, que avisa o selo em cada mudança). "Alterações
-  salvas" só sai quando o rodapé diz `salvo`; com coisa na fila — inclusive
-  editada durante o envio — o texto é "Envio concluído". O selo nunca
-  contradiz o rodapé, e não tem lógica de salvamento nenhuma.
-- **Sucesso se confirma lendo a resposta.** O Apps Script responde 200 com
-  `ok:false` em conflito, sessão vencida e acesso negado. Só vale como sucesso
-  o que vem com `ok` verdadeiro; sem o campo, a operação fecha sem visto verde.
-- **Falha não some sozinha.** Ela fica até a pessoa dispensar, ou até outra
-  operação do mesmo tipo dar certo. Um sucesso de outro tipo não apaga.
+A **auditoria de negócio** (`sis_auditoria`) responde "quem mudou esta ficha";
+o **log técnico** (`sis_logs`) é erro, rede, sessão e segurança. Não misture.
+A auditoria entra no mesmo plano da operação que a causou.
 
-Nada do que aparece ali tem nome, valor, token ou resposta do servidor: só o
-tipo da operação. O selo não recebe clique (só o botão de dispensar), não
-bloqueia a tela e mede a faixa do `pwa.js` para sair da frente dela.
+## O backend
 
-A **auditoria de negócio** vive na aba `Auditoria` e responde "quem mudou esta
-ficha, o quê, quando". Ela é separada do **log técnico** das abas `Logs` e
-`Sessoes`, que continua sendo erro, rede, sessão e segurança. Não misture os
-dois: a pergunta de quem usa a clínica não é a de quem conserta o sistema.
+O código do Apps Script **vive no repositório** (`backend/`) e não tem
+segredo: senhas de módulo (em hash PBKDF2), a pimenta das senhas de conta e o
+id da planilha moram nas **Script Properties** (`FLORESER_*`, ver
+`00_Config.gs`). Nunca escreva um segredo num `.gs` — a conferência de
+publicação procura. O Apps Script não tem import nem pasta: todos os `.gs`
+dividem um escopo global, e nenhum executa código no carregamento além de
+declarar constantes literais e funções.
 
-Os três sistemas guardam dados numa planilha do Google através de um Apps Script
-publicado como app da Web. O código do Apps Script **não vive neste repositório** —
-ele contém as senhas e fica só no computador da Vania e no editor do Apps Script.
+Toda gravação passa por `executarOperacoes` (03): trava curta, revisão por
+entidade, plano repetível no diário, filhos antes da raiz. Leituras não pegam
+a trava. Mudança de várias abas sem diário não entra.
 
-No painel de manutenção vale uma exceção à tipografia: valores técnicos, IDs e
-linhas de log usam fonte monoespaçada, porque coluna alinhada se lê melhor. O
-resto do site continua só com Cormorant e Montserrat.
+Rodar os testes: `node testes/backend.js`, `node testes/migracao.js`,
+`node testes/frontend.js`. Servidor local: `node testes/servidor-local.js`
+(`http://localhost:4180/floreser/`, backend real no simulador, dados
+sintéticos). Nunca use dado real em teste nem no repositório.
 
-Cada módulo tem a sua própria senha, conferida no Apps Script, e o seu próprio
-portão de entrada — os três seguem o mesmo desenho: fundo teal profundo, cartão
-creme de 400 px, marca acima do nome do módulo, campo com cadeado e olho.
+No painel de manutenção vale uma exceção à tipografia: valores técnicos, IDs
+e linhas de log usam fonte monoespaçada. O resto do site continua só com
+Cormorant e Montserrat.
+
+Cada módulo tem a sua senha compartilhada e o seu portão de entrada — os três
+com o mesmo desenho: fundo teal profundo, cartão creme de 400 px, marca acima
+do nome do módulo, campo com cadeado e olho.
 
 Identidade visual: teal `#3B6E6A`, teal claro `#5A9490`, sage `#C9D3CA`, creme
 `#F5F0EB`, taupe `#A39384`, carvão `#2D2D2D`. Títulos em Cormorant Garamond,
 texto em Montserrat. **Sem emojis** — use símbolos e ícones em traço fino.
-Atenção: taupe sobre creme não alcança contraste de leitura em textos pequenos;
-nesses casos use teal ou carvão.
+Taupe sobre creme não alcança contraste em textos pequenos; use teal ou carvão.
 
 ---
 
@@ -304,14 +276,22 @@ nesses casos use teal ou carvão.
 **Toda alteração neste projeto passa por esta regra, mesmo quando o pedido não
 mencionar versão nem changelog.**
 
-### Fonte única da verdade
+### Quatro versões, quatro perguntas
 
-`version.js` é o único lugar onde a versão existe. Ele exporta `window.FLORESER`
-com `changelog`, `categorias`, `atual` e `rotulo`. A tela lê `rotulo` e monta o
-histórico a partir de `changelog`, então tela e histórico não têm como divergir.
-**Nunca escreva um número de versão à mão em outro arquivo.**
+| O quê | Onde | Quando muda |
+|---|---|---|
+| Versão do produto | topo do `CHANGELOG` no `version.js` (e `VERSAO_PRODUTO` no `backend/00_Config.gs`, se o backend mudou) | toda alteração que a pessoa vê |
+| Contrato da API | `VERSAO_API` (backend), `compat.api` (`version.js`), `api` (`config.js`) — os três juntos | mudança incompatível de pedido/resposta |
+| Schema dos dados | `VERSAO_SCHEMA` (backend), `compat.schema` + uma migração em `40_Migracoes.gs` | mudança no desenho das abas |
+| Casca da PWA | `casca` no `version.js` = versão + carimbo (`ferramentas/preparar-publicacao.js`) | sozinha, com a versão |
 
-Para lançar: acrescente **um** registro no topo do array `CHANGELOG`.
+`version.js` é a fonte única: a tela lê `rotulo`, o histórico sai de
+`changelog`, o Service Worker tira dali o nome do cache. **Nunca escreva um
+número de versão à mão em outro arquivo** além dos listados acima.
+
+Para lançar: acrescente **um** registro no topo do array `CHANGELOG`, e rode
+`node ferramentas/preparar-publicacao.js` (ou ao menos
+`conferir-publicacao.js`, que precisa dizer "Tudo confere").
 
 ### Formato
 
@@ -323,129 +303,86 @@ Para lançar: acrescente **um** registro no topo do array `CHANGELOG`.
 | MINOR | `X.Y.Z → X.(Y+1).0` | funcionalidades, telas, sistemas e melhorias relevantes |
 | MAJOR | `X.Y.Z → (X+1).0.0` | reformulações estruturais, mudanças incompatíveis, nova fase do projeto |
 
-Ao subir MINOR, `Z` volta a `0`. Ao subir MAJOR, `Y` e `Z` voltam a `0`. Nunca
-carregue os números de baixo para a versão nova (`v1.4.7 → v1.5.0`, jamais
-`v1.5.7`). Três segmentos, só números, sem letras, sem pular números.
+Ao subir MINOR, `Z` volta a `0`. Ao subir MAJOR, `Y` e `Z` voltam a `0`. Três
+segmentos, só números, sem pular números.
 
 ### Codinome
 
-Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita codinomes já
-usados. Escolha algo coerente com a marca — natureza, florescimento, cuidado,
-luz — ou que resuma a atualização. O codinome não interfere na numeração.
+Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita. Coerente
+com a marca — natureza, florescimento, cuidado, luz — ou com a atualização.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA, FAROL.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA, FAROL, COLMEIA.
 
 ### Changelog
 
-Mais recente primeiro, sempre. Cada registro tem versão, codinome, data real do
-lançamento em `DD/MM/AAAA` e as mudanças agrupadas por categoria. Categorias
-disponíveis, nesta ordem de exibição: Adicionado, Alterado, Melhorado, Corrigido,
-Removido, Visual, Conteúdo, Performance, Técnico. **Não crie categoria vazia.**
-
-Descrições curtas, claras e úteis, do ponto de vista de quem usa o site. Nada de
-"ajustes", "mudanças diversas" ou "update geral". Prefira "Corrigido o problema
-que impedia o histórico de abrir no celular".
+Mais recente primeiro. Cada registro tem versão, codinome, data real em
+`DD/MM/AAAA` e as mudanças por categoria, nesta ordem: Adicionado, Alterado,
+Melhorado, Corrigido, Removido, Visual, Conteúdo, Performance, Técnico.
+**Não crie categoria vazia.** Descrições do ponto de vista de quem usa.
 
 ### Como decidir
 
-Decida sozinho entre PATCH, MINOR e MAJOR — não pergunte. Agrupe todas as
-alterações de uma mesma tarefa em **uma única versão**, classificada pela
-mudança mais relevante do conjunto. Não gere uma versão por microalteração. Se a
-alteração não muda nada para quem usa o site (só ferramenta de teste local,
-documentação fora do repositório), não incremente.
+Decida sozinho entre PATCH, MINOR e MAJOR. Agrupe a tarefa em **uma única
+versão**. Mudança que não muda nada para quem usa (só teste, ferramenta,
+documentação) não incrementa.
 
 ### Antes de dar a tarefa por encerrada
 
-1. A versão exibida na tela confere com a do topo do changelog.
-2. O codinome confere e não é repetido.
-3. Os números inferiores foram zerados quando devido.
-4. A data é a data real de hoje.
-5. As entradas estão da mais nova para a mais antiga.
-6. Versão e histórico continuam legíveis no desktop e no celular.
-7. Não sobrou nenhuma referência de versão antiga espalhada pelo projeto.
+1. `node ferramentas/conferir-publicacao.js` diz "Tudo confere".
+2. Os testes (`testes/*.js`) passam.
+3. O codinome não se repete; os números inferiores zeraram quando devido.
+4. A data é a de hoje; o changelog vai do mais novo para o mais antigo.
+5. Versão e histórico legíveis no desktop e no celular.
 
 ---
 
 ## Alveare — o aplicativo instalável
 
-**Alveare é o nome do aplicativo; FloreSer é o sistema.** O que aparece no
-Menu Iniciar, na tela do celular e na loja do navegador é *Alveare*. O que
-aparece dentro da janela continua sendo o *FloreSer*, com a mesma marca e as
-mesmas telas. Nunca troque `FloreSer` por `Alveare` na interface — a única
-tela onde o nome do aplicativo aparece é o botão "Instalar Alveare" e o aviso
-de versão nova.
+**Alveare é o nome do aplicativo; FloreSer é o sistema.** Nunca troque
+`FloreSer` por `Alveare` na interface — o nome do aplicativo só aparece no
+botão "Instalar Alveare" e no aviso de versão nova.
 
 O site é publicado em `https://clinicacorpoealma.github.io/floreser/`, que
-**não é a raiz do domínio**. Por isso, dentro do manifest e do Service Worker,
-tudo é relativo:
-
-- o `manifest.webmanifest` usa `./`, `./crm/`, `./icons/…`;
-- o `pwa.js` descobre a raiz pelo próprio `<script src>`, como o `logs.js`;
-- o `service-worker.js` descobre a raiz por `registration.scope`.
-
-**A única exceção** é o `id` do manifest, que vale `/floreser/`. O `id` é
-resolvido a partir da origem do domínio, não do manifest, e precisa ser fixo
-para o navegador reconhecer que a atualização continua sendo o mesmo
-aplicativo. Se o repositório mudar de nome, esse valor muda junto — e o
-sistema operacional passará a ver um aplicativo novo.
+**não é a raiz do domínio**: dentro do manifest e do Service Worker tudo é
+relativo (`./`, `registration.scope`, a raiz vem do `config.js`). **A única
+exceção** é o `id` do manifest, `/floreser/`, que precisa ser fixo.
 
 ### O que entra no cache e o que nunca entra
 
-O Service Worker guarda a **casca**: o HTML das quatro páginas, os scripts da
-raiz, o `.css` e o `.js` de cada módulo, o `vendor/xlsx.full.min.js`, as seis
-fontes de `assets/fonts/`, a marca, os ícones e a `offline.html`. Guarda também,
-por endereço exato, as três bibliotecas que o CRM ainda carrega do cdnjs —
-React, ReactDOM e Babel —, sem as quais ele não desenha nada offline.
+O Service Worker guarda a **casca** em duas listas: `ESSENCIAIS` (páginas,
+`version.js`, todo o `compartilhado/`, portal, painel, o `.css` e o `.js` de
+cada módulo, o SheetJS, a marca — instalados com `addAll`: ou entra tudo, ou
+a versão nova não instala) e `OPCIONAIS` (fontes e ícones). Guarda também
+React, ReactDOM e Babel do cdnjs, por endereço exato.
 
-**Sempre que criar um arquivo local novo de que a interface dependa, ponha ele
-no `PRECACHE` e suba o `CACHE_ATUAL`.** Um `.css` esquecido ali significa a
-página abrindo sem estilo na primeira visita sem rede.
+**Arquivo local novo de que a interface dependa vai para `ESSENCIAIS`** — a
+conferência de publicação acusa o que faltar. O nome do cache sai da versão
+no `version.js`: não há mais número para subir à mão.
 
-**Nunca** entram no cache: qualquer chamada ao Apps Script, qualquer `POST`,
-qualquer endereço de fora que não seja uma dessas bibliotecas ou as fontes do
-Google. Login, sessão, pacientes, leads, entradas e lixeira passam sempre pela
-rede. Se a rede falhar, quem avisa é a tela do módulo, com a mensagem de
-sempre — o cache nunca responde no lugar do servidor.
+**Nunca** entram no cache: chamadas ao Apps Script, `POST`, endereços de fora
+que não sejam aquelas bibliotecas ou as fontes do Google. Dado da clínica
+nunca vai para o cache nem para o disco.
 
-Estratégias: **rede primeiro** para as páginas e para o `version.js` (para
-ninguém ficar preso numa versão velha) e **guardado enquanto atualiza** para o
-resto.
-
-### Publicar uma versão nova
-
-Suba os arquivos como sempre. Quem já tem o Alveare instalado recebe o aviso
-"Nova versão do Alveare disponível" e troca ao clicar em Atualizar — a página
-recarrega uma vez e pronto. Ninguém precisa limpar cache nem apertar Ctrl+F5.
-
-Se você mudar a **lista de arquivos** do precache no `service-worker.js`, suba
-o número em `CACHE_ATUAL` (`alveare-casca-1` → `alveare-casca-2`). Suba também
-quando mudar o **conteúdo** de um `.css` ou `.js` da casca: a página vem da rede,
-mas o CSS vem guardado, e sem o número novo a primeira abertura depois de
-publicar junta HTML novo com CSS velho. Esse número é técnico e não aparece para
-ninguém: a versão que a tela mostra continua saindo só do `version.js`.
+Estratégias: **rede primeiro** para as páginas e o `version.js`; **guardado
+enquanto atualiza** para o resto. Versão nova: o aviso "Nova versão do
+Alveare disponível"; se a página tem alteração pendente, a troca espera o
+"salvo" (`FloreSerSync.temPendencias`).
 
 ### Testar
 
-O Service Worker só funciona em `https://` ou em `localhost`/`127.0.0.1` —
-abrir o arquivo direto do disco (`file://`) não serve. Para testar igual ao
-GitHub Pages, sirva o projeto **debaixo de uma pasta**, não na raiz: assim um
-caminho absoluto esquecido quebra no teste, e não na publicação.
-
-No navegador, em Ferramentas do desenvolvedor → Application:
-
-- **Manifest** — precisa dizer Alveare, com os quatro ícones e os três atalhos;
-- **Service Workers** — precisa aparecer ativo, com escopo terminando em `/floreser/`;
-- **Cache Storage** — precisa existir `alveare-casca-…` com a casca dentro, e
-  **nenhuma** resposta do Apps Script.
-
-Para começar do zero durante o desenvolvimento: Application → Service Workers →
-Unregister, e Cache Storage → apagar o `alveare-casca-…`. O painel de
-manutenção também tem, na aba Sistema, o botão "Limpar cache do aplicativo" —
-ele apaga só os arquivos guardados e **não** mexe em sessão, tema nem foto.
+Service Worker só em `https://` ou `localhost`. Use
+`node testes/servidor-local.js` (o site em `/floreser/`, como no GitHub
+Pages). Em Ferramentas do desenvolvedor → Application: o Manifest diz Alveare,
+o Service Worker aparece ativo com escopo em `/floreser/`, e o Cache Storage
+tem `alveare-casca-<versão>` sem nenhuma resposta do Apps Script. O painel →
+Sistema tem "Limpar cache do aplicativo" (não mexe em sessão, tema nem foto) e
+mostra versão, API e schema do servidor.
 
 ---
 
 ## Ao publicar
 
-A Vania sobe os arquivos pela interface do GitHub. Sempre que `version.js` mudar,
-ele precisa ir junto com o `index.html` — senão o site mostra a versão anterior.
+[PUBLICACAO](docs/PUBLICACAO.md) tem o passo a passo, inclusive a migração da
+4.0.0, backup e retorno. Em toda publicação: **o Apps Script antes do site, ou
+junto** (Nova versão na mesma implantação); `version.js` sempre junto com o
+`index.html`; e a conferência dizendo "Tudo confere".

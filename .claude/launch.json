@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "4173"],
       "port": 4173
+    },
+    {
+      "name": "alveare-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["testes/servidor-local.js", "4180"],
+      "port": 4180
     }
   ]
 }

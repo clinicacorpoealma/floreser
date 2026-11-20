@@ -1,8 +1,24 @@
-# O Codigo.gs guarda as senhas do CRM e da agenda — ele vive no seu
-# computador e no Apps Script, nunca aqui no GitHub.
+# O backend da 4.0.0 (backend/*.gs) NÃO tem segredo nenhum e pode ir para
+# o GitHub: senhas, pimenta e id da planilha moram nas Script Properties do
+# Apps Script. O que continua de fora é o código antigo, que tinha as
+# senhas escritas nele (backend/legado/), e qualquer cópia local com
+# valores preenchidos.
 Codigo*.gs
+backend/legado/
+backend/*.local.gs
+backend/.clasp.json
+senhas.txt
+segredos.txt
+
+# Exportações da planilha têm dados reais da clínica: nunca no repositório
+# (nem nas fixtures de teste, que são sintéticas).
+*.xlsx
+*.xls
+*.csv
 
 # Configuração local de desenvolvimento
 .claude/
 
-senhas.txt
+# Sistema
+.DS_Store
+Thumbs.db

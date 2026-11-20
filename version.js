@@ -14,6 +14,17 @@
    Ao subir MINOR, Z volta a 0. Ao subir MAJOR, Y e Z voltam a 0.
    O codinome tem uma palavra só, em maiúsculas, sem números, e não se
    repete. Data no formato DD/MM/AAAA, sempre a data real do lançamento.
+
+   Este arquivo é também a fonte dos METADADOS DE LANÇAMENTO:
+     atual.versao   a versão do produto (a da tela e do changelog);
+     compat.api     a versão do contrato que este site fala com o servidor
+                    (a mesma de compartilhado/config.js e de VERSAO_API no
+                    backend — ferramentas/conferir-publicacao.js confere);
+     compat.schema  o schema de dados que este site espera;
+     casca          o identificador da casca da PWA (versão + carimbo do
+                    conteúdo, gerado por ferramentas/preparar-publicacao.js).
+   O Service Worker importa este arquivo, por isso ele não pode depender de
+   window nem do DOM.
    ===================================================================== */
 
 (function (global) {
@@ -21,6 +32,43 @@
 
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
+    {
+      versao: "4.0.0",
+      codinome: "COLMEIA",
+      data: "20/11/2026",
+      mudancas: {
+        "Alterado": [
+          "Salvar uma ficha agora envia só aquela ficha, e não o módulo inteiro. Duas pessoas mexendo em leads, pacientes ou entradas diferentes ao mesmo tempo não entram mais em conflito; conflito só acontece quando as duas mudam a mesma ficha, e a conciliação pergunta só sobre ela.",
+          "A senha compartilhada de cada módulo continua funcionando como antes, mas o caminho principal passa a ser a conta individual. No painel de manutenção dá para desligar a senha compartilhada módulo a módulo, quando todo mundo já tiver conta.",
+          "O servidor passou a responder às consultas sem esperar as gravações dos outros: abrir um módulo ou conferir a sessão não fica mais preso atrás de quem está salvando."
+        ],
+        "Corrigido": [
+          "As sessões que caíam e pediam login de novo: falta de conexão, servidor ocupado ou uma resposta perdida do Google não encerram mais a sessão — a tela tenta de novo sozinha e, se não conseguir, oferece “Tentar novamente”, sem pedir senha.",
+          "Uma conta sem acesso a um módulo não é mais tratada como sessão encerrada: a tela explica o que houve e a conta continua valendo nos outros módulos.",
+          "Uma resposta atrasada do servidor não apaga mais a sessão de quem acabou de entrar, e entrar com outra conta numa aba avisa as outras abas.",
+          "A validade da sessão passou a ser a do servidor, e não a de um relógio de atividade do aparelho: quem usa o sistema todo dia não é mais desconectado por isso.",
+          "Quando a sessão termina de verdade no meio do trabalho, a caixa de entrar aparece por cima da tela e o que não foi salvo sobe logo depois de entrar — nada é recarregado nem perdido.",
+          "Trocar de versão do Alveare não recarrega mais uma página com alterações pendentes: a troca espera tudo estar salvo.",
+          "Na Auditoria, datas e valores gravados como texto não são mais transformados pela planilha."
+        ],
+        "Melhorado": [
+          "Quem já estava conectado na versão anterior continua conectado depois da atualização, sem digitar a senha de novo.",
+          "Uma gravação cuja resposta se perdeu é repetida com segurança: o servidor reconhece o que já fez e não duplica entrada, pagamento, contato, agendamento nem histórico.",
+          "Se o servidor parar no meio de uma alteração que mexe em várias abas, a próxima operação termina o que ficou pela metade antes de fazer qualquer outra coisa.",
+          "Senhas de conta passam a ser guardadas num esquema reconhecido (PBKDF2), trocado automaticamente no primeiro login, sem ninguém precisar mudar de senha."
+        ],
+        "Removido": [
+          "As Entradas deixaram de guardar no navegador uma cópia da lista inteira, com nomes e valores. Fica neste aparelho só a data do último backup."
+        ],
+        "Técnico": [
+          "Servidor reorganizado em arquivos por responsabilidade (contrato, tabelas, concorrência, sessões, autorização, regras e serviços de cada módulo, migração e manutenção), sem nenhuma senha no código: os segredos ficam nas propriedades do script.",
+          "Dados em abas novas, uma por entidade, com identificador estável, revisão por ficha, colunas lidas pelo nome e tipos conferidos; dinheiro em centavos exatos e instantes com fuso. As abas da versão anterior ficam intactas para um eventual retorno.",
+          "Contrato novo entre site e servidor (API 2), com versão, schema e capacidades declarados e aviso específico quando um dos lados está desatualizado.",
+          "Arquivos do site reorganizados em compartilhado/, portal/ e admin/, com o endereço do servidor num lugar só; os endereços públicos continuam os mesmos.",
+          "Testes automáticos do servidor, da migração e da camada do navegador, e ferramentas de conferência antes de publicar."
+        ]
+      }
+    },
     {
       versao: "3.5.0",
       codinome: "FAROL",
@@ -790,10 +838,33 @@
 
   var atual = CHANGELOG[0];
 
+  /* Carimbo do conteúdo da casca (hash curto dos arquivos que o Service
+     Worker guarda). Atualizado por ferramentas/preparar-publicacao.js; se
+     ninguém rodar a ferramenta, a versão sozinha já troca o cache. */
+  var CARIMBO_CASCA = "a18ee785e3";
+
   global.FLORESER = {
     changelog: CHANGELOG,
     categorias: CATEGORIAS,
     atual: atual,
-    rotulo: "v" + atual.versao + " — " + atual.codinome
+    rotulo: "v" + atual.versao + " — " + atual.codinome,
+    compat: { api: 2, schema: 2 },
+    casca: atual.versao + (CARIMBO_CASCA ? "-" + CARIMBO_CASCA : "")
   };
-})(window);
+
+  /* Página velha guardada pelo navegador depois de uma publicação que
+     mudou a estrutura de pastas: ela pede scripts que não existem mais.
+     As páginas da 4.0.0 levam <meta name="floreser-estrutura" content="2">;
+     uma página sem a marca recarrega UMA vez, sem cache. */
+  if (typeof document !== "undefined" && document.querySelector) {
+    try {
+      var marca = document.querySelector('meta[name="floreser-estrutura"]');
+      var chave = "floreser.estrutura.recarregou";
+      if (!marca && !sessionStorage.getItem(chave) && /^https?:/.test(location.protocol)) {
+        sessionStorage.setItem(chave, "1");
+        location.replace(location.pathname + (location.search ? location.search + "&" : "?") +
+          "atualizar=" + Date.now() + location.hash);
+      }
+    } catch (e) { /* sem sessionStorage: segue como está */ }
+  }
+})(typeof window !== "undefined" ? window : self);
