@@ -867,7 +867,7 @@
   /* Carimbo do conteúdo da casca (hash curto dos arquivos que o Service
      Worker guarda). Atualizado por ferramentas/preparar-publicacao.js; se
      ninguém rodar a ferramenta, a versão sozinha já troca o cache. */
-  var CARIMBO_CASCA = "740200691c";
+  var CARIMBO_CASCA = "2162561b1e";
 
   global.FLORESER = {
     changelog: CHANGELOG,

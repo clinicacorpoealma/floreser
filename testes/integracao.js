@@ -54,6 +54,16 @@ teste("sem credenciais: 'não configurada', nenhuma chamada sai, e os módulos s
   v.igual(a.sim.chamadasHttp.length, 0, "nenhuma chamada ao Clinicorp");
 });
 
+teste("sem assinante, o teste de conexão descobre os identificadores da conta e não escolhe sozinho", () => {
+  const a = ambiente();
+  const r = v.ok(a.p("testar"));
+  v.igual(r.descoberta.candidatos.map((c) => c.valor), ["assinante-sintetico", "uid-sintetico-1"]);
+  v.igual(r.situacao, "nao_configurada", "nada foi salvo sozinho");
+  v.verdade(a.sim.chamadasHttp.every((c) => c.metodo === "get" && /^\/group\//.test(c.caminho)), "só as consultas que não pedem assinante");
+  v.ok(a.p("configurar", { assinante: r.descoberta.candidatos[0].valor }));
+  v.verdade(v.ok(a.p("testar")).teste.conectou);
+});
+
 teste("teste de conexão: verifica cada LEITURA uma vez; escrita nunca é chamada; a credencial não aparece em lugar nenhum", () => {
   const a = ambiente();
   configurar(a, {});

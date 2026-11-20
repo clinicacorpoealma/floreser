@@ -23,6 +23,11 @@
 var CLINICORP_BASE = "https://api.clinicorp.com/rest/v1";
 
 var CLINICORP_OPERACOES = {
+  "assinantes.listar": { metodo: "get", caminho: "/group/list_subscribers", efeito: "leitura", direcao: "consulta", implementado: true,
+    parametros: [], granularidade: "Namespace e SubscriberBussinessUID da conta (ou das unidades da franquia)",
+    limitacoes: "Não pede o assinante: serve para descobrir o subscriber_id quando ele não é conhecido. A especificação não diz qual dos dois campos é o subscriber_id; o teste de conexão confirma." },
+  "clinicas.listar": { metodo: "get", caminho: "/group/list_subscribers_clinics", efeito: "leitura", direcao: "consulta", implementado: true,
+    parametros: [], granularidade: "nome, endereço e identificadores das clínicas da conta", limitacoes: "Não pede o assinante; usado só na descoberta." },
   "unidades.listar": { metodo: "get", caminho: "/business/list", efeito: "leitura", direcao: "consulta", implementado: true,
     parametros: ["subscriber_id*"], granularidade: "uma linha por clínica do assinante (id, nome, endereço)",
     limitacoes: "Serve também de teste de conexão: pede só o assinante." },

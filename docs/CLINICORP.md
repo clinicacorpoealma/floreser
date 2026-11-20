@@ -37,6 +37,7 @@ verificação desta conta.
 
 | Operação pretendida | Endpoint e parâmetros verificados | Efeito · direção | Granularidade | Limitações e pendências | Estado |
 |---|---|---|---|---|---|
+| Descobrir o assinante | `GET /group/list_subscribers` e `/group/list_subscribers_clinics` — sem parâmetros | leitura · consulta | Namespace e SubscriberBussinessUID | não diz qual campo é o `subscriber_id`; o teste completo confirma | implementada |
 | Testar conexão / listar clínicas | `GET /business/list` — `subscriber_id*` | leitura · consulta | uma linha por clínica | — | implementada |
 | Profissionais | `GET /professional/list_all_professionals` — `fromOnlineScheduling` | leitura · consulta | id e nome (o CPF que vem é descartado) | sem unidade do profissional | implementada |
 | Buscar **um** paciente | `GET /patient/get` — `subscriber_id*`, `PatientId`, `OtherDocumentId` (CPF), `Phone`, `Email`, `Name` | leitura · consulta | um paciente | **não existe listagem de pacientes**; nome pode achar homônimo — nunca usado para vincular | implementada |
@@ -77,7 +78,7 @@ ordens de compra.
    editor (por exemplo `conferirInstalacao`) e autorize: o script passa a
    pedir "conectar a serviço externo" (UrlFetchApp) e, se usar o
    agendamento, "gerenciar gatilhos".
-3. **Painel → Integrações → Conexão**: assinante (`subscriber_id`) e unidade
+3. **Painel → Integrações → Conexão**: não sabe o assinante? Deixe vazio e clique em **Testar conexão** — o Alveare pergunta ao Clinicorp e mostra os identificadores da conta para você escolher. Depois: assinante (`subscriber_id`) e unidade
    (id numérico da clínica; a lista aparece depois do teste) → **Testar
    conexão**. O teste chama cada leitura uma vez, com a menor janela, e diz
    quantas responderam. Escrita nunca é chamada para testar.

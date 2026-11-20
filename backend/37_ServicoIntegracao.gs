@@ -150,7 +150,7 @@ function integracaoTestar() {
   _PROPS = null;
   var c = configClinicorp();
   if (!credenciaisClinicorp()) falhar("integracao_nao_configurada", "Faltam FLORESER_CLINICORP_USUARIO e FLORESER_CLINICORP_TOKEN nas propriedades do script.");
-  if (!c.assinante) falhar("integracao_nao_configurada", "Informe o assinante (subscriber_id) antes de testar.");
+  if (!c.assinante) return descobrirAssinante();
   var hoje = hojeNaClinica();
   var testes = [
     ["unidades.listar", {}], ["profissionais.listar", {}], ["agendamentos.status", {}],
@@ -186,6 +186,45 @@ function integracaoTestar() {
   registrarTecnico(conectou ? "INFO" : "WARNING", "CLINICORP_TESTE", "Teste de conexão: " + verificadas + "/" + testes.length + " leituras verificadas.");
   var estado = integracaoEstado();
   estado.teste = { conectou: conectou, verificadas: verificadas, total: testes.length, unidades: unidades };
+  return estado;
+}
+
+/* Sem o assinante, o teste vira descoberta: as duas consultas que não
+   pedem subscriber_id dizem quais identificadores a conta tem. Nada é
+   escolhido sozinho — a pessoa escolhe e o teste completo confirma. */
+function descobrirAssinante() {
+  var candidatos = [], clinicas = [], vistos = {}, erro = "";
+  var juntar = function (valor, rotulo) {
+    var v = String(valor || "").trim();
+    if (!v || vistos[v] || !/^[A-Za-z0-9_.@-]{1,80}$/.test(v)) return;
+    vistos[v] = true;
+    candidatos.push({ valor: v, rotulo: rotulo });
+  };
+  try {
+    var r = chamarClinicorp("assinantes.listar", {});
+    (Array.isArray(r) ? r : (r ? [r] : [])).forEach(function (x) {
+      juntar(x.Namespace, "Namespace");
+      juntar(x.SubscriberBussinessUID, "SubscriberBussinessUID");
+    });
+  } catch (e) {
+    if (!(e instanceof ErroClinicorp)) throw e;
+    if (e.tipo === "autenticacao") tratarErroClinicorp(e, "descoberta do assinante");
+    erro = e.mensagem;
+  }
+  try {
+    var cl = chamarClinicorp("clinicas.listar", {});
+    (Array.isArray(cl) ? cl : (cl ? [cl] : [])).forEach(function (x) {
+      clinicas.push({ nome: String(x.Name || "").slice(0, 160), id: String(x.SubscriberBussinessUID || x.CompanyId || "") });
+      juntar(x.SubscriberBussinessUID, "SubscriberBussinessUID da clínica " + String(x.Name || "").slice(0, 60));
+    });
+  } catch (e2) {
+    if (!(e2 instanceof ErroClinicorp)) throw e2;
+    if (e2.tipo === "autenticacao") tratarErroClinicorp(e2, "descoberta do assinante");
+    if (!erro) erro = e2.mensagem;
+  }
+  registrarTecnico("INFO", "CLINICORP_DESCOBERTA", candidatos.length + " identificador(es) de assinante encontrado(s).");
+  var estado = integracaoEstado();
+  estado.descoberta = { candidatos: candidatos, clinicas: clinicas, erro: erro };
   return estado;
 }
 

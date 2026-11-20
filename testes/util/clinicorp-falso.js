@@ -17,6 +17,8 @@ function clinicorpFalso() {
     if (st.falharEm && st.falharEm(p)) return { status: 503, texto: "indisponível" };
     const q = p.query;
     switch (p.caminho) {
+      case "/group/list_subscribers": return { json: { SubscriberBussinessUID: "uid-sintetico-1", Namespace: "assinante-sintetico" } };
+      case "/group/list_subscribers_clinics": return { json: [{ Name: "Clínica Sintética", SubscriberBussinessUID: "uid-sintetico-1", CompanyId: 1 }] };
       case "/business/list": return { json: [{ id: 111, CompanyId: 1, BusinessName: "Clínica Sintética", Name: "Sintética" }] };
       case "/professional/list_all_professionals": return { json: [{ id: 5, name: "Profissional Sintético", cpf: "00000000000" }] };
       case "/appointment/status_list": return { json: [{ id: 1, Description: "Agendado", Type: "SCHEDULED" }] };

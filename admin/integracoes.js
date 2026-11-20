@@ -86,6 +86,21 @@
       '<datalist id="int-unidades">' + ((e.teste && e.teste.unidades) || []).map(function (u) { return '<option value="' + esc(u.externoId) + '">' + esc(u.nome) + "</option>"; }).join("") + "</datalist>" +
       '<button class="btn-fino" id="int-salvar-conexao">Salvar</button>' +
       '<button class="btn-fino" id="int-testar"' + (ocupado ? " disabled" : "") + ">Testar conexão</button></div>";
+    if (e.descoberta) {
+      var d = e.descoberta;
+      html += '<div class="titulo-secao">Assinante encontrado na sua conta</div>';
+      if (d.candidatos.length) {
+        html += '<p class="nota-privacidade">O Clinicorp devolveu estes identificadores. Clique em um: ele é salvo como assinante e o teste completo roda em seguida. Se o teste falhar, tente o outro.</p>' +
+          '<div class="ferramentas">' + d.candidatos.map(function (c) {
+            return '<button class="btn-fino" data-int-usar="' + esc(c.valor) + '">Usar ' + esc(c.valor) + " <small>(" + esc(c.rotulo) + ")</small></button>"; }).join("") + "</div>";
+      } else {
+        html += '<p class="nota-privacidade">O Clinicorp não devolveu nenhum identificador' + (d.erro ? " (" + esc(d.erro) + ")" : "") +
+          ". Confira o Usuário API e o Token API, ou tente o nome da conta que aparece no endereço do Clinicorp.</p>";
+      }
+    }
+    if (!c.assinante && !e.descoberta) {
+      html += '<p class="nota-privacidade">Não sabe o assinante (subscriber_id)? Deixe o campo vazio e clique em Testar conexão: o Alveare pergunta ao Clinicorp.</p>';
+    }
     if (e.teste) {
       html += '<p class="nota-privacidade">' + (e.teste.conectou ? "Conectou. " : "Não conectou. ") + e.teste.verificadas + " de " + e.teste.total +
         " leituras responderam. Conectar não prova tudo: veja na Matriz o que foi verificado. Nenhuma escrita foi feita para testar.</p>";
@@ -325,6 +340,17 @@
     on("int-testar", function () {
       ocupado = true; F.redesenhar();
       F.chamar("painel.integracao.testar", {}).then(function (r) { ocupado = false; if (r.ok) { estado = r.dados; recado = ""; } else recado = recadoDe(r); F.redesenhar(); });
+    });
+    Array.prototype.forEach.call(corpo.querySelectorAll("[data-int-usar]"), function (b) {
+      b.addEventListener("click", async function () {
+        ocupado = true; F.redesenhar();
+        var r = await F.chamar("painel.integracao.configurar", { assinante: b.getAttribute("data-int-usar") });
+        if (!r.ok) { ocupado = false; recado = recadoDe(r); F.redesenhar(); return; }
+        var t = await F.chamar("painel.integracao.testar", {});
+        ocupado = false;
+        if (t.ok) { estado = t.dados; recado = ""; } else recado = recadoDe(t);
+        F.redesenhar();
+      });
     });
     on("int-agendar", function () { acao("painel.integracao.agendar", { frequenciaHoras: Number(valorDe(corpo, "#int-frequencia")) }); });
     Array.prototype.forEach.call(corpo.querySelectorAll("[data-int-suspender]"), function (b) {
