@@ -17,7 +17,8 @@
   "use strict";
 
   var F = null;               // { chamar(acao, dados) → Promise<resposta v2>, redesenhar(), esc(), novoId() }
-  var sub = "conexao";
+  var sub = "inicio";
+  var profissionais = null, progresso = "";
   var estado = null, recado = "", ocupado = false;
   var pendencias = null, externos = null, locais = null, achadosClinicorp = null;
   var previas = {}, ultimoResultado = {};
@@ -32,7 +33,9 @@
   function recadoDe(r) { return (r && r.erro && r.erro.mensagem) || "Sem conexão com o servidor."; }
 
   var SITUACAO = { ativa: "Configurada", suspensa: "Suspensa", desconectada: "Desconectada", nao_configurada: "Não configurada" };
-  var MODO = { desligado: "Desligado", consulta: "Só consulta", importacao: "Consulta e importação", envio: "Consulta e envio" };
+  var MODO = { desligado: "Desligado", consulta: "Só consulta", importacao: "Consulta e importação", automatico: "Automático (importa e aplica nos módulos)", envio: "Consulta e envio" };
+  var INTERVALOS = [[15, "a cada 15 min"], [30, "a cada 30 min"], [60, "a cada 1 h"], [120, "a cada 2 h"], [240, "a cada 4 h"], [360, "a cada 6 h"], [720, "a cada 12 h"], [1440, "1 vez por dia"]];
+  function textoIntervalo(min) { var x = INTERVALOS.filter(function (i) { return i[0] === Number(min); })[0]; return x ? x[1] : "desligada"; }
   var VERIF = { verificada: "verificada nesta conta", falhou: "falhou no teste", nao_verificada: "ainda não testada",
     documentada_nao_verificada: "escrita documentada — nunca exercitada para testar", nao_implementada: "não implementada" };
 
@@ -53,9 +56,12 @@
   function tela() {
     if (!estado) return '<div class="vazio">' + (recado ? esc(recado) : "Carregando a integração…") + "</div>";
     var e = estado;
-    var subs = [["conexao", "Conexão"], ["recursos", "Recursos"], ["sincronizar", "Sincronizar"],
-      ["pendencias", "Pendências" + (e.pendenciasAbertas + e.passosIncertos ? " (" + (e.pendenciasAbertas + e.passosIncertos) + ")" : "")],
-      ["registros", "Registros"], ["vinculos", "Vínculos"], ["matriz", "Matriz"]];
+    var subs = [["inicio", e.ativadaEm ? "Início" : "Configurar"], ["pendencias", "Pendências" + (e.pendenciasAbertas + e.passosIncertos ? " (" + (e.pendenciasAbertas + e.passosIncertos) + ")" : "")],
+      ["avancado", "Avançado ›"]];
+    if (["conexao", "recursos", "sincronizar", "registros", "vinculos", "matriz", "avancado"].indexOf(sub) >= 0) {
+      subs = subs.concat([["conexao", "Conexão"], ["recursos", "Recursos"], ["sincronizar", "Sincronizar"], ["registros", "Registros"], ["vinculos", "Vínculos"], ["matriz", "Matriz"]]);
+      if (sub === "avancado") sub = "conexao";
+    }
     var html = '<div class="int-sub">' + subs.map(function (s) {
       return '<button type="button" data-int-sub="' + s[0] + '" class="' + (sub === s[0] ? "on" : "") + '">' + esc(s[1]) + "</button>"; }).join("") + "</div>";
     if (e.situacao === "suspensa" && e.suspensa) {
@@ -63,9 +69,163 @@
         ". Nenhuma sessão do Alveare foi afetada. Confira o Usuário API e o Token API nas propriedades do script e rode o teste de conexão.</div>";
     }
     if (recado) html += '<div class="aviso-form">' + esc(recado) + "</div>";
-    html += ({ conexao: telaConexao, recursos: telaRecursos, sincronizar: telaSincronizar, pendencias: telaPendencias,
+    html += ({ inicio: telaInicio, conexao: telaConexao, recursos: telaRecursos, sincronizar: telaSincronizar, pendencias: telaPendencias,
       registros: telaRegistros, vinculos: telaVinculos, matriz: telaMatriz }[sub] || telaConexao)();
     return html;
+  }
+
+  /* ------------------------------------------------------------ início
+     O assistente: seis passos, na ordem, cada um com o resultado à vista.
+     Depois de ativado, vira o painel do dia: está funcionando? quando foi?
+     tem algo pedindo atenção? */
+  function passo(n, titulo, feito, corpoHtml, aberto) {
+    return '<div class="int-passo' + (feito ? " feito" : "") + (aberto ? " aberto" : "") + '"><div class="int-passo-topo"><span class="int-passo-num">' + (feito ? "✓" : n) +
+      "</span><b>" + esc(titulo) + "</b></div>" + (aberto ? '<div class="int-passo-corpo">' + corpoHtml + "</div>" : "") + "</div>";
+  }
+
+  function telaInicio() {
+    var e = estado, c = e.config;
+    if (e.ativadaEm) return telaFuncionando();
+    var conectou = !!(e.teste ? e.teste.conectou : e.verificadaEm);
+    var p1 = e.credenciais && c.assinante && conectou;
+    var p2 = p1 && !!c.unidade;
+    var p4 = p2 && !!c.fontePrincipal;
+    var importados = ["recebimentos", "orcamentos", "agendamentos"].every(function (r) {
+      var x = e.recursos.filter(function (y) { return y.id === r; })[0];
+      return x && (x.modo === "desligado" || x.modo === "consulta" || x.ultima);
+    });
+    var p5 = p4 && importados;
+    var atual = !p1 ? 1 : !p2 ? 2 : !p4 ? 4 : !p5 ? 5 : 6;
+    var h = '<p class="nota-privacidade">Configure uma vez. Depois disso o Alveare busca o que mudou no Clinicorp sozinho, no intervalo escolhido, e coloca cada coisa no módulo certo — sem ninguém precisar abrir este painel.</p>';
+
+    var c1 = !e.credenciais
+      ? '<p class="nota-privacidade">Falta colocar as credenciais no Apps Script: Configurações do projeto → Propriedades do script → <b>FLORESER_CLINICORP_USUARIO</b> (Usuário API) e <b>FLORESER_CLINICORP_TOKEN</b> (Token API). No Clinicorp ficam em Gerenciar Assinatura → Acesso Externo e Integrações. Depois volte aqui.</p>'
+      : '<div class="ferramentas"><label class="rot">Assinante<input id="int-assinante" type="text" value="' + esc(c.assinante) + '" placeholder="vazio = descobrir"></label>' +
+        '<button class="btn-fino" id="int-salvar-conexao">Salvar</button><button class="btn-fino" id="int-testar"' + (ocupado ? " disabled" : "") + ">Conferir a conexão</button></div>" +
+        (e.descoberta && e.descoberta.candidatos.length ? '<div class="ferramentas">' + e.descoberta.candidatos.map(function (x) {
+          return '<button class="btn-fino" data-int-usar="' + esc(x.valor) + '">Usar ' + esc(x.valor) + "</button>"; }).join("") + "</div>" : "") +
+        (e.teste ? '<p class="nota-privacidade">' + (e.teste.conectou ? "Conectado: " + e.teste.verificadas + " de " + e.teste.total + " consultas responderam." : "Não conectou. Confira as credenciais.") + "</p>" : "");
+    h += passo(1, "Conferir a conexão", p1, c1, atual === 1);
+
+    var unidades = (e.teste && e.teste.unidades) || [];
+    var c2 = '<div class="ferramentas">' + (unidades.length
+      ? '<select id="int-unidade">' + unidades.map(function (u) { return '<option value="' + esc(u.externoId) + '"' + (u.externoId === c.unidade ? " selected" : "") + ">" + esc(u.nome) + "</option>"; }).join("") + "</select>"
+      : '<input id="int-unidade" type="text" inputmode="numeric" value="' + esc(c.unidade) + '" placeholder="id da clínica">') +
+      '<button class="btn-fino" id="int-salvar-conexao">Usar esta clínica</button></div>' +
+      '<p class="nota-privacidade">Trocar de clínica depois recomeça a sincronização daquela clínica; nada de uma se mistura com a outra.</p>';
+    h += passo(2, "Escolher a clínica", p2, c2, atual === 2);
+
+    var disp = e.matriz.filter(function (m) { return m.efeito === "leitura" && m.implementado; });
+    var verif = disp.filter(function (m) { return m.verificacao === "verificada"; }).length;
+    var c3 = '<p class="nota-privacidade">O Clinicorp deixa o Alveare ler: <b>recebimentos</b>, <b>orçamentos</b>, <b>agendamentos</b>, pacientes (um de cada vez), campanhas e procedimentos. No teste, ' + verif + " consulta(s) responderam nesta conta" + (verif < disp.length ? "; as demais só são chamadas quando usadas (ex.: buscar um paciente)" : "") + ".</p>" +
+      '<p class="nota-privacidade"><b>Estoque do Clinicorp ainda sem acesso</b>: a API pública não tem consulta de produtos, saldos ou movimentações. O Financeiro → Estoque aceita importar o arquivo exportado do Clinicorp enquanto isso.</p>';
+    h += passo(3, "O que dá para trazer", p2, c3, atual >= 3 && atual <= 4);
+
+    var c4 = '<div class="int-escolha"><button class="btn-fino" id="int-recomendada"><b>Usar o Clinicorp como fonte principal dos dados compartilhados</b> (recomendado)</button>' +
+      '<ul class="int-exemplos"><li>Um pagamento recebido no Clinicorp aparece sozinho nas Entradas (e no Financeiro, sem contar duas vezes). Se mudar de valor ou for estornado lá, a entrada acompanha, com histórico.</li>' +
+      "<li>Orçamento aprovado no Clinicorp leva a lead para Venda; reprovado, para Venda reprovada — pelas regras do CRM, só a partir de Em aberto ou Fazer orçamento.</li>" +
+      "<li>Agendamento marcado, remarcado ou desmarcado no Clinicorp entra na série da paciente na Agenda (na área do profissional, abaixo).</li>" +
+      "<li>Cadência, observações internas, ciclos e planejamento de custos continuam do Alveare. Nenhuma lead é criada para cada paciente.</li></ul></div>" +
+      '<div class="titulo-secao">Área de cada profissional (para a Agenda)</div>' +
+      (profissionais ? (profissionais.profissionais.length ? '<table class="tabela"><tbody>' + profissionais.profissionais.map(function (pr) {
+        var atualA = (c.areaPorProfissional || {})[pr.externoId] || "";
+        return "<tr><td>" + esc(pr.nome) + '</td><td><select data-int-area="' + esc(pr.externoId) + '"><option value="">não trazer para a Agenda</option>' +
+          e.areas.map(function (a) { return '<option value="' + a.id + '"' + (a.id === atualA ? " selected" : "") + ">" + esc(a.nome) + "</option>"; }).join("") + "</select></td></tr>"; }).join("") + "</tbody></table>"
+        : '<p class="nota-privacidade">Nenhum profissional devolvido.</p>')
+        : '<button class="btn-fino" id="int-profissionais">Mostrar os profissionais</button>') +
+      '<p class="nota-privacidade">Sem área, o agendamento aparece na ficha da paciente só como informação.</p>' +
+      '<label class="marcar"><input type="checkbox" id="int-envio-agenda"' + (c.envioAgenda ? " checked" : "") + "> Permitir confirmar e desmarcar agendamentos do Clinicorp pela ficha da Agenda</label>";
+    h += passo(4, "Como tratar os dados compartilhados", p4, c4, atual === 4 || (atual > 4 && sub === "inicio" && !p5));
+
+    var c5 = '<p class="nota-privacidade">Busca os últimos 60 dias (e os agendamentos dos próximos 60) de cada recurso: primeiro uma prévia, depois a importação. O que já foi lançado à mão não é duplicado: casos parecidos viram uma pergunta na própria ficha.</p>' +
+      '<div class="ferramentas"><button class="btn-fino" id="int-iniciais"' + (ocupado ? " disabled" : "") + ">Trazer os dados iniciais</button></div>" +
+      (progresso ? '<p class="nota-privacidade">' + esc(progresso) + "</p>" : "") +
+      (e.pendenciasAbertas ? '<p class="nota-privacidade">' + e.pendenciasAbertas + " caso(s) para revisar — aparecem nas fichas e em Pendências.</p>" : "");
+    h += passo(5, "Trazer e revisar as correspondências iniciais", p5, c5, atual === 5);
+
+    var c6 = '<div class="ferramentas"><label class="rot">Buscar novidades<select id="int-intervalo">' + INTERVALOS.map(function (i) {
+      return '<option value="' + i[0] + '"' + (i[0] === 30 ? " selected" : "") + ">" + i[1] + "</option>"; }).join("") + "</select></label>" +
+      '<label class="marcar"><input type="checkbox" id="int-anteriores"> Trazer também os recebimentos importados antes, que ainda não viraram entrada</label>' +
+      '<button class="btn-fino" id="int-ativar">Ativar o funcionamento automático</button></div>' +
+      '<p class="nota-privacidade">Não é tempo real: o Alveare consulta o Clinicorp no intervalo escolhido, mesmo com todo mundo com o site fechado.</p>';
+    h += passo(6, "Ativar", false, c6, atual === 6);
+    return h;
+  }
+
+  function telaFuncionando() {
+    var e = estado;
+    var rot = e.ultimaRotina;
+    var aplic = rot && rot.aplicacao;
+    var h = '<div class="grade">' +
+      '<div class="cartao"><div class="rot">Funcionamento</div><div class="val">' + esc(e.situacao === "ativa" ? (e.intervaloMin ? "automático, " + textoIntervalo(e.intervaloMin) : "automático, rotina desligada") : SITUACAO[e.situacao]) + "</div></div>" +
+      '<div class="cartao"><div class="rot">Última rotina</div><div class="val">' + esc(rot ? quando(rot.em) : "ainda não rodou") + "</div></div>" +
+      '<div class="cartao"><div class="rot">Esperando aplicar</div><div class="val">' + esc(e.filaDeAplicacao || 0) + "</div></div>" +
+      '<div class="cartao"><div class="rot">Precisa de atenção</div><div class="val">' + esc((e.pendenciasAbertas || 0) + (e.passosIncertos || 0)) + "</div></div></div>";
+    if (rot) {
+      h += '<p class="nota-privacidade">Na última rotina: ' + Object.keys(rot.recursos || {}).map(function (k) {
+        var x = rot.recursos[k]; return k + " " + (x.estado === "erro" ? "com erro (" + x.mensagem + ")" : (x.novos || 0) + " novo(s), " + (x.alterados || 0) + " alterado(s)"); }).join("; ") +
+        (aplic ? ". Aplicados nos módulos: " + aplic.aplicados + "; sem mudança: " + aplic.semMudanca + (aplic.falhas ? "; com falha (tentará de novo): " + aplic.falhas : "") + (aplic.restantes ? "; ficaram para a próxima: " + aplic.restantes : "") : "") + ".</p>";
+    }
+    h += '<div class="ferramentas"><button class="btn-fino" id="int-agora"' + (ocupado ? " disabled" : "") + ">Buscar novidades agora</button>" +
+      '<label class="rot">Intervalo<select id="int-frequencia"><option value="0">desligada</option>' + INTERVALOS.map(function (i) {
+        return '<option value="' + i[0] + '"' + (Number(e.intervaloMin) === i[0] ? " selected" : "") + ">" + i[1] + "</option>"; }).join("") + '</select></label><button class="btn-fino" id="int-agendar">Aplicar</button></div>' +
+      (progresso ? '<p class="nota-privacidade">' + esc(progresso) + "</p>" : "") +
+      '<p class="nota-privacidade">O dia a dia acontece nos módulos: cada ficha mostra o que veio do Clinicorp e, quando algo precisa de decisão, a pergunta aparece lá mesmo. Este painel fica para configuração, diagnóstico e manutenção.</p>';
+    return h;
+  }
+
+  async function trazerIniciais() {
+    var de = diasAtras(60), ate = hojeISO();
+    var futuro = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+    var recursos = estado.recursos.filter(function (x) { return ["recebimentos", "orcamentos", "agendamentos"].indexOf(x.id) >= 0 && (x.modo === "automatico" || x.modo === "importacao") && !x.ultima; });
+    for (var i = 0; i < recursos.length; i++) {
+      var r = recursos[i].id, ateR = r === "agendamentos" ? futuro : ate;
+      progresso = "Prévia de " + recursos[i].nome + "…"; F.redesenhar();
+      var prev = await F.chamar("painel.integracao.executar", { recurso: r, modo: "previa", de: de, ate: ateR });
+      var voltas = 0;
+      while (prev.ok && prev.dados.estado === "interrompida" && voltas++ < 40) prev = await F.chamar("painel.integracao.executar", { recurso: r, modo: "previa", retomar: true, execucaoId: prev.dados.id });
+      if (!prev.ok || prev.dados.estado !== "concluida") { progresso = "A prévia de " + recursos[i].nome + " não terminou: " + recadoDe(prev); F.redesenhar(); return; }
+      progresso = recursos[i].nome + ": " + (prev.dados.contagens.novos || 0) + " registro(s). Importando…"; F.redesenhar();
+      await sincronizar(r, "importacao", { de: de, ate: ateR, previaId: prev.dados.id });
+    }
+    progresso = "Dados iniciais trazidos.";
+    await carregar();
+  }
+
+  function ligarInicio(corpo, on) {
+    on("int-recomendada", function () {
+      var mapa = {};
+      Array.prototype.forEach.call(corpo.querySelectorAll("[data-int-area]"), function (s) { mapa[s.getAttribute("data-int-area")] = s.value; });
+      acao("painel.integracao.configurar", { recomendada: true, areaPorProfissional: profissionais ? mapa : undefined,
+        envioAgenda: !!(corpo.querySelector("#int-envio-agenda") || {}).checked });
+    });
+    on("int-profissionais", async function () {
+      var r = await F.chamar("painel.integracao.profissionais", {});
+      if (r.ok) profissionais = r.dados; else recado = recadoDe(r);
+      F.redesenhar();
+    });
+    Array.prototype.forEach.call(corpo.querySelectorAll("[data-int-area]"), function (s) {
+      s.addEventListener("change", function () {
+        var mapa = {};
+        Array.prototype.forEach.call(corpo.querySelectorAll("[data-int-area]"), function (x) { mapa[x.getAttribute("data-int-area")] = x.value; });
+        F.chamar("painel.integracao.configurar", { areaPorProfissional: mapa }).then(function (r) { if (r.ok) estado = r.dados; });
+      });
+    });
+    var envio = corpo.querySelector("#int-envio-agenda");
+    if (envio) envio.addEventListener("change", function () { F.chamar("painel.integracao.configurar", { envioAgenda: envio.checked }).then(function (r) { if (r.ok) estado = r.dados; }); });
+    on("int-iniciais", function () { ocupado = true; trazerIniciais().then(function () { ocupado = false; F.redesenhar(); }); });
+    on("int-ativar", function () {
+      acao("painel.integracao.ativar", { intervaloMin: Number(valorDe(corpo, "#int-intervalo")) || 30, recebimentosAnteriores: !!(corpo.querySelector("#int-anteriores") || {}).checked });
+    });
+    on("int-agora", async function () {
+      ocupado = true;
+      var rs = estado.recursos.filter(function (x) { return x.modo === "automatico" || x.modo === "importacao"; });
+      for (var i = 0; i < rs.length; i++) { progresso = "Buscando " + rs[i].nome + "…"; F.redesenhar(); await sincronizar(rs[i].id, "importacao", {}); }
+      var ap = await F.chamar("painel.integracao.aplicarAgora", {});
+      progresso = ap.ok ? "Pronto: " + ap.dados.aplicados + " aplicado(s) nos módulos." : recadoDe(ap);
+      ocupado = false;
+      await carregar();
+    });
   }
 
   function telaConexao() {
@@ -106,9 +266,9 @@
         " leituras responderam. Conectar não prova tudo: veja na Matriz o que foi verificado. Nenhuma escrita foi feita para testar.</p>";
     }
     html += '<div class="titulo-secao">Sincronização periódica (opcional)</div><div class="ferramentas"><select id="int-frequencia">' +
-      [0, 1, 2, 4, 6, 12, 24].map(function (h) { return '<option value="' + h + '"' + (Number(c.frequenciaHoras || 0) === h ? " selected" : "") + ">" + (h ? "a cada " + h + " h" : "desligada") + "</option>"; }).join("") +
+      '<option value="0">desligada</option>' + INTERVALOS.map(function (i) { return '<option value="' + i[0] + '"' + (Number(e.intervaloMin || 0) === i[0] ? " selected" : "") + ">" + i[1] + "</option>"; }).join("") +
       '</select><button class="btn-fino" id="int-agendar">Aplicar</button></div>' +
-      '<p class="nota-privacidade">A rotina agendada roda com a identidade “Sincronização agendada (Clinicorp)”, só importa recursos em modo importação (depois da primeira importação manual) e nunca cria entrada, lead ou agendamento.</p>';
+      '<p class="nota-privacidade">A rotina roda no servidor (gatilho de tempo do Apps Script), com a identidade “Sincronização agendada (Clinicorp)”, mesmo sem ninguém com o site aberto. Ela consulta o Clinicorp no intervalo escolhido — não é tempo real.</p>';
     html += '<div class="titulo-secao">Interromper</div><div class="ferramentas">' +
       (e.situacao === "suspensa" || e.situacao === "desconectada"
         ? '<button class="btn-fino" data-int-suspender="retomar">Retomar</button>'
@@ -336,7 +496,13 @@
       });
     });
     var on = function (id, fn) { var x = corpo.querySelector("#" + id); if (x) x.addEventListener("click", fn); };
-    on("int-salvar-conexao", function () { acao("painel.integracao.configurar", { assinante: valorDe(corpo, "#int-assinante").trim(), unidade: valorDe(corpo, "#int-unidade").trim() }); });
+    on("int-salvar-conexao", function () {
+      /* só o que está na tela: o passo da clínica não apaga o assinante */
+      var d = {};
+      if (corpo.querySelector("#int-assinante")) d.assinante = valorDe(corpo, "#int-assinante").trim();
+      if (corpo.querySelector("#int-unidade")) d.unidade = valorDe(corpo, "#int-unidade").trim();
+      acao("painel.integracao.configurar", d);
+    });
     on("int-testar", function () {
       ocupado = true; F.redesenhar();
       F.chamar("painel.integracao.testar", {}).then(function (r) { ocupado = false; if (r.ok) { estado = r.dados; recado = ""; } else recado = recadoDe(r); F.redesenhar(); });
@@ -352,7 +518,8 @@
         F.redesenhar();
       });
     });
-    on("int-agendar", function () { acao("painel.integracao.agendar", { frequenciaHoras: Number(valorDe(corpo, "#int-frequencia")) }); });
+    on("int-agendar", function () { acao("painel.integracao.agendar", { intervaloMin: Number(valorDe(corpo, "#int-frequencia")) }); });
+    ligarInicio(corpo, on);
     Array.prototype.forEach.call(corpo.querySelectorAll("[data-int-suspender]"), function (b) {
       b.addEventListener("click", function () {
         var a = b.getAttribute("data-int-suspender");

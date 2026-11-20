@@ -1,4 +1,4 @@
-# Integração com o Clinicorp (4.1.0)
+# Integração com o Clinicorp (4.2.0)
 
 A integração é **central**: mora no backend (`backend/35`–`38`) e é
 administrada no painel → **Integrações**. CRM, Agenda e Entradas só mostram
@@ -47,7 +47,7 @@ verificação desta conta.
 | Agendamentos de um paciente | `GET /patient/list_appointments` — `PatientId*` | leitura · consulta | id, data, horários | redundante com `/appointment/list?patientId` | não usada |
 | Criar agendamento | `POST /appointment/create_appointment_by_api` | **muda** · envio | agendamento definitivo | sem ambiente de teste; criar agendamento real só para testar é proibido | **não implementada** |
 | Mudar status | `GET /appointment/change_status` — `id*`, `status_id*` | **muda** · envio | um ou vários agendamentos | é GET e muda dados | **não implementada** |
-| Confirmar / cancelar | `POST /appointment/confirm_appointment`, `/cancel_appointment` | **muda** · envio | um agendamento | — | **não implementadas** |
+| Confirmar / desmarcar | `POST /appointment/confirm_appointment`, `/cancel_appointment` — `subscriber_id`, `id` | **muda** · envio | um agendamento | resposta perdida → verificação pela consulta do dia (`Canceled`/`StatusId`); sem certeza, "ainda não confirmado" | implementadas (4.2.0), desligadas por padrão, testadas só com respostas simuladas |
 | Solicitar agendamento online | `POST /appointment/create_online_scheduling` | **muda** · envio | uma **solicitação** | solicitação ≠ agendamento | **não implementada** |
 | Orçamentos do período | `GET /estimates/list` — `subscriber_id*`, `from*`, `to*` (≤ 31 dias), `status`, `clinic_id` | leitura · consulta | um orçamento por tratamento: status, profissional, valor, desconto, procedimentos | o período filtra pela data do **desfecho** de cada status; só o desfecho atual; pode vir do cache (`Cached: true`); identidade estável = `TreatmentId` | implementada |
 | Um orçamento | `GET /estimates/get` — `subscriber_id*`, `treatment_id*` | leitura · consulta | um orçamento | — | implementada |
@@ -57,6 +57,8 @@ verificação desta conta.
 | Fluxo de caixa | `GET /financial/list_cash_flow` | leitura | agregado por forma | — | não usada |
 | Campanhas do CRM | `GET /crm/list_active_campaigns` — `subscriber_id*` | leitura · consulta | nome, status, descrição | a descrição na especificação está trocada ("Lista todos os usuários") | implementada |
 | Enviar lead para campanha | `POST /crm/add_leads` — `Name`, `Email`, `Phone`, `BoardName`, `Notes` | **muda** · envio | um lead | sem id na resposta e sem consulta de leads: envio perdido não é verificável pela API | implementada, desligada por padrão |
+| **Estoque** (produtos, saldos, unidades, locais, lotes, movimentações) | **não existe** na especificação pública (conferida em 20/11/2026 nas duas URLs oficiais, 49 endereços) | — | — | precisa o Clinicorp liberar e documentar uma consulta; ver §Estoque | **sem acesso** — adaptador pronto, importação manual de arquivo enquanto isso |
+| Ordem de compra | `POST /products/orders` — `clinic` (CNPJ), `orderCode`, `orderDate`, `products[code, name, quantity, unitPrice, unitOfMeasurement, expirationDate]` | **muda** · envio | uma ordem | ordem de compra não é mercadoria recebida nem conta paga; não lê saldo. O enum de unidades (UN, CX, ML, G, FA, AP...) é usado como referência no Estoque | não usada |
 | Catálogo de procedimentos | `GET /procedures/list` | leitura · consulta | nome, especialidade, tabela | **sem preço**; o Alveare nunca altera preço no Clinicorp | implementada |
 
 Fora do escopo (documentados, sem uso): analytics, vendas por especialidade,
@@ -213,3 +215,121 @@ Até lá, a matriz mostra as escritas como "documentada — nunca exercitada".
 Desligar a integração: painel → Desconectar, e apagar as duas propriedades
 de credencial no editor. O que foi importado continua nas abas `int_*` e
 pode ser ignorado. Voltar para a 4.0.0 está em [PUBLICACAO](PUBLICACAO.md).
+
+
+## 10. Funcionamento automático (4.2.0)
+
+Antes da 4.2.0, a rotina agendada só atualizava as abas de integração;
+vincular, importar e conciliar eram feitos no painel. Agora a etapa que
+faltava existe: **consultar → normalizar → identificar → aplicar a política →
+atualizar o módulo → registrar o resultado** (`backend/39_ClinicorpAplicacao.gs`).
+
+### Configurar uma vez (painel → Integrações → Configurar)
+
+1. **Conferir a conexão** (com descoberta do assinante se ele não for conhecido).
+2. **Escolher a clínica** (unidade). Trocar depois recomeça daquela clínica.
+3. **O que dá para trazer** — o que esta conta respondeu, e o estoque como
+   "sem acesso".
+4. **Como tratar os dados compartilhados** — opção recomendada *Usar o
+   Clinicorp como fonte principal dos dados compartilhados*: recebimentos,
+   orçamentos e agendamentos em modo **automático**, recebimento recebido vira
+   entrada, orçamento aprovado/reprovado aplica a etapa pelas regras do CRM,
+   reconsulta do último mês. Mapeamento **profissional → área** da Agenda
+   (sem área, o agendamento fica só como contexto). Opcional: permitir
+   confirmar/desmarcar agendamentos pela ficha.
+5. **Trazer e revisar as correspondências iniciais** — prévia e importação
+   dos últimos 60 dias (agendamentos: mais 60 à frente). Casos parecidos com
+   lançamentos manuais viram pergunta na ficha, não duplicata.
+6. **Ativar** — liga o gatilho de tempo (15 min a 1×/dia; padrão 30 min). Não
+   é tempo real. Opcional: trazer também recebimentos importados antes da
+   automação que ainda não viraram entrada.
+
+Depois disso o painel mostra só *está funcionando? quando foi a última
+rotina? quanto está na fila? o que pede atenção?* — e "Buscar novidades
+agora".
+
+### Política de aplicação
+
+| Registro do Clinicorp | O que acontece sozinho | Quando pede uma pessoa |
+|---|---|---|
+| Recebimento recebido/confirmado, sem vínculo | vira **entrada** (`origem: clinicorp`, valor bruto, data do recebimento) e fica vinculado | há entrada manual do mesmo dia e valor sem vínculo (pergunta na entrada: "Vincular a este recebimento" / "É outro pagamento"); forma de pagamento sem equivalente |
+| Recebimento vinculado que mudou | data e valor da entrada acompanham, com auditoria (`contexto: Clinicorp`) | entrada dividida em várias formas (conflito real) |
+| Recebimento desfeito/estornado | entrada marcada `externoEstado: estornado`, fora das somas de Entradas e Financeiro; nada é apagado | — |
+| Orçamento de paciente ligado a uma lead (vínculo direto, ou paciente da Agenda vinculada com `crmLeadId`) | status novo com regra **aplicar**: etapa pelas regras do CRM, só a partir das etapas de origem; regra **propor**: pergunta na lead | — |
+| Orçamento de paciente sem lead | só contexto | nome **e** telefone (10 dígitos) batem com exatamente uma lead: "Este é o mesmo paciente?" na lead |
+| Agendamento de paciente vinculada, profissional com área, de hoje em diante | entra/remarca/sai da série da área, por `planejarPaciente` (série, eco no CRM, auditoria) | a paciente não tem ciclo daquela área |
+| Agendamento passado, sem área ou de paciente sem vínculo | só contexto | — |
+
+Nunca: orçamento → recebimento; confirmação → comparecimento; comparecimento →
+venda; data que passou → pagamento ou consumo de estoque; uma lead para cada
+paciente.
+
+### Representação única e campos do Clinicorp
+
+Uma entrada vinculada **é** o recebimento (não há duas): data e valor/forma
+são do Clinicorp e não se editam no Alveare (o servidor recusa e a tela mostra
+só para leitura); nome, procedimento e observação são do Alveare. Na Agenda,
+uma data que veio do Clinicorp não é apagada nem remarcada localmente (o
+servidor recusa, com o motivo); ciclo, intervalo, áreas e histórico são do
+Alveare. Proveniência: `int_vinculos` (identidade local ↔ externa),
+`int_externos.dados` (último estado externo), `.complemento` (nota local),
+`.aplicacao` (o que foi aplicado e quando), `sis_auditoria` (histórico).
+
+### Fila, retomada e identidade
+
+- **Fila persistente** = `int_externos` com `aplicado ≠ assinatura`. Cada
+  registro é uma operação no diário com `operacaoId` derivado de
+  (registro, assinatura): repetir não duplica. Falha → até 3 tentativas nas
+  rotinas seguintes; depois, pendência. Uma falha não segura os outros.
+- **Cursor das pacientes**: os agendamentos por paciente vinculada são
+  consultados para **todas**, com o índice gravado na execução; limite de
+  chamadas ou de tempo interrompe e a próxima execução continua. A consulta
+  só fica "concluída" quando todas as janelas e pacientes foram cobertas.
+- **Identidade com o assinante**: `clinicorp:<assinante>:<tipo>:<id>` (e o
+  vínculo acrescenta `:<tipoLocal>`). Pontos de retomada guardam conta e
+  unidade; trocar uma delas descarta checkpoints e não retoma execuções da
+  outra.
+- **Telas**: `compartilhado/integracao.js` relê o estado da planilha ao abrir,
+  a cada 3 min com a aba visível e ao voltar para a aba; redesenha só o bloco
+  da ficha, sem recarregar e sem mexer no que está sendo editado.
+
+### Implementado · simulado · validado
+
+| | Implementado | Testado com simulação | Validado na conta real |
+|---|---|---|---|
+| Leituras (recebimentos, orçamentos, agendamentos, pacientes, campanhas, procedimentos, resumo) | sim | sim | **não** (ver §8) |
+| Aplicação automática nos módulos | sim | sim (`testes/automacao.js`, ponta a ponta) | **não** |
+| Confirmar/desmarcar agendamento | sim | sim | **não** — nunca chamado na conta real |
+| Criar paciente / enviar lead | sim (4.1.0) | sim | **não** |
+| Criar agendamento | não (exige profissional/cadeira/horário que a Agenda não modela) | — | — |
+| Estoque do Clinicorp | adaptador preparado, sem endpoint | — | **sem acesso** |
+
+## 11. Estoque
+
+**Verificado em 20/11/2026:** a especificação oficial (as duas URLs servem a
+mesma, 49 endereços) não tem nenhuma consulta de produtos/insumos, saldos,
+locais, lotes ou movimentações. O site do Clinicorp anuncia uma ferramenta de
+Controle de Estoque, mas ela não está exposta na API pública. O único
+endereço de produtos (`POST /products/orders`) cria ordem de compra — não lê
+estoque, e ordem não é mercadoria recebida.
+
+**O que o Alveare faz até lá:** Financeiro → Estoque com **importação manual**
+do arquivo exportado (mapeamento salvo, reimportação idempotente por dia),
+claramente identificada como manual, e itens **só do Alveare** para o que não
+existe no Clinicorp. O adaptador (`est_itens.origem = clinicorp`,
+`est_saldos.fonte = clinicorp`) está pronto para receber a consulta quando
+existir. Não há sincronização fictícia.
+
+**O que pedir ao Clinicorp (texto pronto, para a clínica enviar):**
+
+> Usamos a API do Clinicorp (Usuário API/Token API da assinatura) e
+> precisamos ler o estoque da clínica. A documentação pública
+> (api.clinicorp.com/api-docs) não tem esse recurso. Vocês têm, ou podem
+> liberar para a nossa assinatura, uma consulta documentada com:
+> 1) lista de produtos/insumos com código, nome, categoria e unidade de
+> medida; 2) saldo atual por clínica/local; 3) lotes e validade;
+> 4) movimentações (entrada, consumo/baixa por procedimento, perda, ajuste)
+> com data e origem; 5) custo unitário? Se existir exportação oficial
+> periódica (arquivo), qual o formato?
+
+Nada foi enviado ao suporte nem alterado na conta: isso fica com a clínica.

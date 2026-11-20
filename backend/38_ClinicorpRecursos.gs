@@ -13,7 +13,13 @@
    comparecimento → venda, sessão vencida → pagamento.
    ===================================================================== */
 
-var MAX_PACIENTES_POR_JANELA = 15;
+/* Agendamentos de UMA paciente vinculada na janela: os itens voltam com
+   pacienteExternoId preenchido (a consulta foi filtrada por ela). */
+function buscarAgendamentosDaPaciente(pid, de, ate, c) {
+  var r = chamarClinicorp("agendamentos.listar", { from: de, to: ate, businessId: c.unidade ? String(c.unidade) : "", patientId: pid,
+    includeCanceled: "X", includeDeleted: "X" });
+  return (Array.isArray(r) ? r : []).map(normalizarAgendamento).filter(Boolean).map(function (x) { x.pacienteExternoId = String(pid); return x; });
+}
 
 function buscarJanelaClinicorp(recurso, de, ate, c, cx) {
   var unidade = c.unidade ? String(c.unidade) : "";
@@ -23,21 +29,10 @@ function buscarJanelaClinicorp(recurso, de, ate, c, cx) {
   }
   if (recurso === "agendamentos") {
     var a = chamarClinicorp("agendamentos.listar", { from: de, to: ate, businessId: unidade, includeCanceled: "X", includeDeleted: "X" });
-    var lista = (Array.isArray(a) ? a : []).map(normalizarAgendamento).filter(Boolean);
-    /* A resposta não traz o paciente. Para as pacientes JÁ vinculadas,
-       a mesma janela filtrada por patientId diz quais itens são delas. */
-    var porId = {};
-    lista.forEach(function (x) { porId[x.externoId] = x; });
-    var pacientes = (cx && cx.pacientesVinculados) || [];
-    pacientes.slice(0, MAX_PACIENTES_POR_JANELA).forEach(function (pid) {
-      if (_CLINICORP_CHAMADAS >= CLINICORP_MAX_CHAMADAS - 5) return;
-      var r = chamarClinicorp("agendamentos.listar", { from: de, to: ate, businessId: unidade, patientId: pid, includeCanceled: "X", includeDeleted: "X" });
-      (Array.isArray(r) ? r : []).map(normalizarAgendamento).filter(Boolean).forEach(function (x) {
-        if (porId[x.externoId]) porId[x.externoId].pacienteExternoId = pid;
-        else { x.pacienteExternoId = pid; porId[x.externoId] = x; lista.push(x); }
-      });
-    });
-    return lista;
+    /* a consulta do período não traz a paciente; a atribuição sai de
+       buscarAgendamentosDaPaciente, por paciente vinculada, com cursor
+       (37 · executarSincronizacao) */
+    return (Array.isArray(a) ? a : []).map(normalizarAgendamento).filter(Boolean);
   }
   if (recurso === "recebimentos") {
     var p = chamarClinicorp("recebimentos.listar", { from: de, to: ate, get_amount_with_discounts: c.valorSemTaxas ? "X" : "",

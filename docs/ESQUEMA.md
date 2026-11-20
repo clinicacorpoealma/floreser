@@ -1,4 +1,4 @@
-# Esquema de dados (schema 3)
+# Esquema de dados (schema 4)
 
 A fonte é `backend/10_Esquema.gs`. Cada tabela é uma aba com o mesmo nome; a
 linha 1 é o cabeçalho, e **o cabeçalho manda** — a posição de cada campo sai
@@ -87,6 +87,29 @@ respostas → vindas (forte); contato → lead, `crmLeadId` → lead, categoria 
 máquina → cadastros (fracas: podem apontar para algo na lixeira).
 Desde o schema 3: movimentos → `fin_despesas` e versões → `fin_fichas`
 (fortes); despesa → categoria, fornecedor e grupo (fracas).
+
+### Estoque e automação (schema 4)
+
+| Tabela / coluna | Conteúdo |
+|---|---|
+| `est_itens` (raiz) | item: nome, código, categoria, unidade de compra e de consumo, fator, mínimo, custo unitário e sua fonte, **origem** (`importacao`, `local`, `clinicorp`), local, notas |
+| `est_saldos` (grande) | retrato: item, local, quantidade (texto, até 3 casas), lote, validade, custo, fonte, lote de importação, observado em |
+| `est_movimentos` (grande) | só itens `local`: entrada/saída com quantidade, data, motivo, autor |
+| `int_externos.aplicado` / `aplicadoEm` / `aplicacao` | fila de aplicação: a assinatura já aplicada, quando, e o resultado (tentativas, erro, estado) |
+| `ent_entradas.externoEstado` | `estornado` quando o recebimento foi desfeito no Clinicorp |
+| `fin_insumos.itemEstoqueId` / `custoFonte` | material ligado a um item do estoque |
+| `fin_fichas.revisar` | aviso de que um custo usado mudou depois da aprovação |
+
+Identidade dos registros externos: `clinicorp:<assinante>:<tipo>:<id>`.
+
+## Do schema 3 para o schema 4 (`backend/43_MigracaoV4.gs`)
+
+Cria as abas do estoque, acrescenta as colunas acima no fim, reescreve as
+chaves de `int_externos`/`int_vinculos` com o assinante (mesmas linhas) e faz
+a **reconciliação inicial**: o que já existe conta como aplicado;
+recebimentos sem vínculo ficam como consulta (`aplicacao.estado.anterior`);
+orçamentos guardam o status atual. Conferência: contagens e somas de dinheiro
+iguais, sem chave repetida. Retorno: as chaves voltam ao formato da 4.1.0.
 
 ## Do schema 2 para o schema 3 (`backend/42_MigracaoV3.gs`)
 

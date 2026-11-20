@@ -72,6 +72,7 @@
   <nav class="abas" id="abas" role="tablist" aria-label="Seções do Financeiro">
     <button type="button" role="tab" id="aba-visao" aria-controls="painel-visao" aria-selected="true" data-aba="visao">Visão geral</button>
     <button type="button" role="tab" id="aba-despesas" aria-controls="painel-despesas" aria-selected="false" data-aba="despesas">Despesas</button>
+    <button type="button" role="tab" id="aba-estoque" aria-controls="painel-estoque" aria-selected="false" data-aba="estoque">Estoque</button>
     <button type="button" role="tab" id="aba-planejamento" aria-controls="painel-planejamento" aria-selected="false" data-aba="planejamento">Planejamento</button>
     <button type="button" role="tab" id="aba-precificacao" aria-controls="painel-precificacao" aria-selected="false" data-aba="precificacao">Precificação</button>
     <span class="abas-espaco"></span>
@@ -163,6 +164,42 @@
       </table>
     </div>
     <p class="vazio" id="vazioDespesas" hidden>Nenhuma despesa com esses filtros.</p>
+  </section>
+
+  <!-- ===================== Estoque ===================== -->
+  <section class="painel" id="painel-estoque" role="tabpanel" aria-labelledby="aba-estoque" hidden>
+    <div class="fonte-estoque" id="fonteEstoque"></div>
+    <div class="filtros">
+      <label class="busca">
+        <span class="sr">Buscar item</span>
+        <input type="search" id="feBusca" class="input" placeholder="Buscar produto ou insumo" autocomplete="off">
+      </label>
+      <select id="feCategoria" class="input" aria-label="Categoria"></select>
+      <select id="feLocal" class="input" aria-label="Local"></select>
+      <select id="feSituacao" class="input" aria-label="Situação">
+        <option value="">Todas as situações</option>
+        <option value="esgotado">Esgotado</option>
+        <option value="abaixo">Abaixo do mínimo</option>
+        <option value="validade">Validade próxima</option>
+        <option value="desconhecido">Saldo desconhecido</option>
+        <option value="ok">Em dia</option>
+      </select>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-ghost" id="btnImportarEstoque">Importar arquivo do estoque</button>
+      <button type="button" class="btn btn-quiet" id="btnNovoItem">Item só do Alveare</button>
+    </div>
+    <div class="cartoes cartoes-estoque" id="indicadoresEstoque"></div>
+    <section class="bloco" id="blocoReposicao" hidden>
+      <h3 class="bloco-titulo">Lista de reposição</h3>
+      <ul class="lista lista-compacta" id="listaReposicao"></ul>
+    </section>
+    <div class="tabela-rolagem">
+      <table class="tabela" id="tabelaEstoque">
+        <thead><tr><th>Item</th><th class="dir">Quantidade</th><th>Situação</th><th>Atualizado</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="vazio" id="vazioEstoque" hidden>Nenhum item. Importe o arquivo de estoque ou cadastre um item só do Alveare.</p>
   </section>
 
   <!-- ===================== Planejamento ===================== -->
@@ -364,6 +401,49 @@
   </form>
 </dialog>
 
+<!-- ============ Diálogo: item do estoque ============ -->
+<dialog id="dlgItem" aria-labelledby="itemTitulo">
+  <div class="folha">
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="itemTitulo">Item</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <div class="saldo-destaque" id="itemSaldo"></div>
+      <dl class="ficha-dados" id="itemDados"></dl>
+      <h3 class="sub-titulo">Por local e lote</h3>
+      <ul class="lista lista-compacta" id="itemLocais"></ul>
+      <h3 class="sub-titulo" id="itemHistTitulo">Histórico</h3>
+      <ul class="lista lista-compacta" id="itemHistorico"></ul>
+      <div class="sub-bloco" id="itemMovimentar" hidden>
+        <h3 class="sub-titulo">Registrar (item só do Alveare)</h3>
+        <div class="linha-3">
+          <div class="campo"><label for="mvTipo">Tipo</label><select class="input" id="mvTipo"><option value="entrada">Entrada</option><option value="saida">Saída</option><option value="contagem">Contagem (saldo contado)</option></select></div>
+          <div class="campo"><label for="mvQtd">Quantidade</label><input class="input" id="mvQtd" inputmode="decimal"></div>
+          <div class="campo"><label for="mvMotivo">Motivo</label><input class="input" id="mvMotivo" maxlength="300"></div>
+        </div>
+        <button type="button" class="btn btn-primary" id="mvRegistrar">Registrar</button>
+      </div>
+      <details class="avancado">
+        <summary>Ajustes do Alveare (unidade de consumo, mínimo, notas)</summary>
+        <div class="linha-3">
+          <div class="campo"><label for="itUnidade">Unidade de consumo</label><select class="input" id="itUnidade"></select></div>
+          <div class="campo"><label for="itFator">Quantas por unidade de compra</label><input class="input" id="itFator" inputmode="decimal" placeholder="ex.: 200"></div>
+          <div class="campo"><label for="itMinimo">Estoque mínimo</label><input class="input" id="itMinimo" inputmode="decimal"></div>
+        </div>
+        <div class="campo"><label for="itNotas">Notas</label><textarea class="input" id="itNotas" maxlength="2000"></textarea></div>
+        <button type="button" class="btn btn-ghost" id="itSalvar">Salvar ajustes</button>
+      </details>
+      <p class="erro-form" id="itemErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-primary" id="itPrecificar">Usar na precificação</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- ============ Diálogo: ficha de custo ============ -->
 <dialog id="dlgFicha" class="dlg-largo" aria-labelledby="fichaTitulo">
   <form class="folha folha-larga" id="formFicha" method="dialog" novalidate>
@@ -373,6 +453,7 @@
     </div>
     <div class="folha-corpo ficha-grade">
       <div class="ficha-entrada">
+        <p class="aviso-revisar" id="fRevisar" hidden></p>
         <div class="linha-2">
           <div class="campo"><label for="fNome">Nome</label><input class="input" id="fNome" maxlength="160" required></div>
           <div class="campo"><label for="fTipo">Tipo</label>

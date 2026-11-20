@@ -1,4 +1,4 @@
-# Financeiro (4.1.0)
+# Financeiro (4.2.0)
 
 Módulo em `financeiro/` (estrutura, aparência e comportamento separados),
 regras puras em `backend/30_RegrasFinanceiro.gs`, serviço em
@@ -61,6 +61,41 @@ competência, com alerta na porcentagem escolhida.
 Valores do Clinicorp (resumo financeiro, recebimentos sem vínculo) aparecem
 num bloco à parte, "só para conferência": nunca somados nem quebrados em
 despesas.
+
+## Estoque (4.2.0)
+
+Aba **Estoque** (`backend/33_ServicoEstoque.gs`). Responde: o que tenho,
+quanto, desde quando se sabe, o que falta.
+
+- **Fonte.** O Clinicorp ainda não dá acesso ao estoque pela API (ver
+  [CLINICORP.md §11](CLINICORP.md)). Enquanto isso: **importação manual** do
+  arquivo exportado (nome, código, quantidade, unidade, categoria, mínimo,
+  custo, local, lote, validade, data do retrato), com o mapeamento da última
+  importação reaproveitado; e itens **só do Alveare**, marcados assim.
+- **Saldo é retrato.** Cada importação grava um retrato por item/local/lote
+  com data (`est_saldos`); o saldo atual é o último. Quantidade vazia =
+  **desconhecido** (não é zero); zero = esgotado; retrato com mais de 7 dias
+  aparece como antigo. Entre retratos só se mostra a **variação observada** —
+  nada de inventar compra, consumo ou perda.
+- **Sem estoque duplo.** Item de fonte externa não recebe movimento nem tem
+  nome/código/custo/saldo editáveis no Alveare (só unidade de consumo, fator,
+  mínimo e notas). Item só do Alveare tem entrada, saída e contagem. Nada dá
+  baixa por agendamento; ordem de compra não é mercadoria; compra recebida não
+  é conta paga (a despesa continua em Despesas, separada).
+- **Quantidades** em milésimos inteiros (até 3 casas), sem ponto flutuante.
+  Conversões só entre unidades compatíveis (ml/l, g/kg/mg, cm/m) ou pelo
+  **fator** do item (ex.: 1 CX = 200 un); o que não converte é erro, não chute.
+  Unidades do Clinicorp (UN, ML, G, CX, FA, AP...) aceitas.
+- **Indicadores**: esgotados, abaixo do mínimo, validade em até 30 dias,
+  desconhecidos; **lista de reposição** (quanto falta para o mínimo); detalhe
+  do item com saldo por local/lote, custo e histórico disponível.
+- **Precificação.** "Usar na precificação" cria/atualiza o material da ficha
+  com unidade de consumo e custo do item (`fin_insumos.itemEstoqueId`,
+  `custoFonte`: importação ou estimativa local). Quando o custo muda, o
+  cálculo atual acompanha, fichas com versão aprovada ganham o aviso
+  **revisar**, e versões aprovadas e preços não mudam. Composição (consumo
+  estimado) ≠ consumo registrado ≠ compra ≠ pagamento: nada disso vira
+  despesa.
 
 ## Precificação
 

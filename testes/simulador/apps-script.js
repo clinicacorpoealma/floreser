@@ -269,7 +269,7 @@ function criarSimulador(opcoes) {
       deleteTrigger: (t) => { sim.gatilhos = sim.gatilhos.filter((g) => g !== t); },
       newTrigger: (fn) => {
         const g = { fn, getHandlerFunction: () => fn };
-        const b = { timeBased: () => b, everyHours: (h) => { g.horas = h; return b; }, everyDays: (d) => { g.dias = d; return b; },
+        const b = { timeBased: () => b, everyMinutes: (m) => { if ([1, 5, 10, 15, 30].indexOf(m) < 0) throw new Error("everyMinutes: 1, 5, 10, 15 ou 30"); g.minutos = m; return b; }, everyHours: (h) => { g.horas = h; return b; }, everyDays: (d) => { g.dias = d; return b; },
           create: () => { sim.gatilhos.push(g); return g; } };
         return b;
       }

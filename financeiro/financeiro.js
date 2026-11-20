@@ -175,8 +175,9 @@
       b.tabIndex = ativa ? 0 : -1;
       if (ativa && foco) b.focus();
     });
-    ["visao", "despesas", "planejamento", "precificacao"].forEach(function (a) { el("painel-" + a).hidden = a !== aba; });
+    ["visao", "despesas", "estoque", "planejamento", "precificacao"].forEach(function (a) { el("painel-" + a).hidden = a !== aba; });
     if (aba === "visao") atualizarResumo();
+    if (aba === "estoque") carregarEstoque();
   }
 
   function ligarAbas() {
@@ -237,12 +238,17 @@
   function renderIntegracao() {
     var i = estado.dados.integracao || {};
     var selo = el("seloIntegracao");
-    var textos = { ativa: "Clinicorp configurado", suspensa: "Clinicorp suspenso", desconectada: "Clinicorp desconectado", nao_configurada: "Clinicorp não configurado" };
-    selo.textContent = textos[i.situacao] || "Clinicorp";
-    selo.setAttribute("data-situacao", i.situacao || "");
-    var ultima = i.ultimas && Object.keys(i.ultimas).map(function (k) { return i.ultimas[k]; }).sort().pop();
-    selo.title = (textos[i.situacao] || "") + (ultima ? " · última sincronização " + new Date(ultima).toLocaleString("pt-BR") : "") +
-      ". A integração é administrada no painel; aqui o Financeiro só mostra o estado.";
+    var textos = { atualizado: "Clinicorp: atualizado", atualizando: "Clinicorp: atualizando", aguardando_envio: "Clinicorp: aguardando envio",
+      atencao: "Clinicorp: precisa de atenção", interrompida: "Clinicorp: conexão interrompida", nao_configurada: "Clinicorp não configurado" };
+    var txt = textos[i.estado] || "Clinicorp";
+    if (i.estado === "atualizado" && i.atualizadoEm) {
+      var min = Math.round((Date.now() - new Date(i.atualizadoEm).getTime()) / 60000);
+      txt += min < 60 ? " há " + Math.max(1, min) + " min" : " em " + new Date(i.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    }
+    selo.textContent = txt;
+    selo.setAttribute("data-situacao", i.estado === "interrompida" ? "suspensa" : i.estado === "nao_configurada" ? "" : "ativa");
+    selo.title = (i.intervaloMin ? "O Alveare consulta o Clinicorp a cada " + (i.intervaloMin < 60 ? i.intervaloMin + " minutos" : i.intervaloMin / 60 + " h") + " (não é em tempo real). " : "") +
+      "A integração é configurada no painel; aqui o Financeiro só mostra o estado.";
     var aviso = el("avisoGeral");
     if (i.situacao === "suspensa") {
       aviso.hidden = false;
@@ -839,7 +845,8 @@
     fichas.forEach(function (f) {
       var c = f._calculo || {};
       corpo.appendChild(h("tr", { class: "clicavel", tabindex: "0", onclick: function () { abrirFicha(f.id); }, onkeydown: function (ev) { if (ev.key === "Enter") abrirFicha(f.id); } },
-        h("td", null, f.nome), h("td", null, { procedimento: "Procedimento", produto: "Produto", pacote: "Pacote" }[f.tipo] || f.tipo),
+        h("td", null, f.nome, f.revisar ? h("span", { class: "sub desatualizado" }, "revisar: custo de material mudou") : null),
+        h("td", null, { procedimento: "Procedimento", produto: "Produto", pacote: "Pacote" }[f.tipo] || f.tipo),
         h("td", { class: "dir" }, c.custoTotal !== undefined ? brl(c.custoTotal) : "—"),
         h("td", { class: "dir" }, c.completo ? brl(c.precoSugerido) : h("span", { class: "sub" }, c.bloqueio ? "bloqueado" : "faltam dados")),
         h("td", { class: "dir" }, brl(f.precoAtual)),
@@ -859,7 +866,10 @@
   function linhaItem(item) {
     var sel = h("select", { class: "input", "aria-label": "Material" });
     sel.appendChild(h("option", { value: "" }, "Escolha o material"));
-    estado.dados.insumos.forEach(function (i) { sel.appendChild(h("option", { value: i.id }, i.nome)); });
+    estado.dados.insumos.forEach(function (i) {
+      var marca = i.itemEstoqueId ? (i.custoFonte === "estimativa" ? " · estoque (custo estimado)" : " · do estoque") : "";
+      sel.appendChild(h("option", { value: i.id }, i.nome + marca));
+    });
     sel.value = item.insumoId || "";
     var qtd = h("input", { class: "input", inputmode: "decimal", placeholder: "qtd", "aria-label": "Quantidade", value: item.quantidade || "" });
     var un = h("select", { class: "input", "aria-label": "Unidade" });
@@ -916,6 +926,8 @@
     el("fImpostos").value = d.impostosPct || ""; el("fMargem").value = d.margemPct || "";
     el("sDesconto").value = ""; el("sTaxa").value = ""; el("sParcelas").value = "1";
     el("fAprovar").disabled = !f;
+    el("fRevisar").hidden = !(f && f.revisar);
+    el("fRevisar").textContent = f && f.revisar ? f.revisar + " A versão aprovada guarda o custo de então; os cálculos abaixo já usam o atual." : "";
     el("fErro").textContent = "";
     tipoDaFicha();
     var vers = limpar(el("fVersoes"));
@@ -1034,6 +1046,167 @@
   }
 
   /* ---------------------------------------------------------------
+     Estoque
+     ---------------------------------------------------------------
+     O que tenho, em que quantidade, e desde quando se sabe. Saldo é sempre
+     um retrato com data e fonte: desconhecido não é zero, e retrato antigo
+     aparece como antigo. Item de fonte externa não tem saldo editável. */
+
+  var estoque = null;
+
+  async function carregarEstoque() {
+    var r = await ler("financeiro.estoque");
+    if (!r.ok) { el("fonteEstoque").textContent = "Não foi possível carregar o estoque agora. " + FloreSerAuth.recado(r) + (estoque ? " Mostrando o último carregado." : ""); if (!estoque) return; }
+    else estoque = r.dados;
+    renderEstoque();
+  }
+
+  function qtdBR(t) { return t === null || t === undefined || t === "" ? "" : String(t).replace(".", ","); }
+  var SITUACAO_EST = { esgotado: "Esgotado", abaixo: "Abaixo do mínimo", desconhecido: "Saldo desconhecido", ok: "Em dia" };
+
+  function renderEstoque() {
+    if (!estoque) return;
+    var fe = estoque.fonte;
+    var f = limpar(el("fonteEstoque"));
+    f.appendChild(h("details", null, h("summary", null, h("span", { class: "sem-acesso" }, "Estoque do Clinicorp ainda sem acesso"), " — por quê?"),
+      h("p", { class: "sub" }, fe.clinicorp.motivo), h("p", { class: "sub" }, "Falta o Clinicorp liberar na API: " + fe.clinicorp.falta.join("; ") + ".")));
+    f.appendChild(h("div", null, fe.ultimaImportacao
+      ? h("span", null, "Fonte atual: ", h("b", null, "importação manual"), " — último arquivo em " + new Date(fe.ultimaImportacao.em).toLocaleString("pt-BR") + " (" + fe.ultimaImportacao.arquivo + "). Importar de novo atualiza os saldos; o mesmo arquivo no mesmo dia não duplica.")
+      : "Ainda sem importação. Exporte o estoque do Clinicorp (CSV ou Excel) e importe aqui — é manual até a API liberar."));
+
+    var cats = {}, locais = {};
+    estoque.itens.forEach(function (i) { if (i.categoria) cats[i.categoria] = true; (i.locais || []).forEach(function (l) { if (l.local) locais[l.local] = true; }); if (i.local) locais[i.local] = true; });
+    preencherSelect(el("feCategoria"), Object.keys(cats).sort().map(function (c) { return { id: c, nome: c }; }), el("feCategoria").value, "Todas as categorias");
+    preencherSelect(el("feLocal"), Object.keys(locais).sort().map(function (c) { return { id: c, nome: c }; }), el("feLocal").value, "Todos os locais");
+
+    var ind = limpar(el("indicadoresEstoque"));
+    var conta = function (fn) { return estoque.itens.filter(fn).length; };
+    ind.appendChild(cartao("Esgotados", String(conta(function (i) { return i.situacao === "esgotado"; })), "saldo zero no último retrato", { classe: conta(function (i) { return i.situacao === "esgotado"; }) ? "alerta" : "" }));
+    ind.appendChild(cartao("Abaixo do mínimo", String(conta(function (i) { return i.situacao === "abaixo"; })), "precisam de reposição"));
+    ind.appendChild(cartao("Validade próxima", String(conta(function (i) { return i.validadeProxima; })), "até 30 dias (" + conta(function (i) { return i.vencido; }) + " vencido(s))"));
+    ind.appendChild(cartao("Saldo desconhecido", String(conta(function (i) { return i.situacao === "desconhecido"; })), "sem quantidade informada — não é zero"));
+
+    var rep = estoque.reposicao;
+    el("blocoReposicao").hidden = !rep.length;
+    var ul = limpar(el("listaReposicao"));
+    rep.forEach(function (x) {
+      ul.appendChild(h("li", null, h("span", { class: "nome" }, x.nome),
+        h("span", { class: "det" }, (x.faltam ? "faltam " + qtdBR(x.faltam) + " " + (x.unidade || "") + " para o mínimo" : "esgotado") + (x.saldo !== null ? " · tem " + qtdBR(x.saldo) : ""))));
+    });
+
+    var busca = String(el("feBusca").value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    var fc = el("feCategoria").value, fl = el("feLocal").value, fs = el("feSituacao").value;
+    var lista = estoque.itens.filter(function (i) {
+      if (fc && i.categoria !== fc) return false;
+      if (fl && i.local !== fl && !(i.locais || []).some(function (l) { return l.local === fl; })) return false;
+      if (fs === "validade" ? !i.validadeProxima : fs && i.situacao !== fs) return false;
+      if (busca && (i.nome + " " + (i.codigo || "")).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").indexOf(busca) < 0) return false;
+      return true;
+    }).sort(function (a, b) { return String(a.nome).localeCompare(b.nome); });
+    var corpo = limpar(el("tabelaEstoque").querySelector("tbody"));
+    lista.forEach(function (i) {
+      var unidade = i.unidadeConsumo || i.unidadeCompra || "";
+      corpo.appendChild(h("tr", { class: "clicavel", tabindex: "0", onclick: function () { abrirItem(i.id); }, onkeydown: function (ev) { if (ev.key === "Enter") abrirItem(i.id); } },
+        h("td", null, i.nome, h("span", { class: "sub" }, [i.codigo, i.categoria, i.origem === "local" ? "só no Alveare" : ""].filter(Boolean).join(" · "))),
+        h("td", { class: "dir" }, i.saldo === null ? h("span", { class: "qtd-desconhecida" }, "desconhecido") : h("span", { class: "qtd" }, qtdBR(i.saldo) + " " + unidade)),
+        h("td", null, h("span", { class: "selo selo-" + i.situacao }, SITUACAO_EST[i.situacao]), i.validadeProxima ? h("span", { class: "sub desatualizado" }, "validade " + dataBR(i.validadeMaisProxima)) : null),
+        h("td", null, i.saldoObservadoEm ? h("span", { class: i.desatualizado ? "desatualizado" : "" }, new Date(i.saldoObservadoEm).toLocaleDateString("pt-BR") + (i.desatualizado ? " · antigo" : "")) : "—")));
+    });
+    el("vazioEstoque").hidden = lista.length > 0;
+  }
+
+  var itemAberto = null;
+  function abrirItem(id) {
+    var i = estoque.itens.filter(function (x) { return x.id === id; })[0];
+    if (!i) return;
+    itemAberto = i;
+    var unidade = i.unidadeConsumo || i.unidadeCompra || "";
+    el("itemTitulo").textContent = i.nome;
+    var sd = limpar(el("itemSaldo"));
+    sd.appendChild(document.createTextNode(i.saldo === null ? "Saldo desconhecido" : qtdBR(i.saldo) + " " + unidade));
+    sd.appendChild(h("small", null, i.saldoObservadoEm ? (i.origem === "local" ? "Calculado no Alveare em " : "Retrato de ") + new Date(i.saldoObservadoEm).toLocaleString("pt-BR") + (i.desatualizado ? " — antigo, pode não ser o atual" : "") : "Nenhuma quantidade informada pela fonte."));
+    var dl = limpar(el("itemDados"));
+    var par = function (k, v) { if (v === null || v === undefined || v === "") return; dl.appendChild(h("dt", null, k)); dl.appendChild(h("dd", null, v)); };
+    par("Fonte", { importacao: "Importação de arquivo (manual)", clinicorp: "Clinicorp", local: "Só no Alveare" }[i.origem] || i.origem);
+    par("Código", i.codigo); par("Categoria", i.categoria);
+    par("Unidade", (i.unidadeCompra && i.unidadeCompra !== i.unidadeConsumo ? "compra em " + i.unidadeCompra + (i.fator ? " (" + qtdBR(i.fator) + " " + (i.unidadeConsumo || "") + " cada)" : " — falta o fator") + "; consumo em " : "") + (i.unidadeConsumo || "—"));
+    par("Estoque mínimo", i.minimo ? qtdBR(i.minimo) + " " + unidade : "");
+    par("Custo unitário", i.custoUnitario !== null && i.custoUnitario !== undefined ? brl(i.custoUnitario) + " por " + (unidade || "unidade") + (i.custoFonte === "estimativa" ? " (estimativa local)" : i.custoFonte ? " (informado pela fonte)" : "") : "");
+    par("Precificação", i.insumoId ? "já usado nas fichas de custo" : "");
+    var ul = limpar(el("itemLocais"));
+    if (!(i.locais || []).length) ul.appendChild(h("li", { class: "det" }, "Sem retrato por local."));
+    (i.locais || []).forEach(function (l) {
+      ul.appendChild(h("li", null, h("span", { class: "nome" }, (l.local || "sem local") + (l.lote ? " · lote " + l.lote : "")),
+        h("span", { class: "det" }, (l.quantidade === "" ? "desconhecido" : qtdBR(l.quantidade) + " " + unidade) + (l.validade ? " · validade " + dataBR(l.validade) : "") + " · " + new Date(l.observadoEm).toLocaleDateString("pt-BR"))));
+    });
+    var hist = limpar(el("itemHistorico"));
+    el("itemHistTitulo").textContent = i.origem === "local" ? "Movimentos registrados no Alveare" : "Variações observadas entre retratos";
+    if (i.origem === "local") {
+      if (!i.movimentos.length) hist.appendChild(h("li", { class: "det" }, "Nenhum movimento."));
+      i.movimentos.slice().reverse().forEach(function (m) { hist.appendChild(h("li", null, h("span", { class: "nome" }, (m.tipo === "saida" ? "− " : "+ ") + qtdBR(m.quantidade) + " " + unidade), h("span", { class: "det" }, dataBR(m.data) + (m.motivo ? " · " + m.motivo : "") + (m.autorNome ? " · " + m.autorNome : "")))); });
+    } else {
+      if (!i.variacoes.length) hist.appendChild(h("li", { class: "det" }, "Só um retrato até agora. A fonte informa saldos, não movimentos: as diferenças entre retratos aparecem aqui, sem explicação inventada."));
+      i.variacoes.slice().reverse().forEach(function (v2) { hist.appendChild(h("li", null, h("span", { class: "nome" }, (Number(v2.variacao) > 0 ? "+" : "") + qtdBR(v2.variacao) + " " + unidade), h("span", { class: "det" }, "entre " + new Date(v2.de).toLocaleDateString("pt-BR") + " e " + new Date(v2.ate).toLocaleDateString("pt-BR")))); });
+    }
+    el("itemMovimentar").hidden = i.origem !== "local";
+    var selU = limpar(el("itUnidade"));
+    ["", "un", "ml", "l", "g", "kg", "mg", "cm", "m", "uso"].forEach(function (u) { selU.appendChild(h("option", { value: u }, u || "—")); });
+    selU.value = i.unidadeConsumo || "";
+    el("itFator").value = qtdBR(i.fator); el("itMinimo").value = qtdBR(i.minimo); el("itNotas").value = i.notas || "";
+    el("mvQtd").value = ""; el("mvMotivo").value = "";
+    el("itemErro").textContent = "";
+    el("itPrecificar").textContent = i.insumoId ? "Atualizar na precificação" : "Usar na precificação";
+    if (!el("dlgItem").open) el("dlgItem").showModal();
+  }
+
+  async function opEstoque(op, msg) {
+    try { await aplicar(op); toast(msg); await carregarEstoque(); if (itemAberto) abrirItem(itemAberto.id); }
+    catch (e) { el("itemErro").textContent = e.message; }
+  }
+
+  function ligarEstoque() {
+    ["feBusca", "feCategoria", "feLocal", "feSituacao"].forEach(function (id) { el(id).addEventListener("input", renderEstoque); el(id).addEventListener("change", renderEstoque); });
+    el("btnImportarEstoque").addEventListener("click", function () {
+      FloreSerImportacao.abrir({ modulo: MOD, tipo: "estoque", titulo: "Importar estoque (manual)", token: token,
+        aviso: "Importação manual: use o arquivo exportado do estoque do Clinicorp (ou outra planilha). O mapeamento fica salvo para a próxima vez. Cada importação é um retrato dos saldos na data informada; o mesmo arquivo no mesmo dia não duplica.",
+        campos: [
+          { id: "nome", nome: "Produto ou insumo", tipo: "texto", apelidos: ["nome", "produto", "insumo", "descricao", "descrição", "item"] },
+          { id: "codigo", nome: "Código", tipo: "texto", apelidos: ["codigo", "código", "cod", "sku", "referencia"] },
+          { id: "quantidade", nome: "Quantidade atual", tipo: "decimal", apelidos: ["quantidade", "saldo", "estoque", "qtd", "qtde"] },
+          { id: "unidade", nome: "Unidade (UN, CX, ML, G...)", tipo: "texto", apelidos: ["unidade", "un", "unidade de medida", "medida"] },
+          { id: "categoria", nome: "Categoria", tipo: "texto", apelidos: ["categoria", "grupo", "tipo"] },
+          { id: "minimo", nome: "Estoque mínimo", tipo: "decimal", apelidos: ["minimo", "mínimo", "estoque minimo", "estoque mínimo"] },
+          { id: "custoUnitario", nome: "Custo unitário", tipo: "dinheiro", apelidos: ["custo", "custo unitario", "custo unitário", "preco", "preço", "valor unitario"] },
+          { id: "local", nome: "Local / unidade", tipo: "texto", apelidos: ["local", "unidade da clinica", "almoxarifado", "sala"] },
+          { id: "lote", nome: "Lote", tipo: "texto", apelidos: ["lote"] },
+          { id: "validade", nome: "Validade", tipo: "data", apelidos: ["validade", "vencimento", "data de validade"] },
+          { id: "dataRetrato", nome: "Data do retrato (vazio = hoje)", tipo: "data", apelidos: ["data", "data do saldo", "posicao", "posição"] }
+        ],
+        aoConcluir: function () { carregarEstoque(); recarregar(); } });
+    });
+    el("btnNovoItem").addEventListener("click", function () {
+      var nome = window.prompt("Item que NÃO está no Clinicorp (fica marcado como \"só no Alveare\", com saldo próprio). Nome:", "");
+      if (!nome) return;
+      var unidade = window.prompt("Unidade de consumo (un, ml, g...):", "un") || "un";
+      opEstoque({ tipo: "estoque.item.salvar", id: novoId("est"), revBase: 0, dados: { nome: nome.trim(), unidadeConsumo: unidade.trim(), unidadeCompra: unidade.trim() } }, "Item criado.");
+    });
+    el("mvRegistrar").addEventListener("click", function () {
+      if (!itemAberto) return;
+      opEstoque({ tipo: "estoque.movimento", itemId: itemAberto.id, dados: { id: novoId("mv"), tipo: el("mvTipo").value, quantidade: el("mvQtd").value.trim(), data: hoje(), motivo: el("mvMotivo").value.trim() } }, "Registrado.");
+    });
+    el("itSalvar").addEventListener("click", function () {
+      if (!itemAberto) return;
+      opEstoque({ tipo: "estoque.item.salvar", id: itemAberto.id, revBase: itemAberto._rev, dados: { unidadeConsumo: el("itUnidade").value, fator: el("itFator").value.trim(),
+        minimo: el("itMinimo").value.trim(), notas: el("itNotas").value } }, "Ajustes salvos.");
+    });
+    el("itPrecificar").addEventListener("click", async function () {
+      if (!itemAberto) return;
+      try { await aplicar({ tipo: "estoque.usarNaPrecificacao", itemId: itemAberto.id }); toast("Material disponível nas fichas de custo, com o custo do estoque."); await recarregar(); await carregarEstoque(); abrirItem(itemAberto.id); }
+      catch (e) { el("itemErro").textContent = e.message; }
+    });
+  }
+
+  /* ---------------------------------------------------------------
      Importação (planilha)
      --------------------------------------------------------------- */
 
@@ -1112,6 +1285,7 @@
 
   function ligar() {
     ligarAbas();
+    ligarEstoque();
     el("portao-btn").addEventListener("click", abrirLogin);
     el("btnNovaDespesa").addEventListener("click", function () { abrirDespesa(null); });
     el("formDespesa").addEventListener("submit", salvarDespesa);

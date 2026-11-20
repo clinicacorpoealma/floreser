@@ -510,6 +510,8 @@ function resumirFinanceiro(dados, filtros, hoje) {
   var dias = {};
   (dados.entradas || []).forEach(function (e) {
     if (!e.data || e.data < inicio || e.data > fim) return;
+    /* estornado na origem (Clinicorp): não conta como recebido */
+    if (e.estornada) { ent.estornadas = (ent.estornadas || 0) + 1; return; }
     var origem = e.origem || "manual";
     ent.quantidade++;
     ent.porOrigem[origem] = (ent.porOrigem[origem] || 0) + 1;

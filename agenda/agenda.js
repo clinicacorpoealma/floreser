@@ -2433,7 +2433,7 @@ function modalFicha(id){
   /* agendamentos do Clinicorp desta paciente: só contexto — a Agenda
      continua a fonte dos atendimentos e nada daqui muda ciclos ou séries */
   const caixaInt=document.getElementById('ficha-clinicorp');
-  if(caixaInt){ const b=FloreSerIntegracao.bloco('agenda',p.id); if(b) caixaInt.appendChild(b); }
+  if(caixaInt){ const b=FloreSerIntegracao.bloco('agenda',p.id); if(b) caixaInt.appendChild(b); caixaInt.dataset.paciente=p.id; }
   const caixaAud=document.getElementById('ficha-auditoria');
   if(caixaAud && window.FloreSerAuditoria){
     FloreSerAuditoria.montar(caixaAud,{
@@ -3310,7 +3310,21 @@ function abrirApp(){
   }
   maturar();
   tudo();
-  if(window.FloreSerIntegracao) FloreSerIntegracao.carregar('agenda',()=>FloreSerSessao.tokenPara('agenda'));
+  if(window.FloreSerIntegracao){
+    FloreSerIntegracao.carregar('agenda',()=>FloreSerSessao.tokenPara('agenda'));
+    const quem=document.getElementById('quemEsta');
+    if(quem && quem.parentNode) quem.parentNode.insertBefore(FloreSerIntegracao.selo('agenda'),quem);
+    /* novidade do Clinicorp: só o bloco da ficha aberta é redesenhado — o
+       que a pessoa está editando não é tocado */
+    FloreSerIntegracao.ouvir(m=>{
+      if(m!=='agenda') return;
+      const caixa=document.getElementById('ficha-clinicorp');
+      if(!caixa || !caixa.dataset.paciente) return;
+      while(caixa.firstChild) caixa.removeChild(caixa.firstChild);
+      const b=FloreSerIntegracao.bloco('agenda',caixa.dataset.paciente);
+      if(b) caixa.appendChild(b);
+    });
+  }
 
   /* Se o site ficar aberto e o dia virar, tudo se recalcula sozinho */
   let diaAtual=D.hoje();

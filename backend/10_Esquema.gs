@@ -1,5 +1,5 @@
 /* =====================================================================
-   10_Esquema — o desenho do banco (schema 3)
+   10_Esquema — o desenho do banco (schema 4)
    ---------------------------------------------------------------------
    A fonte única das tabelas: nome da aba, chave, campos e tipos. A camada
    de tabelas (02) valida o cabeçalho real contra isto; a migração (40)
@@ -52,7 +52,7 @@ var ESQUEMA = {
     "em:data", "adiadaPara:data", "vezes:inteiro"] },
 
   ent_entradas: { chave: ["id"], campos: ["id:texto", "nome:texto", "data:data", "descricao:texto", "obs:texto",
-    "criadoEm:instante", "legado:json", "origem:texto", "loteId:texto"], raiz: true },
+    "criadoEm:instante", "legado:json", "origem:texto", "loteId:texto", "externoEstado:texto"], raiz: true },
   ent_pagamentos: { chave: ["id"], campos: ["id:texto", "entradaId:texto", "ordem:inteiro", "metodo:texto",
     "valor:dinheiro", "parcelas:inteiro"] },
 
@@ -107,9 +107,9 @@ var ESQUEMA = {
     "notas:texto"], raiz: true },
   fin_insumos: { chave: ["id"], desde: 3, campos: ["id:texto", "nome:texto", "unidadeCompra:texto",
     "conteudo:texto", "unidadeConteudo:texto", "valorEmbalagem:dinheiro", "rendimento:texto", "perdaPct:texto",
-    "notas:texto", "ativo:booleano"], raiz: true },
+    "notas:texto", "ativo:booleano", "itemEstoqueId:texto", "custoFonte:texto"], raiz: true },
   fin_fichas: { chave: ["id"], desde: 3, campos: ["id:texto", "tipo:texto", "nome:texto", "precoAtual:dinheiro",
-    "dados:json", "versaoAprovada:inteiro", "clinicorpProcedimentoId:texto", "arquivada:booleano"], raiz: true },
+    "dados:json", "versaoAprovada:inteiro", "clinicorpProcedimentoId:texto", "arquivada:booleano", "revisar:texto"], raiz: true },
   fin_fichas_versoes: { chave: ["id"], desde: 3, grande: true, campos: ["id:texto", "fichaId:texto", "versao:inteiro",
     "aprovadaEm:instante", "aprovadaPor:texto", "dados:json", "resultado:json"] },
 
@@ -119,13 +119,28 @@ var ESQUEMA = {
     "sincronizadoEm:instante", "criadoEm:instante", "criadoPor:texto"], raiz: true },
   int_externos: { chave: ["id"], desde: 3, campos: ["id:texto", "sistema:texto", "assinante:texto", "unidade:texto",
     "tipo:texto", "externoId:texto", "dados:json", "assinatura:texto", "alteradoExterno:texto", "vistoEm:instante",
-    "ausenteDesde:instante", "complemento:json", "execucaoId:texto"], raiz: true },
+    "ausenteDesde:instante", "complemento:json", "execucaoId:texto", "aplicado:texto", "aplicadoEm:instante",
+    "aplicacao:json"], raiz: true },
   int_execucoes: { chave: ["id"], desde: 3, grande: true, campos: ["id:texto", "recurso:texto", "modo:texto",
     "estado:texto", "origem:texto", "autor:texto", "iniciadoEm:instante", "atualizadoEm:instante",
     "concluidoEm:instante", "de:data", "ate:data", "cursor:json", "contagens:json", "erros:json"] },
   int_pendencias: { chave: ["id"], desde: 3, campos: ["id:texto", "recurso:texto", "tipo:texto", "chave:texto",
     "externoId:texto", "localTipo:texto", "localId:texto", "resumo:texto", "detalhes:json", "estado:texto",
     "criadoEm:instante", "resolvidoEm:instante", "resolvidoPor:texto", "resolucao:texto"], raiz: true },
+  /* ---- Estoque (schema 4) ----
+     Quantidades são texto decimal ("12.5"), calculadas em milésimos
+     inteiros (30_RegrasFinanceiro: qtdMil). Saldo é sempre um RETRATO com
+     data e fonte; nunca um número solto. */
+  est_itens: { chave: ["id"], desde: 4, campos: ["id:texto", "nome:texto", "codigo:texto", "categoria:texto",
+    "unidadeCompra:texto", "unidadeConsumo:texto", "fator:texto", "minimo:texto", "custoUnitario:dinheiro",
+    "custoFonte:texto", "origem:texto", "externoId:texto", "local:texto", "ativo:booleano", "notas:texto",
+    "criadoEm:instante"], raiz: true },
+  est_saldos: { chave: ["id"], desde: 4, grande: true, campos: ["id:texto", "itemId:texto", "local:texto",
+    "quantidade:texto", "lote:texto", "validade:data", "custoUnitario:dinheiro", "fonte:texto", "loteImportacao:texto",
+    "observadoEm:instante"] },
+  est_movimentos: { chave: ["id"], desde: 4, grande: true, campos: ["id:texto", "itemId:texto", "tipo:texto",
+    "quantidade:texto", "data:data", "motivo:texto", "criadoEm:instante", "autorNome:texto", "opId:texto"] },
+
   int_passos: { chave: ["id"], desde: 3, campos: ["id:texto", "operacaoId:texto", "tipo:texto", "estado:texto",
     "tentativas:inteiro", "pedido:json", "resposta:json", "localTipo:texto", "localId:texto", "externoId:texto",
     "criadoEm:instante", "atualizadoEm:instante", "autor:texto"] }
@@ -134,8 +149,11 @@ var ESQUEMA = {
 /* Colunas que o schema 3 acrescentou a tabelas do schema 2 (no fim da
    aba, sem mover nada). */
 var COLUNAS_DESDE = {
-  ent_entradas: { origem: 3, loteId: 3 },
-  sis_usuarios: { financeiro: 3 }
+  ent_entradas: { origem: 3, loteId: 3, externoEstado: 4 },
+  sis_usuarios: { financeiro: 3 },
+  fin_insumos: { itemEstoqueId: 4, custoFonte: 4 },
+  fin_fichas: { revisar: 4 },
+  int_externos: { aplicado: 4, aplicadoEm: 4, aplicacao: 4 }
 };
 
 /* Relações, conferidas pela migração e por conferirIntegridade().
@@ -164,7 +182,10 @@ var RELACOES_V2 = [
   { de: "fin_despesas", campo: "grupoId", para: "fin_grupos", forca: "fraca" },
   { de: "fin_categorias", campo: "paiId", para: "fin_categorias", forca: "fraca" },
   { de: "fin_orcamentos", campo: "categoriaId", para: "fin_categorias", forca: "fraca" },
-  { de: "fin_fichas_versoes", campo: "fichaId", para: "fin_fichas", forca: "forte" }
+  { de: "fin_fichas_versoes", campo: "fichaId", para: "fin_fichas", forca: "forte" },
+  { de: "est_saldos", campo: "itemId", para: "est_itens", forca: "forte" },
+  { de: "est_movimentos", campo: "itemId", para: "est_itens", forca: "forte" },
+  { de: "fin_insumos", campo: "itemEstoqueId", para: "est_itens", forca: "fraca" }
 ];
 
 var _DEFS = null;

@@ -178,7 +178,7 @@ function financeiroResumo(ctx) {
     var c = lerFinanceiroCru();
     var idPag = agrupar(lerTudo("ent_pagamentos"), "entradaId");
     var entradas = lerTudo("ent_entradas").map(function (e) {
-      return { data: e.data, origem: e.origem || "manual", pagamentos: (idPag[e.id] || []).map(function (p) { return { metodo: p.metodo, valor: Number(p.valor) || 0 }; }) };
+      return { data: e.data, origem: e.origem || "manual", estornada: e.externoEstado === "estornado", pagamentos: (idPag[e.id] || []).map(function (p) { return { metodo: p.metodo, valor: Number(p.valor) || 0 }; }) };
     });
     var base = { despesas: c.despesas, movimentos: c.movimentos, grupos: c.grupos, orcamentos: c.orcamentos,
       saldos: c.saldos, entradas: entradas };
@@ -257,6 +257,9 @@ function planejarFinanceiro(ctx, op) {
     case "recorrencia.encerrar": return planejarEncerrarRecorrencia(ctx, op);
     case "ficha.salvar": return planejarFicha(ctx, op);
     case "ficha.aprovar": return planejarAprovarFicha(ctx, op);
+    case "estoque.item.salvar": return planejarItemEstoque(ctx, op);
+    case "estoque.movimento": return planejarMovimentoEstoque(ctx, op);
+    case "estoque.usarNaPrecificacao": return planejarUsarNaPrecificacao(ctx, op);
   }
   falhar("dados_invalidos", "Operação desconhecida no Financeiro: " + op.tipo + ".");
 }
@@ -668,7 +671,7 @@ function planejarAprovarFicha(ctx, op) {
     resultado: { precoSugerido: calc.precoSugerido, custoDireto: calc.custoDireto, rateio: calc.rateio, custoTotal: calc.custoTotal,
       r: calc.r, m: calc.m, memoria: calc.memoria } };
   var rev = (Number(atual.rev) || 0) + 1;
-  var reg = carimbar(registroCompleto("fin_fichas", { versaoAprovada: versao }, atual), rev, ctx, op.operacaoId);
+  var reg = carimbar(registroCompleto("fin_fichas", { versaoAprovada: versao, revisar: "" }, atual), rev, ctx, op.operacaoId);
   var ev = [evento("financeiro", "ficha", id, "aprovou", "Versão", String(versao - 1), String(versao), "preço sugerido " + dinheiroBR(calc.precoSugerido))];
   var o = publicoDe("fin_fichas", reg); o._calculo = calc;
   return { escritas: [{ t: "inserir", tabela: "fin_fichas_versoes", registro: v }, { t: "gravar", tabela: "fin_fichas", registro: reg }]

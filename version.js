@@ -33,6 +33,37 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "4.2.0",
+      codinome: "ENXAME",
+      data: "20/11/2026",
+      mudancas: {
+        "Adicionado": [
+          "Funcionamento automático com o Clinicorp: depois de configurado uma vez, o Alveare busca as novidades sozinho no intervalo escolhido (a partir de 15 minutos), mesmo com todo mundo com o site fechado, e coloca cada coisa no módulo certo.",
+          "Recebimentos do Clinicorp entram sozinhos nas Entradas (e no Financeiro, sem contar duas vezes). Se o valor mudar ou o pagamento for estornado lá, a entrada acompanha, com histórico; estornado fica marcado e sai das somas.",
+          "Orçamentos aprovados ou reprovados no Clinicorp levam a lead à etapa correspondente, pelas regras do CRM — só quando ligado, e só a partir de Em aberto ou Fazer orçamento.",
+          "Agendamentos marcados, remarcados ou desmarcados no Clinicorp entram na série da paciente na Agenda, na área configurada para cada profissional. Pela ficha dá para confirmar ou desmarcar no Clinicorp, quando a configuração permitir.",
+          "Assistente de configuração no painel → Integrações, em seis passos, com a opção recomendada “Usar o Clinicorp como fonte principal dos dados compartilhados” explicada com exemplos.",
+          "Estoque no Financeiro: o que tem, quanto e desde quando se sabe, com busca, filtros, esgotados, abaixo do mínimo, validade próxima, lista de reposição e detalhe de cada item. Como a API do Clinicorp ainda não dá acesso ao estoque, a fonte é o arquivo exportado (importação manual, com mapeamento salvo); itens que não existem no Clinicorp podem ser controlados só no Alveare.",
+          "Itens do estoque podem ser usados direto nas fichas de custo, com unidade e custo do estoque; quando o custo muda, os cálculos acompanham e a ficha aprovada avisa que precisa de revisão."
+        ],
+        "Alterado": [
+          "Quando algo precisa de decisão — “é o mesmo paciente?”, “este recebimento é esta entrada?” —, a pergunta aparece na própria ficha, com a consequência explicada, e a resposta vale para as próximas atualizações. O painel fica para configuração e manutenção.",
+          "Cada módulo mostra se está atualizado: “atualizado há alguns minutos”, “atualizando”, “aguardando envio”, “precisa da sua atenção” ou “conexão interrompida”. As fichas se atualizam sozinhas, sem recarregar a página e sem mexer no que está sendo editado.",
+          "Data e valor de uma entrada que veio do Clinicorp, e as datas da Agenda que vieram de lá, aparecem só para leitura no Alveare (corrige-se no Clinicorp); observações e procedimento continuam editáveis."
+        ],
+        "Corrigido": [
+          "A busca dos agendamentos por paciente consultava só as primeiras quinze pacientes vinculadas; agora cobre todas, continuando de onde parou, e só conta como completa quando todas foram consultadas.",
+          "Trocar de conta ou de clínica no Clinicorp não reaproveita mais o ponto de retomada da anterior, e os registros de contas diferentes não se misturam.",
+          "A opção “recebimentos filtrados por” do painel não ficava guardada."
+        ],
+        "Técnico": [
+          "Schema 4: abas do estoque, marcas de aplicação nos registros externos e identidade com o assinante. A migração parte do schema 3 e faz uma reconciliação inicial que não recria o que já foi importado ou lançado à mão.",
+          "Aplicação dos registros externos como fila persistente, uma operação por registro (repetir não duplica), com três tentativas e pendência só para o que precisa de uma pessoa; uma falha não segura os outros.",
+          "Testes novos da automação (simulada, incluindo ponta a ponta sem abrir o painel) e do estoque."
+        ]
+      }
+    },
+    {
       versao: "4.1.0",
       codinome: "FAVO",
       data: "20/11/2026",
@@ -867,14 +898,14 @@
   /* Carimbo do conteúdo da casca (hash curto dos arquivos que o Service
      Worker guarda). Atualizado por ferramentas/preparar-publicacao.js; se
      ninguém rodar a ferramenta, a versão sozinha já troca o cache. */
-  var CARIMBO_CASCA = "2162561b1e";
+  var CARIMBO_CASCA = "c6ef055e57";
 
   global.FLORESER = {
     changelog: CHANGELOG,
     categorias: CATEGORIAS,
     atual: atual,
     rotulo: "v" + atual.versao + " — " + atual.codinome,
-    compat: { api: 2, schema: 3 },
+    compat: { api: 2, schema: 4 },
     casca: atual.versao + (CARIMBO_CASCA ? "-" + CARIMBO_CASCA : "")
   };
 

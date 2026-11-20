@@ -30,7 +30,7 @@ function pagamentosDaEntrada(idPag, entradaId) {
 function entradaPublica(e, idPag) {
   return {
     id: e.id, nome: e.nome || "", data: e.data || "", descricao: e.descricao || "", obs: e.obs || "",
-    criadoEm: e.criadoEm || "", origem: e.origem || "",
+    criadoEm: e.criadoEm || "", origem: e.origem || "", externoEstado: e.externoEstado || "",
     pagamentos: pagamentosDaEntrada(idPag, e.id).map(function (p) {
       return { metodo: METODOS_ENTRADA.indexOf(p.metodo) >= 0 ? p.metodo : "pix", valor: Number(p.valor) || 0,
         parcelas: Math.min(12, Math.max(1, Number(p.parcelas) || 1)) };
@@ -105,6 +105,16 @@ function planejarEntrada(ctx, op) {
   if (!dataValida(depois.data)) falhar("dados_invalidos", "A entrada precisa de uma data.", { campo: "data" });
   var pags = criar ? fonte.pagamentos : op.pagamentos;
   if (pags !== undefined) depois.pagamentos = validarPagamentos(pags);
+  /* entrada vinculada a um recebimento do Clinicorp: data e valor/forma são
+     de lá (CAMPOS_DO_CLINICORP) — mudar aqui seria desfeito na próxima
+     atualização. Observação e procedimento continuam do Alveare. */
+  if (!criar && antes && typeof entradaVinculadaAoClinicorp === "function" && entradaVinculadaAoClinicorp(id) &&
+      !(ctx.auth && ctx.auth.tipo === "sistema") && String(ctx.acao || "").indexOf("integracao") < 0) {
+    if (!mesmoValor(antes.data, depois.data) || totalPagamentos(antes.pagamentos) !== totalPagamentos(depois.pagamentos) ||
+        resumoPagamentos(antes.pagamentos) !== resumoPagamentos(depois.pagamentos)) {
+      falhar("dados_invalidos", "Data e valor desta entrada vêm do Clinicorp: corrija lá, e a entrada acompanha na próxima atualização.", { campo: "pagamentos" });
+    }
+  }
   if (criar && !depois.pagamentos.length) falhar("dados_invalidos", "A entrada precisa de uma forma de pagamento.", { campo: "pagamentos" });
 
   /* pagamentos: a posição continua com o mesmo id; o que sobra sai */

@@ -2413,12 +2413,14 @@
         if (!window.FloreSerIntegracao) return;
         let vivo = true;
         FloreSerIntegracao.carregar("crm", () => SESSAO.token).then(() => { if (vivo) setVersao((v) => v + 1); });
-        return () => { vivo = false; };
+        /* a rotina do servidor trouxe novidade: redesenha só este bloco */
+        const parar = FloreSerIntegracao.ouvir((m) => { if (vivo && m === "crm") setVersao((v) => v + 1); });
+        return () => { vivo = false; parar(); };
       }, []);
       useEffect(() => {
         if (!caixa.current || !window.FloreSerIntegracao) return;
         while (caixa.current.firstChild) caixa.current.removeChild(caixa.current.firstChild);
-        const b = FloreSerIntegracao.bloco("crm", leadId);
+        const b = FloreSerIntegracao.bloco("crm", leadId, () => setVersao((v) => v + 1));
         if (b) caixa.current.appendChild(b);
       });
       return <div ref={caixa}></div>;

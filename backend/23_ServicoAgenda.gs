@@ -303,6 +303,8 @@ function planejarPaciente(ctx, op, criar) {
     depois.ciclos[area] = validarCiclo(ciclos[area], area);
   });
   AREAS_AGENDA.forEach(function (a) { if (!depois.ciclos[a]) delete depois.ciclos[a]; });
+  /* data que veio do Clinicorp não some por edição local (39) */
+  if (typeof datasExternasProtegidas === "function") datasExternasProtegidas(ctx, id, antes, depois);
 
   var condicoes = criar ? fonte.condicoes : op.condicoes;
   if (condicoes !== undefined) depois.condicoes = validarCondicoes(condicoes || []);

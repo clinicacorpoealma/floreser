@@ -57,10 +57,12 @@ var CLINICORP_OPERACOES = {
   "agendamentos.mudarStatus": { metodo: "get", caminho: "/appointment/change_status", efeito: "mutacao", direcao: "envio", implementado: false,
     parametros: ["id*", "status_id*"], granularidade: "muda o status de um ou vários agendamentos",
     limitacoes: "É GET, mas MUDA dados. Não implementado: nenhuma chamada a este endereço sai do Alveare." },
-  "agendamentos.confirmar": { metodo: "post", caminho: "/appointment/confirm_appointment", efeito: "mutacao", direcao: "envio", implementado: false,
-    parametros: ["subscriber_id", "id"], granularidade: "confirma um agendamento", limitacoes: "Não implementado." },
-  "agendamentos.cancelar": { metodo: "post", caminho: "/appointment/cancel_appointment", efeito: "mutacao", direcao: "envio", implementado: false,
-    parametros: ["subscriber_id", "id"], granularidade: "cancela um agendamento", limitacoes: "Não implementado." },
+  "agendamentos.confirmar": { metodo: "post", caminho: "/appointment/confirm_appointment", efeito: "mutacao", direcao: "envio", implementado: true,
+    parametros: ["subscriber_id", "id"], granularidade: "confirma um agendamento",
+    limitacoes: "Implementado com respostas simuladas; desligado até a política de Agenda permitir envio. Verificação depois de resposta perdida: /appointment/list do dia, pelo StatusId/descrição. Nunca exercitado na conta real." },
+  "agendamentos.cancelar": { metodo: "post", caminho: "/appointment/cancel_appointment", efeito: "mutacao", direcao: "envio", implementado: true,
+    parametros: ["subscriber_id", "id"], granularidade: "desmarca um agendamento",
+    limitacoes: "Implementado com respostas simuladas; desligado até a política de Agenda permitir envio. Verificação depois de resposta perdida: /appointment/list com includeCanceled=X (Canceled = X). Nunca exercitado na conta real." },
   "agendamentos.solicitar": { metodo: "post", caminho: "/appointment/create_online_scheduling", efeito: "mutacao", direcao: "envio", implementado: false,
     parametros: ["CodeLink", "PatientName", "date", "fromTime", "toTime"], granularidade: "cria uma SOLICITAÇÃO de agendamento online",
     limitacoes: "Solicitação não é agendamento definitivo. Não implementado." },
@@ -87,6 +89,17 @@ var CLINICORP_OPERACOES = {
   "crm.enviarLead": { metodo: "post", caminho: "/crm/add_leads", efeito: "mutacao", direcao: "envio", implementado: true,
     parametros: ["subscriber_id", "Name", "Email", "Phone", "BoardName", "Notes"], granularidade: "acrescenta UM lead a uma campanha (BoardName)",
     limitacoes: "A resposta não traz id do lead, e não existe consulta de leads do CRM do Clinicorp: um envio com resposta perdida não pode ser verificado pela API e vai para revisão manual." },
+  /* Estoque: a especificação pública (49 endereços, conferida em 20/11/2026
+     nas duas URLs oficiais) NÃO tem listagem de produtos/insumos, saldos,
+     lotes nem movimentações. O único endereço de produtos cria ordem de
+     compra — e ordem de compra não é mercadoria recebida. */
+  "estoque.consultar": { metodo: "get", caminho: "(não documentado)", efeito: "leitura", direcao: "consulta", implementado: false,
+    parametros: [], granularidade: "itens, saldos, unidades, locais, lotes e movimentações",
+    limitacoes: "Sem endereço oficial na API pública. O adaptador do Alveare está pronto para receber o recurso (est_itens/est_saldos); falta o Clinicorp liberar e documentar a consulta. Ver docs/CLINICORP.md §Estoque." },
+  "produtos.ordemDeCompra": { metodo: "post", caminho: "/products/orders", efeito: "mutacao", direcao: "envio", implementado: false,
+    parametros: ["clinic* (CNPJ)", "orderCode*", "orderDate*", "products*[code, name, quantity, unitPrice, unitOfMeasurement, expirationDate]"],
+    granularidade: "cria uma ordem de compra",
+    limitacoes: "Não usado: criar ordem de compra não lê estoque, e ordem não é recebimento nem pagamento. As unidades do enum (UN, CX, ML, G...) servem de referência para o Estoque do Alveare." },
   "procedimentos.listar": { metodo: "get", caminho: "/procedures/list", efeito: "leitura", direcao: "consulta", implementado: true,
     parametros: [], granularidade: "procedimentos das tabelas de preço (nome, especialidade, tabela)",
     limitacoes: "Sem preço no retorno documentado. Ajuda opcional na Precificação; o Alveare nunca altera preço no Clinicorp." }
@@ -94,13 +107,17 @@ var CLINICORP_OPERACOES = {
 
 /* Recursos de sincronização: o que pode ser ligado no painel, e em que
    modo. Só aparecem modos implementados. */
+/* modos: desligado · consulta · importacao (só guarda o registro externo)
+   · automatico (guarda E aplica nos módulos pela política) · envio. */
 var CLINICORP_RECURSOS = {
-  orcamentos: { nome: "Orçamentos", operacao: "orcamentos.listar", tipo: "orcamento", modos: ["desligado", "consulta", "importacao"],
+  orcamentos: { nome: "Orçamentos", operacao: "orcamentos.listar", tipo: "orcamento", modos: ["desligado", "consulta", "importacao", "automatico"],
     janelaMaxDias: 31, modulos: ["crm"], futuroDias: 0 },
-  agendamentos: { nome: "Agendamentos", operacao: "agendamentos.listar", tipo: "agendamento", modos: ["desligado", "consulta", "importacao"],
+  agendamentos: { nome: "Agendamentos", operacao: "agendamentos.listar", tipo: "agendamento", modos: ["desligado", "consulta", "importacao", "automatico"],
     janelaMaxDias: 31, modulos: ["agenda"], futuroDias: 60 },
-  recebimentos: { nome: "Recebimentos", operacao: "recebimentos.listar", tipo: "recebimento", modos: ["desligado", "consulta", "importacao"],
+  recebimentos: { nome: "Recebimentos", operacao: "recebimentos.listar", tipo: "recebimento", modos: ["desligado", "consulta", "importacao", "automatico"],
     janelaMaxDias: 31, modulos: ["entradas", "financeiro"], futuroDias: 0 },
+  estoque: { nome: "Estoque", operacao: "estoque.consultar", tipo: "estoque", modos: ["desligado"], janelaMaxDias: 0, modulos: ["financeiro"],
+    semLote: true, semAcesso: "A API pública do Clinicorp não tem consulta de estoque (produtos, saldos, lotes, movimentações). Use a importação de arquivo no Financeiro → Estoque até o Clinicorp liberar o acesso." },
   pacientes: { nome: "Pacientes", operacao: "pacientes.buscar", tipo: "paciente", modos: ["desligado", "consulta", "envio"],
     janelaMaxDias: 0, modulos: ["crm", "agenda"], semLote: true },
   crm: { nome: "CRM (campanhas)", operacao: "crm.campanhas", tipo: "campanha", modos: ["desligado", "consulta", "envio"],
@@ -114,6 +131,8 @@ var CLINICORP_RECURSOS = {
 /* Eventos de orçamento que podem virar proposta no CRM. Nunca uma ação
    automática: a proposta é uma pendência que uma pessoa aplica, e aplicar
    passa por conferirLeadCRM. */
+/* regra por evento: contexto (só mostra) · propor (pendência) · aplicar
+   (automático, pelas regras do CRM, só a partir das etapas de origem) */
 var CLINICORP_EVENTOS_ORCAMENTO = {
   APPROVED: { nome: "Orçamento aprovado", etapas: ["venda"], de: ["em_aberto", "fazer_orcamento"] },
   REJECTED: { nome: "Orçamento reprovado", etapas: ["venda_reprovada"], de: ["em_aberto", "fazer_orcamento"] },
@@ -181,6 +200,7 @@ function normalizarOrcamento(e) {
     reprovadoEm: diaDoClinicorp(e.RejectedDate), followUpEm: diaDoClinicorp(e.FollowUpDate),
     unidade: idExterno(e.BusinessId), profissionalId: idExterno(e.ProfessionalId), profissional: String(e.ProfessionalName || "").slice(0, 120),
     pacienteExternoId: idExterno(e.PatientId), pacienteNome: String(e.PatientName || "").slice(0, 200),
+    pacienteTelefone: String(e.PatientMobilePhone || "").slice(0, 40),
     procedimentos: procs.slice(0, 40).map(function (p) {
       return { descricao: String(p.OperationDescription || "").slice(0, 160), valor: centavosDoClinicorp(p.FinalAmount !== undefined ? p.FinalAmount : p.Amount),
         executado: marcadoX(p.Executed), naoAprovado: marcadoX(p.NotApproved), excluido: marcadoX(p.Deleted) };

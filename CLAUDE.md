@@ -117,9 +117,9 @@ do bloco compilado.
 
 ## Os dados
 
-O desenho das abas é o **schema 3** (`backend/10_Esquema.gs`,
+O desenho das abas é o **schema 4** (estoque e fila de aplicação; antes, o **schema 3** (`backend/10_Esquema.gs`,
 [ESQUEMA](docs/ESQUEMA.md)) — o schema 2 mais as abas `fin_*`, `int_*` e
-`sis_importacoes`, e três colunas no fim (`COLUNAS_DESDE`). Tabela ou coluna
+`sis_importacoes`, e três colunas no fim — `COLUNAS_DESDE`). Tabela ou coluna
 nova leva `desde` e entra numa migração incremental. Uma aba por entidade, id estável, cabeçalho manda,
 tipos conferidos, tudo gravado como texto. Datas de calendário `AAAA-MM-DD`;
 instantes em UTC; dinheiro em **centavos inteiros** na lógica e `"350.00"` na
@@ -253,8 +253,22 @@ servidor confere em todas as rotas, no resumo, na importação e na busca.
 - 401/403 suspendem a integração e avisam o administrador; os erros
   `integracao_*` nunca são da categoria `autenticacao` (ninguém é
   desconectado do Alveare).
-- Os módulos só mostram contexto (`FloreSerIntegracao`); nenhuma tela chama o
-  Clinicorp. A área de ação é o painel → Integrações.
+- Desde a 4.2.0 a aplicação nos módulos é **automática** para recursos em
+  modo `automatico` (`39_ClinicorpAplicacao`): fila = `int_externos` com
+  `aplicado ≠ assinatura`, uma operação por registro, pendência só para
+  identidade ambígua, conflito real, dado ausente ou recurso indisponível.
+  Regra nova de aplicação passa pelas regras do módulo (`planejarPaciente`,
+  `conferirLeadCRM`, `planejarImportarRecebimento`).
+- Campo do Clinicorp não se edita no Alveare: entrada vinculada (data,
+  pagamentos) e data de Agenda vinda de lá são recusadas no servidor e só
+  leitura na tela. Identidade externa leva o assinante (`idDoExterno`).
+- Nenhuma tela chama o Clinicorp: `FloreSerIntegracao` relê o estado local
+  (3 min / ao voltar para a aba) e as decisões de cada ficha usam
+  `integracao.decidir`. O painel fica para configurar (assistente), diagnóstico
+  e manutenção.
+- Estoque do Clinicorp: sem endpoint oficial. Não simular; importação manual
+  identificada como tal (`33_ServicoEstoque`). Item de fonte externa não tem
+  movimento local (sem estoque duplo).
 - Testes de integração são **simulados**; o que só a conta real responde
   está em CLINICORP.md §8.
 
@@ -304,7 +318,7 @@ a trava. Mudança de várias abas sem diário não entra.
 
 Rodar os testes: `node testes/backend.js`, `node testes/migracao.js`,
 `node testes/frontend.js`, `node testes/financeiro.js`,
-`node testes/integracao.js`. Servidor local: `node testes/servidor-local.js`
+`node testes/integracao.js`, `node testes/automacao.js`, `node testes/estoque.js`. Servidor local: `node testes/servidor-local.js`
 (`http://localhost:4180/floreser/`, backend real no simulador, dados
 sintéticos). Nunca use dado real em teste nem no repositório.
 
@@ -363,7 +377,7 @@ segmentos, só números, sem pular números.
 Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita. Coerente
 com a marca — natureza, florescimento, cuidado, luz — ou com a atualização.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA, FAROL, COLMEIA, FAVO.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA, FAROL, COLMEIA, FAVO, ENXAME.
 
 ### Changelog
 
@@ -435,6 +449,6 @@ mostra versão, API e schema do servidor.
 ## Ao publicar
 
 [PUBLICACAO](docs/PUBLICACAO.md) tem o passo a passo, inclusive as migrações
-da 4.0.0 e da 4.1.0 (schema 2 → 3), backup e retorno. Em toda publicação: **o Apps Script antes do site, ou
+da 4.0.0, da 4.1.0 (schema 2 → 3) e da 4.2.0 (schema 3 → 4), backup e retorno. Em toda publicação: **o Apps Script antes do site, ou
 junto** (Nova versão na mesma implantação); `version.js` sempre junto com o
 `index.html`; e a conferência dizendo "Tudo confere".

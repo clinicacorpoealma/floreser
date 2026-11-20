@@ -20,10 +20,13 @@
 var MAX_LINHAS_POR_LOTE = 150;
 var MODULOS_IMPORTACAO = ["financeiro", "entradas"];
 
+/* O que se importa: "financeiro" (despesas), "entradas" ou "estoque"
+   (pede a permissão do Financeiro: modulo "financeiro" + tipo "estoque"). */
 function conferirModuloDeImportacao(ctx) {
   var m = String(ctx.dados.modulo || "");
   if (MODULOS_IMPORTACAO.indexOf(m) < 0) falhar("dados_invalidos", "Este módulo não importa planilhas.");
   if (m === "entradas" && !eAdministrador(ctx.auth)) falhar("sem_permissao", "Só administradores importam entradas em lote.");
+  if (m === "financeiro" && ctx.dados.tipo === "estoque") return "estoque";
   return m;
 }
 
@@ -115,15 +118,67 @@ function conferirLinhaEntrada(bruta, cx) {
   return { registro: registro, erros: erros, avisos: avisos, chave: chave, repetidaDe: cx.existentes[chave] || "" };
 }
 
+/* ---- Estoque: retrato de saldos de um arquivo ----
+   Item casado pelo código (ou pelo nome, se não houver código) entre os
+   itens importados; item "só do Alveare" com o mesmo código NÃO é
+   misturado. O retrato tem id do (item, local, lote, dia): o mesmo arquivo
+   no mesmo dia não duplica. Quantidade vazia = saldo desconhecido. */
+function contextoEstoque() {
+  var porChave = {}, locais = {};
+  lerTudo("est_itens").forEach(function (i) {
+    var k = i.codigo ? "c:" + chaveDeNome(i.codigo) : "n:" + chaveDeNome(i.nome);
+    if (i.origem === "local") locais[k] = i; else porChave[k] = i;
+  });
+  var saldos = {};
+  lerTudo("est_saldos").forEach(function (sx) { saldos[sx.id] = true; });
+  return { porChave: porChave, locais: locais, saldos: saldos };
+}
+
+function conferirLinhaEstoque(bruta, cx) {
+  var erros = [], avisos = [];
+  var l = bruta || {};
+  var nome = String(l.nome || "").trim().slice(0, 160), codigo = String(l.codigo || "").trim().slice(0, 60);
+  if (!nome && !codigo) erros.push("sem nome nem código");
+  var k = codigo ? "c:" + chaveDeNome(codigo) : "n:" + chaveDeNome(nome);
+  var item = cx.porChave[k] || null;
+  if (cx.locais[k]) avisos.push("existe um item só do Alveare com o mesmo " + (codigo ? "código" : "nome") + ": não foi misturado");
+  var unidadeBruta = String(l.unidade || "").trim();
+  var unidade = EST_UNIDADES_FONTE[unidadeBruta.toUpperCase()] || unidadeBruta.toLowerCase();
+  if (unidadeBruta && EST_UNIDADES.indexOf(unidade) < 0 && EST_UNIDADES.indexOf(unidadeBruta.toUpperCase()) >= 0) unidade = unidadeBruta.toUpperCase();
+  if (unidadeBruta && EST_UNIDADES.indexOf(unidade) < 0) erros.push("unidade desconhecida: " + unidadeBruta.slice(0, 10));
+  var q = l.quantidade === undefined || l.quantidade === null || String(l.quantidade).trim() === "" ? null : qtdMil(l.quantidade);
+  if (q !== null && (isNaN(q) || q < 0)) erros.push("quantidade inválida (até 3 casas decimais)");
+  if (q === null) avisos.push("sem quantidade: o saldo fica desconhecido (não vira zero)");
+  var qConsumo = q;
+  if (q !== null && !isNaN(q) && item && unidade && item.unidadeConsumo && unidade !== item.unidadeConsumo) {
+    qConsumo = converterMil(q, unidade, item.unidadeConsumo, item);
+    if (qConsumo === null) erros.push("a unidade " + unidade + " não converte para " + item.unidadeConsumo + " (defina o fator no item)");
+  }
+  var minimo = l.minimo === undefined || String(l.minimo || "").trim() === "" ? null : qtdMil(l.minimo);
+  if (minimo !== null && (isNaN(minimo) || minimo < 0)) erros.push("estoque mínimo inválido");
+  var custo = l.custoUnitario === undefined || l.custoUnitario === null || l.custoUnitario === "" ? null : Number(l.custoUnitario);
+  if (custo !== null && (!Number.isInteger(custo) || custo < 0)) erros.push("custo inválido");
+  var validade = String(l.validade || "");
+  if (validade && !dataValida(validade)) erros.push("validade inválida");
+  var dia = String(l.dataRetrato || hojeNaClinica());
+  if (!dataValida(dia)) erros.push("data do retrato inválida");
+  var local = String(l.local || "").trim().slice(0, 80), lote = String(l.lote || "").trim().slice(0, 60);
+  var itemId = item ? item.id : "im-" + sha256Hex(k).slice(0, 20);
+  var saldoId = "im-" + sha256Hex(itemId + "|" + local + "|" + lote + "|" + dia).slice(0, 24);
+  var registro = { nome: nome || codigo, codigo: codigo, categoria: String(l.categoria || "").slice(0, 80), unidade: unidade, quantidade: qConsumo === null ? "" : qtdTexto(qConsumo),
+    minimo: minimo === null ? "" : qtdTexto(minimo), custoUnitario: custo, local: local, lote: lote, validade: validade, dataRetrato: dia, itemId: itemId, saldoId: saldoId };
+  return { registro: registro, erros: erros, avisos: avisos, chave: itemId + "|" + local + "|" + lote, repetidaDe: q !== null && cx.saldos[saldoId] ? saldoId : "" };
+}
+
 function analisarLinhas(modulo, linhas) {
-  var cx = modulo === "financeiro" ? contextoDespesas() : contextoEntradas();
-  var conferir = modulo === "financeiro" ? conferirLinhaDespesa : conferirLinhaEntrada;
+  var cx = modulo === "financeiro" ? contextoDespesas() : modulo === "estoque" ? contextoEstoque() : contextoEntradas();
+  var conferir = modulo === "financeiro" ? conferirLinhaDespesa : modulo === "estoque" ? conferirLinhaEstoque : conferirLinhaEntrada;
   var vistas = {};
   return linhas.map(function (l, i) {
     var r = conferir(l, cx);
     r.indice = i;
     if (!r.erros.length) {
-      if (r.repetidaDe) r.repetida = "já existe um registro igual (mesma data, valor e nome)";
+      if (r.repetidaDe) r.repetida = modulo === "estoque" ? "este retrato já foi importado (mesmo item, local, lote e dia)" : "já existe um registro igual (mesma data, valor e nome)";
       else if (vistas[r.chave] !== undefined) r.repetida = "igual à linha " + (vistas[r.chave] + 1) + " deste arquivo";
       else vistas[r.chave] = i;
     }
@@ -166,7 +221,9 @@ function planejarImportacao(ctx, modulo, op) {
     if (x.repetida && !incluir[x.indice]) { repetidas++; detalhes.push({ linha: x.indice + 1, repetida: x.repetida }); return; }
     var id = lote + "-" + (x.indice + 1);
     var r = x.registro;
-    if (modulo === "financeiro") {
+    if (modulo === "estoque") {
+      escritas = escritas.concat(escritasDeLinhaDeEstoque(ctx, op, r, lote));
+    } else if (modulo === "financeiro") {
       var desp = { id: id, descricao: r.descricao, categoriaId: r.categoriaId, fornecedorId: r.fornecedorId, valor: r.valor,
         competencia: r.competencia, vencimento: r.vencimento, meio: r.meio, conta: r.conta, area: r.area, notas: r.notas,
         cancelada: false, origem: "importacao", loteId: lote, criadoEm: agoraISO() };
@@ -192,6 +249,30 @@ function planejarImportacao(ctx, modulo, op) {
   escritas = escritas.concat(escritasDeAuditoria(ctx, [evento(modulo, "importacao", lote, "importou", "Planilha",
     "", op.arquivo + " — " + importadas + " registro(s); " + repetidas + " repetido(s) e " + comErro + " com erro deixados de fora")], op.operacaoId));
   return { escritas: escritas, resultado: { lote: lote, importadas: importadas, repetidas: repetidas, erros: comErro, detalhes: detalhes.slice(0, 200) } };
+}
+
+function escritasDeLinhaDeEstoque(ctx, op, r, lote) {
+  var saida = [];
+  var atual = acharPorChave("est_itens", r.itemId);
+  var valores = atual ? {} : { id: r.itemId, nome: r.nome, codigo: r.codigo, categoria: r.categoria, unidadeCompra: r.unidade, unidadeConsumo: r.unidade,
+    fator: "", minimo: r.minimo, origem: "importacao", externoId: r.codigo, local: r.local, ativo: true, notas: "", criadoEm: agoraISO() };
+  if (atual) {
+    if (r.nome && r.nome !== atual.nome) valores.nome = r.nome;
+    if (r.categoria) valores.categoria = r.categoria;
+    if (r.minimo && !atual.minimo) valores.minimo = r.minimo;
+  }
+  var mudouCusto = r.custoUnitario !== null && (!atual || !mesmoValor(atual.custoUnitario, r.custoUnitario));
+  if (mudouCusto) { valores.custoUnitario = r.custoUnitario; valores.custoFonte = "importacao"; }
+  if (!atual || Object.keys(valores).length) {
+    var reg = carimbar(registroCompleto("est_itens", valores, atual), (atual ? Number(atual.rev) || 0 : 0) + 1, ctx, op.operacaoId);
+    saida.push({ t: "gravar", tabela: "est_itens", registro: reg });
+    if (mudouCusto) saida = saida.concat(escritasDeCustoDoItem(ctx, op, reg));
+  }
+  if (r.quantidade !== "") {
+    saida.push({ t: "inserir", tabela: "est_saldos", registro: { id: r.saldoId, itemId: r.itemId, local: r.local, quantidade: r.quantidade, lote: r.lote,
+      validade: r.validade || null, custoUnitario: r.custoUnitario, fonte: "importacao", loteImportacao: lote, observadoEm: new Date(r.dataRetrato + "T12:00:00Z").toISOString() } });
+  }
+  return saida;
 }
 
 function importacaoHistorico(ctx) {

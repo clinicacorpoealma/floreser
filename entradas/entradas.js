@@ -106,6 +106,10 @@
   function entryTotal(e) {
     return e.pagamentos.reduce((s, p) => s + p.valor, 0);
   }
+  /* estornado/desfeito no Clinicorp: a entrada fica (rastreável), mas não
+     conta como dinheiro recebido nas somas */
+  function estornada(e) { return e._externoEstado === "estornado"; }
+  function contadas(list) { return list.filter(e => !estornada(e)); }
 
   /* ==========================================================
      3. Estado e persistência
@@ -147,6 +151,7 @@
         criadoEm: String(r.criadoEm || new Date().toISOString()),
         /* de onde veio (manual, importação, Clinicorp): só leitura, nunca sobe */
         _origem: String(r.origem || r._origem || ""),
+        _externoEstado: String(r.externoEstado || r._externoEstado || ""),
         _rev: Number(r._rev) || 0
       });
     }
@@ -594,7 +599,8 @@
      ========================================================== */
   function renderSummary(list) {
     if (!podeAdministrar) { el("summary").innerHTML = ""; return; }
-    const total = list.reduce((s, e) => s + entryTotal(e), 0);
+    list = contadas(list);
+    const total = contadas(list).reduce((s, e) => s + entryTotal(e), 0);
     let haver = 0;
     for (const e of list) for (const p of e.pagamentos) if (p.metodo === "haver") haver += p.valor;
     const recebido = total - haver;
@@ -626,6 +632,7 @@
 
   function renderDist(list) {
     if (!podeAdministrar) { el("dist").innerHTML = ""; return; }
+    list = contadas(list);
     const totals = {};
     let grand = 0;
     for (const e of list) for (const p of e.pagamentos) {
@@ -680,7 +687,7 @@
     const cells = days.map(d => {
       const iso = toISO(d);
       const list = byDay.get(iso) || [];
-      const total = list.reduce((s, e) => s + entryTotal(e), 0);
+      const total = contadas(list).reduce((s, e) => s + entryTotal(e), 0);
       const out = period === "mes" && d.getMonth() !== monthIdx;
       const cls = ["day"];
       if (out) cls.push("is-out");
@@ -716,7 +723,7 @@
     return `<article class="entry" data-id="${esc(e.id)}">
       <div class="entry-main">
         <div class="entry-top">
-          <span class="entry-name">${esc(e.nome || "Sem nome")}</span>
+          <span class="entry-name">${esc(e.nome || "Sem nome")}${e._origem === "clinicorp" ? ' <span class="entry-origem" title="Recebimento do Clinicorp">Clinicorp</span>' : ""}${estornada(e) ? ' <span class="entry-estornada" title="Estornado ou desfeito no Clinicorp: fora das somas">estornado no Clinicorp</span>' : ""}</span>
           <span class="entry-value num">${esc(fmtBRL(entryTotal(e)))}</span>
         </div>
         ${e.descricao ? `<div class="entry-desc">${esc(e.descricao)}</div>` : ""}
@@ -736,7 +743,7 @@
 
   function dayCardHtml(iso, list, open) {
     const d = fromISO(iso);
-    const total = list.reduce((s, e) => s + entryTotal(e), 0);
+    const total = contadas(list).reduce((s, e) => s + entryTotal(e), 0);
     return `<section class="day-card${open ? " is-open" : ""}" data-card="${iso}">
       <button type="button" class="day-card-head" data-toggle="${iso}" aria-expanded="${open}">
         <span class="dch-date">
@@ -977,10 +984,31 @@
     el("fDesc").value = entry ? entry.descricao : "";
     el("fObs").value = entry ? entry.obs : "";
     setPays(entry ? entry.pagamentos.map(p => Object.assign({}, p)) : [{ metodo: "pix", parcelas: 1, valor: 0 }]);
+    travarCamposDoClinicorp(entry);
 
     entryDialog.showModal();
     el("fNome").dataset.noac = "1";
     el("fNome").focus();
+  }
+
+  /* Entrada que é um recebimento do Clinicorp: data e valor/forma são de lá
+     (o servidor recusa mudar). Em vez de deixar editar e desfazer depois,
+     os campos ficam só para leitura, com o motivo à vista. */
+  function travarCamposDoClinicorp(entry) {
+    const info = entry && window.FloreSerIntegracao ? FloreSerIntegracao.de("entradas", entry.id) : null;
+    const travar = !!(info && info.recebimentoId);
+    ["fValor", "fData"].forEach(id => { el(id).readOnly = travar; });
+    el("paysList").querySelectorAll("input, select, button").forEach(c => { c.disabled = travar; });
+    el("btnAddPay").hidden = travar;
+    let aviso = el("avisoClinicorp");
+    if (!aviso) {
+      aviso = document.createElement("p");
+      aviso.id = "avisoClinicorp";
+      aviso.className = "aviso-clinicorp";
+      el("paysList").parentNode.insertBefore(aviso, el("paysList"));
+    }
+    aviso.hidden = !travar;
+    aviso.textContent = travar ? "Data e valor vêm do Clinicorp: corrija lá, e esta entrada acompanha na próxima atualização. Nome, procedimento e observação são seus." : "";
   }
 
   /* Abrir uma entrada pela busca não é editar. Esta tela mostra o que
@@ -1019,7 +1047,7 @@
       '<div id="detalheHistorico"></div></div>';
 
     /* contexto do Clinicorp (só leitura; a conciliação é no painel) */
-    const blocoInt = window.FloreSerIntegracao ? FloreSerIntegracao.bloco("entradas", id) : null;
+    const blocoInt = window.FloreSerIntegracao ? FloreSerIntegracao.bloco("entradas", id, async () => { try { await carregar(); render(); } catch (e) { } }) : null;
     if (blocoInt) el("detalheCorpo").insertBefore(blocoInt, el("detalheCorpo").querySelector(".det-sec"));
 
     if (detalheDialog.showModal) detalheDialog.showModal();
@@ -1743,7 +1771,23 @@
     render();
     setTimeout(abrirEntradaPedida, 0);
     renderBackupNote();
-    if (window.FloreSerIntegracao) FloreSerIntegracao.carregar("entradas", tokenAtual);
+    if (window.FloreSerIntegracao) {
+      FloreSerIntegracao.carregar("entradas", tokenAtual);
+      const acoes = document.querySelector(".topbar-actions");
+      if (acoes) acoes.insertBefore(FloreSerIntegracao.selo("entradas"), acoes.firstChild.nextSibling);
+      /* a rotina do servidor trouxe novidade: relê sem recarregar a página
+         e só se não houver edição local esperando para subir */
+      let ultimaVista = "";
+      FloreSerIntegracao.ouvir(async m => {
+        if (m !== "entradas") return;
+        const e = FloreSerIntegracao.estado("entradas");
+        const marca = e ? e.atualizadoEm + "|" + e.atencao : "";
+        if (marca === ultimaVista) return;
+        ultimaVista = marca;
+        if (precisaSalvar || emVoo || entryDialog.open) return;
+        try { await carregar(); render(); } catch (err) { }
+      });
+    }
     if (origemSessao === "usuario" && window.FloreSerAuth) {
       window.FloreSerAuth.montarIdentidade(el("quemEsta"), function () { location.reload(); });
       const sair = el("btnSair");

@@ -161,7 +161,35 @@ reimplante a versão anterior do script → republique o site 4.0.0 →
 fica nas abas novas, para quando voltar à 4.1.0. **Nunca** rode a migração
 da 3.5.0 de novo: ela se recusa com o schema 2 ou 3 ativo.
 
-## Publicações seguintes (4.1.x em diante)
+## 4.2.0 — Automático com o Clinicorp e Estoque (schema 3 → 4)
+
+Parte da 4.1.0 publicada (schema 3 ativo). Janela curta de manutenção:
+
+1. No computador: os testes (`backend`, `migracao`, `frontend`, `financeiro`,
+   `integracao`, `automacao`, `estoque`) e `node ferramentas/conferir-publicacao.js`.
+2. **Código** (todos antes da Nova versão): atualize `00_Config`, `01_Http`,
+   `10_Esquema`, `23_ServicoAgenda`, `24_ServicoEntradas`,
+   `30_RegrasFinanceiro`, `31_ServicoFinanceiro`, `32_ServicoImportacao`,
+   `35_ClinicorpContrato`, `36_ClinicorpCliente`, `37_ServicoIntegracao`,
+   `38_ClinicorpRecursos`; crie `33_ServicoEstoque`, `39_ClinicorpAplicacao`,
+   `43_MigracaoV4`. O `appsscript.json` já tem os escopos de serviço externo e
+   gatilhos.
+3. `ligarManutencao()` → **Nova versão** na mesma implantação.
+4. `migracaoV4Diagnosticar()` ("pronta") → `migracaoV4Backup()` →
+   `migracaoV4Executar()` (**CONFERÊNCIA: OK**) → `migracaoV4Ativar()`.
+5. Publique o site (alterados: `version.js`, `index.html` não muda,
+   `financeiro/*`, `compartilhado/integracao.*`, `compartilhado/importacao.js`,
+   `admin/integracoes.js`, `portal/portal.css`, `agenda/agenda.js`,
+   `entradas/*`, `crm/index.html`) → `desligarManutencao()`.
+6. Se havia rotina agendada da 4.1.0, ela continua só importando até o
+   assistente ser concluído. Para o automático: painel → Integrações →
+   **Configurar** (seis passos) → Ativar.
+
+Retorno: `ligarManutencao()` → `migracaoV4Retornar()` (desliga a rotina e
+devolve as chaves da 4.1.0) → reimplante a 4.1.0 e o site 4.1.0 →
+`desligarManutencao()`.
+
+## Publicações seguintes (4.2.x em diante)
 
 1. Mudou o servidor? Cole os `.gs` alterados e **Nova versão** na mesma
    implantação — sempre antes do site, ou junto.

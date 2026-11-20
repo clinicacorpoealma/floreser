@@ -1738,3 +1738,32 @@ dialog::backdrop {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   font-size: 11.5px;
 }
+
+.int-passo {
+  border: 1px solid var(--linha);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin: 0 0 10px;
+}
+
+.int-passo.feito { opacity: .75; }
+.int-passo.aberto { border-color: var(--teal); }
+.int-passo-topo { display: flex; align-items: center; gap: 10px; }
+
+.int-passo-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--sage);
+  color: var(--carvao);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.int-passo.feito .int-passo-num { background: var(--teal); color: var(--creme); }
+.int-passo-corpo { margin-top: 10px; }
+.int-escolha .btn-fino { text-align: left; white-space: normal; }
+.int-exemplos { margin: 8px 0 12px; padding-left: 18px; font-size: 12.5px; line-height: 1.5; }

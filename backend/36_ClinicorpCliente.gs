@@ -39,7 +39,9 @@ function ErroClinicorp(tipo, mensagem, status) {
 var CONFIG_CLINICORP_PADRAO = {
   assinante: "", unidade: "", recursos: {}, frequenciaHoras: 0, janelaReconsultaDias: 7,
   eventosOrcamento: {}, campanhaPadrao: "", valorSemTaxas: false,
-  suspensa: null, verificacao: null, ultimas: {}, desconectadaEm: null
+  suspensa: null, verificacao: null, ultimas: {}, desconectadaEm: null,
+  criarEntradas: true, areaPorProfissional: {}, frequenciaMin: 0, ativadaEm: null, fontePrincipal: false,
+  ultimaRotina: null, envioAgenda: false, recebimentosPor: ""
 };
 
 function configClinicorp() {

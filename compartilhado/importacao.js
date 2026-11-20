@@ -2,8 +2,8 @@
    FloreSer · Corpo e Alma — importar planilha (CSV/XLSX), para qualquer módulo
    ---------------------------------------------------------------------
    FloreSerImportacao.abrir({
-     modulo: "financeiro" | "entradas",
-     titulo, token: () => token,
+     modulo: "financeiro" | "entradas", tipo?: "estoque",
+     titulo, token: () => token, aviso?: texto,
      campos: [{ id, nome, obrigatorio, tipo: "texto"|"dinheiro"|"data"|"mes"|"inteiro", apelidos: [] }],
      aoConcluir(resultado)
    })
@@ -94,6 +94,16 @@
     return a + "-" + doisDigitos(mes) + "-" + doisDigitos(d);
   }
 
+  /* quantidade com até 3 casas, no formato canônico ("1250.5") que o
+     servidor lê sem ambiguidade */
+  function converterDecimal(texto, separador) {
+    var t = String(texto === undefined || texto === null ? "" : texto).trim().replace(/\s/g, "");
+    if (!t) return "";
+    if (separador === "virgula") t = t.replace(/\./g, "").replace(",", ".");
+    else t = t.replace(/,/g, "");
+    return /^-?\d+(\.\d{1,3})?$/.test(t) ? t : "inválida: " + String(texto).slice(0, 20);
+  }
+
   function converterMes(texto, formato) {
     var t = String(texto || "").trim();
     if (!t) return "";
@@ -123,10 +133,16 @@
 
   function abrir(opcoes) {
     o = opcoes || {};
-    est = { arquivo: null, livro: null, aba: "", linhas: [], cabecalho: true, mapa: {}, formatoData: "dmy", separador: "virgula", previa: null, incluir: {}, enviando: false, ops: {} };
+    est = { arquivo: null, livro: null, aba: "", linhas: [], cabecalho: true, mapa: {}, formatoData: "dmy", separador: "virgula", previa: null, incluir: {}, enviando: false, ops: {}, mapaSalvo: null };
     construir();
     desenhar();
     dlg.showModal();
+    /* o mapeamento da última importação deste tipo é reaproveitado (pelo
+       nome da coluna), para a próxima não pedir tudo de novo */
+    chamar("importacao.historico", { modulo: o.modulo, tipo: o.tipo || "" }).then(function (r) {
+      var ult = r && r.ok && r.dados.lotes && r.dados.lotes[0];
+      if (ult && ult.mapeamento) { est.mapaSalvo = ult.mapeamento; if (est.linhas.length) { sugerirMapa(); desenhar(); } }
+    }).catch(function () { });
   }
 
   function desenhar() {
@@ -143,6 +159,7 @@
     entrada.addEventListener("change", function () { if (entrada.files && entrada.files[0]) lerArquivo(entrada.files[0]); });
     corpo.appendChild(passo(1, "Arquivo", h("div", null,
       h("p", { class: "imp-nota" }, "CSV ou Excel (.xlsx). O arquivo é lido aqui no navegador; só as linhas que você ligar a um campo vão ao servidor."),
+      o.aviso ? h("p", { class: "imp-nota" }, o.aviso) : null,
       entrada, est.arquivo ? h("p", { class: "imp-ok" }, est.arquivo + (est.linhas.length ? " — " + est.linhas.length + " linha(s) com dados" : "")) : null)));
     if (!est.livro) return;
 
@@ -223,6 +240,15 @@
     est.mapa = {};
     if (!est.cabecalho || !est.linhas.length) return;
     var cab = est.linhas[0].map(chave);
+    if (est.mapaSalvo) {
+      /* "B — Quantidade" salvo → procura a coluna com o mesmo cabeçalho */
+      Object.keys(est.mapaSalvo).forEach(function (campo) {
+        var nome = chave(String(est.mapaSalvo[campo] || "").replace(/^[A-Z]{1,2} — /, ""));
+        var i = cab.indexOf(nome);
+        if (nome && i >= 0) est.mapa[campo] = i;
+      });
+      if (Object.keys(est.mapa).length) return;
+    }
     o.campos.forEach(function (c) {
       var alvos = (c.apelidos || [c.nome]).map(chave);
       var i = cab.findIndex(function (n) { return n && alvos.indexOf(n) >= 0; });
@@ -267,6 +293,7 @@
         if (c.tipo === "dinheiro") { var v = converterDinheiro(bruto, est.separador); r[c.id] = v === undefined ? "inválido: " + String(bruto).slice(0, 20) : v; }
         else if (c.tipo === "data") r[c.id] = converterData(bruto, est.formatoData);
         else if (c.tipo === "mes") r[c.id] = converterMes(bruto, est.formatoData);
+        else if (c.tipo === "decimal") r[c.id] = converterDecimal(bruto, est.separador);
         else if (c.tipo === "inteiro") r[c.id] = String(bruto).trim() === "" ? "" : Number(String(bruto).replace(/\D/g, "")) || String(bruto);
         else r[c.id] = String(bruto === undefined ? "" : bruto).trim();
       });
@@ -275,6 +302,7 @@
   }
 
   function chamar(acao, corpo) {
+    if (o.tipo && !corpo.tipo) corpo.tipo = o.tipo;
     return global.FloreSerRede.chamar(acao, corpo, { token: typeof o.token === "function" ? o.token() : o.token, leitura: acao === "importacao.previa" });
   }
 
@@ -365,5 +393,6 @@
     desenhar();
   }
 
-  global.FloreSerImportacao = { abrir: abrir, fechar: fechar, converterDinheiro: converterDinheiro, converterData: converterData, converterMes: converterMes };
+  global.FloreSerImportacao = { abrir: abrir, fechar: fechar, converterDinheiro: converterDinheiro, converterData: converterData, converterMes: converterMes,
+    converterDecimal: converterDecimal };
 })(window);

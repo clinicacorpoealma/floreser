@@ -70,7 +70,18 @@ modulo, arquivo, planilha, mapeamento, linhas, incluirRepetidas}` (até 150
 linhas por lote) · `importacao.historico {modulo}`.
 
 Contexto de integração para os módulos (`moduloDe: modulo`, só leitura da
-planilha): `integracao.contexto {modulo}` → `{estado, porLocal}`.
+planilha): `integracao.contexto {modulo}` → `{estado: {estado (atualizado,
+atualizando, aguardando_envio, atencao, interrompida, nao_configurada),
+atualizadoEm, intervaloMin, atencao, envios}, porLocal: {id: {..., pendencias}}}` ·
+`integracao.decidir {modulo, operacaoId, id, decisao, entradaId?, metodo?}`
+(só as pendências das fichas daquele módulo) · `integracao.enviar {modulo:
+"agenda", acao: confirmar|desmarcar, externoId, operacaoId}`.
+
+Estoque (permissão `financeiro`): `financeiro.estoque` → `{itens (saldo,
+situacao, locais, variacoes, movimentos, reposicao), fonte, reposicao}`;
+operações `estoque.item.salvar`, `estoque.movimento`,
+`estoque.usarNaPrecificacao` em `financeiro.aplicar`; importação com
+`importacao.* {modulo: "financeiro", tipo: "estoque"}`.
 
 Gravação por operações — `{ operacoes: [{ operacaoId, tipo, id, revBase, ... }] }`,
 até 50 por pedido, resultado um por um (um lote **não** é transação):
@@ -99,7 +110,7 @@ Painel (sessão da senha `dev`): `painel.dados`, `painel.limpar`,
 `painel.integracao.*` (`estado` `configurar` `testar` `executar` `agendar`
 `suspender` `externos` `locais` `pendencias` `resolver` `vincular`
 `desvincular` `complemento` `reconciliar` `buscarPaciente` `criarPaciente`
-`enviarLead` `decidirPasso`) — ver [CLINICORP.md](CLINICORP.md).
+`enviarLead` `decidirPasso` `ativar` `profissionais` `aplicarAgora`) — ver [CLINICORP.md](CLINICORP.md).
 
 ## Idempotência
 

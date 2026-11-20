@@ -6,7 +6,7 @@
 
 function clinicorpFalso() {
   const st = {
-    authRecusada: false, falharEm: null, criarSomeResposta: false, enviarSomeResposta: false,
+    authRecusada: false, falharEm: null, acaoSomeResposta: false, criarSomeResposta: false, enviarSomeResposta: false,
     pacientes: [{ PatientId: 9001, Name: "Paciente Sintética Um", Phone: "65999990001", Email: "um@exemplo.test" }],
     orcamentos: [], agendamentos: [], pagamentos: [],
     campanhas: [{ Name: "Campanha Sintética", Status: "A", Description: "" }]
@@ -38,6 +38,14 @@ function clinicorpFalso() {
         st.pacientes.push({ PatientId: 9000 + st.pacientes.length + 1, Name: p.corpo.Name, Phone: p.corpo.MobilePhone, Email: p.corpo.Email || "" });
         if (st.criarSomeResposta) return { lancar: "Timeout: a resposta se perdeu" };
         return { json: { Name: p.corpo.Name } };
+      }
+      case "/appointment/confirm_appointment":
+      case "/appointment/cancel_appointment": {
+        const ag = st.agendamentos.find((a) => String(a.id) === String(p.corpo.id));
+        if (!ag) return { status: 400, json: { Error: 1, Message: "não encontrado" } };
+        if (p.caminho.indexOf("cancel") >= 0) ag.Canceled = "X"; else ag.StatusId = 2;
+        if (st.acaoSomeResposta) return { lancar: "Timeout" };
+        return { json: [{ id: ag.id, StatusId: ag.StatusId }] };
       }
       case "/crm/add_leads":
         if (st.enviarSomeResposta) return { lancar: "Timeout" };

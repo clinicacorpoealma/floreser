@@ -102,6 +102,14 @@ function semear() {
       rateio: { modo: "por_hora", valor: 2200, base: "custos fixos ÷ horas produtivas", categorias: ["cat-aluguel", "cat-energia"] },
       taxaPagamentoPct: "3", comissaoPct: "10", impostosPct: "6", margemPct: "" } } }
   ]), tf);
+  /* Estoque: um retrato importado (manual) e um item só do Alveare */
+  amb.pedir("importacao.confirmar", { operacaoId: "semente-estoque-0001", modulo: "financeiro", tipo: "estoque", arquivo: "estoque-exemplo.csv",
+    mapeamento: { nome: "A — Produto", quantidade: "B — Saldo" }, linhas: [
+      { codigo: "GEL500", nome: "Gel condutor", unidade: "ML", quantidade: "1250.5", minimo: "2000", custoUnitario: 9, categoria: "Consumo", local: "Sala 1" },
+      { codigo: "LUVA-M", nome: "Luva de procedimento M", unidade: "UN", quantidade: "0", minimo: "100", categoria: "Descartáveis" },
+      { codigo: "SER-VC", nome: "Sérum vitamina C", unidade: "ML", quantidade: "30.125", validade: dia(12), custoUnitario: 120, categoria: "Ativos" },
+      { codigo: "AGU-30", nome: "Agulha 30G", unidade: "UN", quantidade: "", categoria: "Descartáveis" }] }, tf);
+  amb.pedir("financeiro.aplicar", ops([{ tipo: "estoque.item.salvar", id: "est-amostras", revBase: 0, dados: { nome: "Amostras de brinde", unidadeConsumo: "un", unidadeCompra: "un", minimo: "10" } }]), tf);
   amb.pedir("sessao.sair", {}, tf);
 }
 

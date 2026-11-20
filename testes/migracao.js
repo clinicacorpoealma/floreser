@@ -176,6 +176,8 @@ teste("depois de ativar: a conta antiga entra com a senha antiga, e a sessão ab
   a.gs.migracaoAtivar();
   a.gs.migracaoV3Ensaiar();
   a.gs.migracaoV3Ativar();
+  a.gs.migracaoV4Ensaiar();
+  a.gs.migracaoV4Ativar();
   const r = a.pedir("crm.ler", {}, a.tokenAntigo);
   const d = v.ok(r, "token da 3.5.0 aceito");
   v.igual(d.leads.length, 2);
@@ -197,6 +199,8 @@ teste("retorno: exportar para a 3.5.0 reescreve as abas antigas (com o cabeçalh
   a.gs.migracaoAtivar();
   a.gs.migracaoV3Ensaiar();
   a.gs.migracaoV3Ativar();
+  a.gs.migracaoV4Ensaiar();
+  a.gs.migracaoV4Ativar();
   const tk = a.entrar("pessoa1", "senha-da-conta-antiga");
   a.pedir("entradas.aplicar", { operacoes: [a.op("entrada.criar", { id: "e3", dados: { nome: "Depois", data: "2026-11-20", pagamentos: [{ metodo: "pix", valor: 1000, parcelas: 1 }] } })] }, tk);
   a.sim.props.FLORESER_MANUTENCAO = "sim";
@@ -260,13 +264,16 @@ teste("v2 → v3: preserva dados, dinheiro e sessões; quem estava conectado con
   const rel = a.gs.migracaoV3Executar();
   v.verdade(rel.ok, "conferência OK: " + JSON.stringify(rel));
   a.gs.migracaoV3Ativar();
+  a.gs.migracaoV4Backup();
+  a.gs.migracaoV4Executar();
+  a.gs.migracaoV4Ativar();
   delete a.sim.props.FLORESER_MANUTENCAO;
   a.gs.reiniciarExecucao();
   const ent = v.ok(a.pedir("entradas.ler", {}, tk), "a sessão aberta no schema 2 continua valendo");
   v.igual(ent.entradas.reduce((s, e) => s + e.pagamentos.reduce((t, p) => t + p.valor, 0), 0), 35029 + 123450);
   v.igual(JSON.stringify(a.linhas("crm_leads").map((l) => [l.id, l.nome, l.etapa])), leadsAntes);
   v.erro(a.pedir("financeiro.ler", {}, tk), "sem_acesso", "conta sem a permissão nova não entra no Financeiro");
-  /* rodar de novo não faz nada: o schema 3 já está ativo */
+  /* rodar de novo não faz nada: o schema 4 já está ativo */
   let erro = "";
   try { a.gs.migracaoV3Executar(); } catch (e) { erro = e.message; }
   v.verdade(/parte do schema 2/.test(erro), erro);
@@ -280,6 +287,48 @@ teste("v2 → v3: retorno volta a dizer schema 2 sem apagar nada", () => {
   a.gs.migracaoV3Retornar();
   v.igual(a.sim.props.FLORESER_SCHEMA_ATIVO, "2");
   v.verdade(!!a.sim.planilha.getSheetByName("fin_despesas"), "as abas novas ficam");
+});
+
+/* ======================= schema 3 → schema 4 ======================= */
+
+function ambienteV3ComIntegracao() {
+  const a = ambienteV2();
+  a.gs.migracaoV3Ensaiar();
+  a.gs.migracaoV3Ativar();
+  a.gs.reiniciarExecucao();
+  /* um passado de 4.1.0: registros e vínculos com a chave antiga */
+  a.gs.inserir("int_externos", [
+    { id: "clinicorp:recebimento:1", sistema: "clinicorp", assinante: "ass", unidade: "", tipo: "recebimento", externoId: "1", dados: { valor: 1000, recebido: true },
+      assinatura: "s1", alteradoExterno: "", vistoEm: null, ausenteDesde: null, complemento: { notas: "conferido" }, execucaoId: "", rev: 1, opId: "", atualizadoEm: null, atualizadoPor: "" },
+    { id: "clinicorp:recebimento:2", sistema: "clinicorp", assinante: "ass", unidade: "", tipo: "recebimento", externoId: "2", dados: { valor: 2000, recebido: true },
+      assinatura: "s2", alteradoExterno: "", vistoEm: null, ausenteDesde: null, complemento: null, execucaoId: "", rev: 1, opId: "", atualizadoEm: null, atualizadoPor: "" },
+    { id: "clinicorp:orcamento:7", sistema: "clinicorp", assinante: "ass", unidade: "", tipo: "orcamento", externoId: "7", dados: { status: "OPEN" },
+      assinatura: "s3", alteradoExterno: "", vistoEm: null, ausenteDesde: null, complemento: null, execucaoId: "", rev: 1, opId: "", atualizadoEm: null, atualizadoPor: "" }]);
+  a.gs.inserir("int_vinculos", [{ id: "clinicorp:recebimento:1:entrada", sistema: "clinicorp", assinante: "ass", unidade: "", tipo: "recebimento", externoId: "1",
+    localTipo: "entrada", localId: "e1", estado: "ativo", assinatura: "s1", sincronizadoEm: null, criadoEm: null, criadoPor: "", rev: 1, opId: "", atualizadoEm: null, atualizadoPor: "" }]);
+  a.gs.reiniciarExecucao();
+  return a;
+}
+
+teste("v3 → v4: chaves ganham o assinante, nada se perde, e a reconciliação inicial evita recriar o que já existe", () => {
+  const a = ambienteV3ComIntegracao();
+  const d = a.gs.migracaoV4Diagnosticar();
+  v.igual(d.erros, []);
+  v.igual(d.reconciliacao.recebimentosComoConsulta, 1);
+  const rel = a.gs.migracaoV4Ensaiar();
+  v.verdade(rel.ok, JSON.stringify(rel));
+  a.gs.migracaoV4Ativar();
+  const ext = a.linhas("int_externos");
+  v.igual(ext.map((x) => x.id).sort(), ["clinicorp:ass:orcamento:7", "clinicorp:ass:recebimento:1", "clinicorp:ass:recebimento:2"]);
+  v.igual(ext.find((x) => x.externoId === "1").complemento.notas, "conferido", "complemento local preservado");
+  v.verdade(ext.every((x) => x.aplicado === x.assinatura), "tudo o que já existia conta como aplicado");
+  v.verdade(ext.find((x) => x.externoId === "2").aplicacao.estado.anterior, "recebimento sem vínculo fica como consulta");
+  v.igual(ext.find((x) => x.externoId === "7").aplicacao.estado.status, "OPEN", "orçamento guarda o status atual");
+  v.igual(a.linhas("int_vinculos")[0].id, "clinicorp:ass:recebimento:1:entrada");
+  v.verdade(!!a.sim.planilha.getSheetByName("est_itens"), "abas do estoque criadas");
+  a.gs.reiniciarExecucao();
+  a.gs.migracaoV4Retornar();
+  v.igual(a.linhas("int_externos").map((x) => x.id).sort(), ["clinicorp:orcamento:7", "clinicorp:recebimento:1", "clinicorp:recebimento:2"], "retorno devolve as chaves da 4.1.0");
 });
 
 module.exports = () => executar("Migração");
