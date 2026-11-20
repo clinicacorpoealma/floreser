@@ -18,7 +18,9 @@
 (function (global) {
   "use strict";
 
-  var URL_API = "https://script.google.com/macros/s/AKfycbzy9WCfP4l08dn2h2K34uEL6e0mqFBjVMugcHiTc0oUGmpS7gOJjbxs58CB87AoFUw-/exec";
+  /* o endereço do Apps Script mora num lugar só: compartilhado/config.js */
+  var CONFIG = global.FLORESER_CONFIG || {};
+  var URL_API = CONFIG.apiUrl || "";
 
   var MAX_POR_SESSAO = 60;      // teto de eventos por visita
   var LOTE = 10;                // envia quando juntar esta quantidade
@@ -82,12 +84,9 @@
     return "index.html";
   }
 
-  /* logs.js e version.js ficam na raiz do site; as páginas, um nível abaixo.
-     O endereço da raiz sai do próprio <script>, então vale de qualquer nível. */
-  var RAIZ = tentar(function () {
-    var atual = document.currentScript && document.currentScript.src;
-    return atual ? String(atual).replace(/[^/]*$/, "") : "";
-  }, "");
+  /* A raiz do site sai do config.js, que a descobre pelo próprio <script>:
+     vale de qualquer nível, e debaixo de /floreser/ no GitHub Pages. */
+  var RAIZ = CONFIG.raiz || "";
 
   /* ---------- identificação pseudônima ---------- */
 
@@ -194,13 +193,14 @@
 
       fila.push({
         id: sorteio().slice(-8),
-        quando: agora(),
+        quando: new Date().toISOString(),
         nivel: opcoes.nivel || "INFO",
         evento: String(evento).slice(0, 40),
         pagina: opcoes.pagina || pagina(),
         mensagem: String(opcoes.mensagem || "").slice(0, 400),
         versao: versao(),
         sessao: sessao,
+        pedidoId: String(opcoes.pedidoId || "").slice(0, 64),
       });
       estado.pendentes = fila.length;
 
@@ -219,7 +219,8 @@
   }
 
   function corpo() {
-    return JSON.stringify({ acao: "registrar", app: "floreser", logs: fila, sessao: retrato() });
+    return JSON.stringify({ v: CONFIG.api || 2, acao: "diagnostico.registrar", pedidoId: "lg-" + sorteio(),
+      dados: { app: "floreser", logs: fila, sessao: retrato() } });
   }
 
   function enviar(aoSair) {
@@ -270,7 +271,7 @@
     global.fetch = function (url, opcoes) {
       var nosso = tentar(function () {
         return opcoes && typeof opcoes.body === "string" &&
-          opcoes.body.indexOf('"acao":"registrar"') >= 0;
+          opcoes.body.indexOf('"acao":"diagnostico.registrar"') >= 0;
       }, false);
 
       return original.apply(this, arguments).then(function (r) {
@@ -397,150 +398,11 @@
   setTimeout(conferirVersao, 4000);
 
 
-  /* =====================================================================
-     Falar com o Apps Script
-     ---------------------------------------------------------------------
-     Um POST para o /exec nunca é respondido direto: o Google devolve 302
-     e manda o navegador buscar a resposta em
-     script.googleusercontent.com/macros/echo?user_content_key=…
+  /* A conversa com o Apps Script mora em compartilhado/rede.js. Este
+     arquivo cuida só do registro técnico, que tem envio próprio de
+     propósito: um registro que passasse pela rede principal geraria evento
+     sobre o próprio envio, sem fim. */
 
-     Esse segundo salto é o ponto fraco. Ele falha de vez em quando com
-     404 — sem nada de errado do nosso lado, sem nada de errado com a
-     internet de quem está usando. Acontece mais quando várias chamadas
-     saem quase juntas, que é justamente o que o sistema faz ao abrir um
-     módulo com a conta já conectada: confere a sessão, lê os dados e
-     registra o log, tudo em poucos segundos.
-
-     Contra isso só há um remédio honesto: tentar de novo. Mas repetir
-     sozinho só o que pode ser repetido sem consequência — leitura e
-     conferência de sessão. Gravação não entra aqui: quem grava é dono do
-     próprio reenvio, e cada módulo já cuida disso com a revisão em mãos.
-     ===================================================================== */
-
-  /* Status que valem outra tentativa. O 404 é o do redirecionamento; os
-     5xx são o Apps Script sobrecarregado; 429 é limite de chamadas. */
-  var STATUS_PASSAGEIRO = [404, 408, 425, 429, 500, 502, 503, 504];
-
-  var ESPERAS = [400, 1200];    /* ms antes da 2ª e da 3ª tentativa */
-
-  function dormir(ms) {
-    return new Promise(function (ok) { setTimeout(ok, ms); });
-  }
-
-  /* Quando o Apps Script estoura, devolve uma página de erro em HTML.
-     Ler o texto e não conseguir virar JSON é sinal disso. */
-  function lerResposta(texto) {
-    try { return { ok: true, dados: JSON.parse(texto) }; }
-    catch (e) { return { ok: false, texto: texto }; }
-  }
-
-  /* postar(corpo, { repetir })
-       repetir:true  → tenta até 3 vezes em falha passageira
-       repetir:false → uma só, e quem chamou decide o que fazer
-     Devolve o objeto que o servidor mandou. Se nem assim vier JSON,
-     devolve { ok:false, erro:"servidor_falhou" } com o motivo legível —
-     nunca deixa a tela achar que o problema é a internet de quem usa. */
-  /* O selo de atividade abre aqui e fecha aqui, em volta de TODA a
-     chamada — as repetições internas incluídas. Assim uma chamada que
-     tentou três vezes aparece como uma operação contínua, e não como uma
-     sequência de erro e sucesso piscando na tela.
-
-     Os envios do próprio registro técnico não passam por aqui: eles usam
-     o fetch lá de cima. Era o que faltava para o selo não virar um
-     notificador de telemetria. */
-  function abrirAtividade(corpo) {
-    return tentar(function () {
-      if (!global.FloreSerAtividade) return null;
-      var dados = typeof corpo === "string" ? JSON.parse(corpo) : corpo;
-      return global.FloreSerAtividade.iniciar(dados && dados.acao);
-    }, null);
-  }
-
-  async function postar(corpo, opcoes) {
-    var op = abrirAtividade(corpo);
-    try {
-      var resposta = await postarAoServidor(corpo, opcoes);
-      if (op) tentar(function () { return global.FloreSerAtividade.concluir(op, resposta); }, null);
-      return resposta;
-    } catch (erro) {
-      /* a chamada estourou: a operação fecha assim mesmo, uma vez só */
-      if (op) tentar(function () { return global.FloreSerAtividade.falhaDeRede(op, erro); }, null);
-      throw erro;
-    }
-  }
-
-  async function postarAoServidor(corpo, opcoes) {
-    var o = opcoes || {};
-    var tentativas = o.repetir ? ESPERAS.length + 1 : 1;
-    var ultimoStatus = 0;
-    var ultimoTexto = "";
-
-    for (var i = 0; i < tentativas; i++) {
-      if (i > 0) await dormir(ESPERAS[i - 1]);
-
-      var resposta;
-      try {
-        resposta = await fetch(URL_API, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: typeof corpo === "string" ? corpo : JSON.stringify(corpo),
-          redirect: "follow",
-        });
-      } catch (e) {
-        /* rede caiu de verdade: repetir não ajuda a distinguir, e quem
-           chamou precisa saber que foi conexão */
-        throw e;
-      }
-
-      ultimoStatus = resposta.status;
-      var texto = await resposta.text();
-      ultimoTexto = texto;
-
-      var lido = lerResposta(texto);
-      if (resposta.ok && lido.ok) {
-        if (i > 0) {
-          registrar("REDE_REPETIU", {
-            mensagem: "A resposta do servidor veio na tentativa " + (i + 1) +
-              " (a anterior falhou com " + ultimoStatus + ").",
-          });
-        }
-        return lido.dados;
-      }
-
-      /* resposta boa mas sem JSON, ou status que não vale repetir: para */
-      var valeRepetir = STATUS_PASSAGEIRO.indexOf(resposta.status) >= 0;
-      if (!valeRepetir && lido.ok) return lido.dados;
-      if (!valeRepetir) break;
-    }
-
-    if (o.repetir) {
-      registrar("REDE_DESISTIU", {
-        nivel: "ERRO",
-        mensagem: "O servidor não respondeu depois de " + tentativas +
-          " tentativas (último status " + ultimoStatus + ").",
-      });
-    }
-
-    return {
-      ok: false,
-      erro: "servidor_falhou",
-      status: ultimoStatus,
-      detalhe: resumoDaPagina(ultimoTexto),
-    };
-  }
-
-  /* O texto da página de erro, sem marcação, para o painel mostrar. */
-  function resumoDaPagina(html) {
-    return String(html || "")
-      .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&quot;/g, '"').replace(/&amp;/g, "&")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 180);
-  }
-
-  global.FloreSerRede = { postar: postar, enderecoDaApi: function () { return URL_API; } };
 
   global.FloreSerLogs = {
     registrar: registrar,

@@ -94,7 +94,7 @@ body::before {
   bottom: -200px;
   width: 620px;
   height: 620px;
-  background: url("logo.png") no-repeat center / contain;
+  background: url("../logo.png") no-repeat center / contain;
   opacity: .04;
   transition: opacity .22s ease, filter .22s ease;
   pointer-events: none;

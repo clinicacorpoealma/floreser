@@ -8,7 +8,8 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#1E3A3A">
   <link rel="icon" type="image/png" href="../favicon.png">
-  <script src="../tema.js"></script>
+  <meta name="floreser-estrutura" content="2">
+  <script src="../compartilhado/tema.js"></script>
   <!-- As fontes da marca ficavam num @import dentro do componente React.
        Enquanto a entrada automática corre, o componente ainda não existe —
        e o cartão de espera saía em Times. Aqui elas entram junto com a
@@ -26,12 +27,16 @@
   <meta name="apple-mobile-web-app-title" content="Alveare">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="../version.js"></script>
-<script src="../atividade-rede.js"></script>
-<script src="../logs.js"></script>
-<script src="../pwa.js"></script>
-<script src="../auth.js"></script>
-<script src="../sync.js"></script>
-<script src="../auditoria.js"></script>
+<script src="../compartilhado/config.js"></script>
+<script src="../compartilhado/atividade-rede.js"></script>
+<script src="../compartilhado/logs.js"></script>
+<script src="../compartilhado/rede.js"></script>
+<script src="../compartilhado/pwa.js"></script>
+<script src="../compartilhado/sessao.js"></script>
+<script src="../compartilhado/auth.js"></script>
+<script src="../compartilhado/sync.js"></script>
+<script src="../compartilhado/dados.js"></script>
+<script src="../compartilhado/auditoria.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin
     src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -42,7 +47,7 @@
        modulos usam o mesmo arquivo local, e a exportacao do CRM funciona
        na primeira visita mesmo sem internet. -->
   <script src="../vendor/xlsx.full.min.js"></script>
-  <link rel="stylesheet" href="../atividade-rede.css">
+  <link rel="stylesheet" href="../compartilhado/atividade-rede.css">
   <link rel="stylesheet" href="crm.css">
 </head>
 
@@ -100,6 +105,55 @@
        o que foi mexido aqui e o que foi mexido lá. Vive só na memória. */
     var BASE_CRM = null;
     var tentativasDeMerge = 0;
+    var tentativasDeEnvio = 0;
+    var timerReenvio = null;
+
+    /* A sessão acabou no meio do trabalho. Conta: a caixa de entrar do
+       auth.js por cima da tela. Senha do módulo: o portão de senha num
+       diálogo pequeno. Resolve true quando há sessão de novo. */
+    var pedindoEntrada = null;
+    function pedirEntradaDeNovo() {
+      if (pedindoEntrada) return pedindoEntrada;
+      var conta = ORIGEM_SESSAO.tipo === "usuario" || FloreSerSessao.temConta();
+      pedindoEntrada = (conta
+        ? FloreSerAuth.pedirNovamente("crm").then(function (tk) { return !!tk; })
+        : pedirSenhaDoModulo()
+      ).then(function (ok) { pedindoEntrada = null; return ok; });
+      return pedindoEntrada;
+    }
+
+    function pedirSenhaDoModulo() {
+      return new Promise(function (resolver) {
+        var dlg = document.createElement("dialog");
+        dlg.className = "crm-dialogo-senha";
+        var titulo = document.createElement("p");
+        titulo.textContent = "A sessão da senha do CRM expirou. Informe a senha para salvar o que está na tela — nada foi perdido.";
+        var campo = document.createElement("input");
+        campo.type = "password"; campo.autocomplete = "current-password"; campo.placeholder = "Senha do CRM";
+        var aviso = document.createElement("div");
+        aviso.className = "crm-dialogo-senha-aviso"; aviso.setAttribute("role", "alert");
+        var ok = document.createElement("button");
+        ok.type = "button"; ok.className = "crm-botao"; ok.textContent = "Entrar";
+        var cancelar = document.createElement("button");
+        cancelar.type = "button"; cancelar.className = "crm-botao crm-botao-secundario"; cancelar.textContent = "Agora não";
+        [titulo, campo, aviso, ok, cancelar].forEach(function (x) { dlg.appendChild(x); });
+        document.body.appendChild(dlg);
+        function fim(v) { if (dlg.open) dlg.close(); dlg.remove(); resolver(v); }
+        async function enviar() {
+          if (!campo.value) { campo.focus(); return; }
+          ok.disabled = true;
+          var r = await FloreSerSessao.entrarModulo("crm", campo.value);
+          ok.disabled = false;
+          campo.value = "";
+          if (r.ok) fim(true); else aviso.textContent = FloreSerAuth.recado(r);
+        }
+        ok.addEventListener("click", enviar);
+        campo.addEventListener("keydown", function (ev) { if (ev.key === "Enter") enviar(); });
+        cancelar.addEventListener("click", function () { fim(false); });
+        if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+        campo.focus();
+      });
+    }
 
     /* contatos é lista por id, como leads: dois aparelhos registrando ao
        mesmo tempo somam, em vez de um apagar o evento do outro */
@@ -687,11 +741,15 @@
                  vazia só em memória. Nada é gravado por ter aberto a página —
                  a forma nova sobe junto com a próxima alteração de verdade. */
               d.contatos = normalizarContatos(d.contatos);
-              if (d.dias) setDias((atual) => ({ ...atual, ...d.dias }));
-              if (d.leads) setLeads(d.leads.map(migrar));
+              d.leads = (d.leads || []).map(migrar);
+              d.dias = { ...dias, ...(d.dias || {}) };
+              setDias(d.dias);
+              setLeads(d.leads);
               definirContatos(d.contatos);
-              /* o que acabou de chegar é o que o servidor tem */
-              BASE_CRM = FloreSerSync.copiar(d);
+              /* o que acabou de chegar é o que o servidor tem: a base do
+                 motor, já na forma da tela, para não gerar diferença à toa */
+              motorCRM.definirBase(d);
+              BASE_CRM = motorCRM.base();
             }
             if (statusCRM) statusCRM.salvoAgora();
 
@@ -768,14 +826,50 @@
       async function gravar(estado) {
         if (statusCRM) statusCRM.definir("salvando");
         try {
-          await window.storage.set(STORAGE_KEY, JSON.stringify(estado));
-          BASE_CRM = FloreSerSync.copiar(estado);
+          const res = await window.storage.set(STORAGE_KEY, JSON.stringify(estado));
+          BASE_CRM = motorCRM.base();
           tentativasDeMerge = 0;
+          tentativasDeEnvio = 0;
           setErro(null);
+          /* o servidor normalizou alguma lead (um marco carimbado): a tela
+             adota, sem desfazer o que foi editado depois do envio */
+          if (res.corrigidas && res.corrigidas.length) {
+            setLeads((atuais) => atuais.map((l) => {
+              const c = res.corrigidas.find((x) => x.colecao === "leads" && x.id === l.id);
+              return c ? migrar(FloreSerDados.adotarCorrecao(l, c.enviado, c.servidor)) : l;
+            }));
+          }
           if (statusCRM) statusCRM.salvoAgora();
           return true;
         } catch (e) {
-          if (e && e.conflito) return conciliar(estado, e);
+          if (e && e.conflito) { BASE_CRM = motorCRM.base(); return conciliar(estado, e); }
+
+          if (e && e.motivo === "transitorio") {
+            /* sem rede ou servidor ocupado: o que está na tela fica, e o
+               envio volta sozinho, com os MESMOS identificadores */
+            tentativasDeEnvio++;
+            if (statusCRM) statusCRM.definir(e.semRede ? "offline" : "erro");
+            if (tentativasDeEnvio === 1) setErro("Sem confirmação do servidor agora. As alterações continuam aqui e vou tentar de novo sozinho.");
+            clearTimeout(timerReenvio);
+            timerReenvio = setTimeout(() => salvarAtual.current(), Math.min(60000, 2000 * tentativasDeEnvio));
+            return false;
+          }
+          if (e && e.motivo === "conta_trocada") {
+            if (statusCRM) statusCRM.definir("erro");
+            setErro("Outra conta entrou neste navegador. Recarregue a página para continuar com ela.");
+            return false;
+          }
+          if (e && e.motivo === "versao") {
+            if (statusCRM) statusCRM.definir("erro");
+            setErro("O site e o servidor estão em versões diferentes. Recarregue a página — o que está na tela fica até lá.");
+            return false;
+          }
+          if (e && e.motivo === "recusado") {
+            if (statusCRM) statusCRM.definir("erro");
+            const primeiro = (e.erros || [])[0];
+            setErro("O servidor recusou uma alteração" + (primeiro && primeiro.mensagem ? ": " + primeiro.mensagem : ".") + " As outras foram salvas.");
+            return false;
+          }
 
           if (e && e.motivo === "sem_acesso") {
             if (statusCRM) statusCRM.definir("semAcesso");
@@ -783,9 +877,12 @@
               "mas não sobe mais para a planilha — fale com quem administra o sistema.");
             return false;
           }
-          if (e && (e.motivo === "sessao" || e.motivo === "expirada" || e.motivo === "inativo")) {
+          if (e && e.motivo === "sessao") {
+            /* a sessão acabou de verdade: entrar de novo POR CIMA da tela; o
+               que não foi salvo continua aqui e sobe em seguida */
             if (statusCRM) statusCRM.definir("expirado");
-            setErro("Sua sessão expirou. Copie o que ainda não foi salvo, recarregue a página e entre de novo.");
+            setErro("Sua sessão terminou. Entre de novo para salvar o que está na tela — nada foi perdido.");
+            pedirEntradaDeNovo().then((ok) => { if (ok) { setErro(null); salvarAtual.current(); } });
             return false;
           }
 
@@ -834,7 +931,7 @@
 
         if (!etapas.conflitos.length) {
           anotarSync("SYNC_CONFLITO_AUTO_MESCLADO", automaticosDasFichas.length + " alteração(ões)");
-          return aplicarMerge(etapas.finalizar(m.estado, []), falha.rev);
+          return aplicarMerge(etapas.finalizar(m.estado, []), falha);
         }
 
         if (statusCRM) statusCRM.definir("conflito");
@@ -848,7 +945,7 @@
             anotarSync("SYNC_CONFLITO_RESOLVIDO_MANUAL",
               escolhas.filter((e) => e === "local").length + " de " + escolhas.length +
               " campo(s) ficaram com a versão deste aparelho");
-            await aplicarMerge(etapas.finalizar(escolhido, escolhas), falha.rev);
+            await aplicarMerge(etapas.finalizar(escolhido, escolhas), falha);
           },
           aoCancelar: function () {
             if (statusCRM) statusCRM.definir("conflito");
@@ -858,13 +955,16 @@
         return false;
       }
 
-      async function aplicarMerge(estado, rev) {
+      async function aplicarMerge(estado, falha) {
         setLeads((estado.leads || []).map(migrar));
         if (estado.dias) setDias((atual) => ({ ...atual, ...estado.dias }));
         /* o merge já juntou os contatos dos dois lados: os daqui e os de lá */
         estado.contatos = normalizarContatos(estado.contatos);
         definirContatos(estado.contatos);
-        SESSAO.rev = rev;
+        /* a base passa a ser o servidor sintético (a base com as leads como
+           estão lá); o que sobrou de diferença sobe com as revisões novas */
+        motorCRM.adotarServidor(falha.dados);
+        BASE_CRM = motorCRM.base();
 
         tentativasDeMerge++;
         if (tentativasDeMerge > 4) {
@@ -1102,10 +1202,15 @@
             return;
           }
 
-          /* o servidor mexeu nos dois lados: o CRM daqui precisa recarregar
-             para não gravar por cima com a versão antiga */
-          if (typeof r.crmRev === "number") SESSAO.rev = r.crmRev;
-          await recarregarDoServidor();
+          /* o servidor mexeu nos dois lados e devolveu a lead como ficou:
+             ela entra na base do motor e na tela, sem recarregar o resto */
+          if (r.lead) {
+            const antes = (motorCRM.base().leads || []).find((l) => l.id === r.lead.id) || {};
+            motorCRM.definirEntidade("leads", r.lead);
+            BASE_CRM = motorCRM.base();
+            setLeads((atuais) => atuais.map((l) => (l.id === r.lead.id ? migrar(FloreSerDados.adotarCorrecao(l, antes, r.lead)) : l)));
+          }
+          if (statusCRM) statusCRM.salvoAgora();
 
           setIntegrando(null);
           const quando = r.data ? " · atendimento em " + formatarData(r.data) : "";
@@ -1127,10 +1232,13 @@
           if (res && res.value) {
             const d = JSON.parse(res.value);
             d.contatos = normalizarContatos(d.contatos);
-            if (d.leads) setLeads(d.leads.map(migrar));
-            if (d.dias) setDias((atual) => ({ ...atual, ...d.dias }));
+            d.leads = (d.leads || []).map(migrar);
+            d.dias = { ...dias, ...(d.dias || {}) };
+            setLeads(d.leads);
+            setDias(d.dias);
             definirContatos(d.contatos);
-            BASE_CRM = FloreSerSync.copiar(d);
+            motorCRM.definirBase(d);
+            BASE_CRM = motorCRM.base();
             if (statusCRM) statusCRM.salvoAgora();
           }
         } catch (e) {
@@ -1201,7 +1309,8 @@
               : "Não foi possível concluir a operação. Tente novamente.");
             return;
           }
-          if (typeof r.rev === "number") SESSAO.rev = r.rev;
+          motorCRM.esquecer("leads", id);
+          BASE_CRM = motorCRM.base();
           setLeads(leads.filter((l) => l.id !== id));
           setAberto(null);
           setEditando(null);
@@ -2926,27 +3035,15 @@
         if (!senha.trim()) return;
         setEstado("verificando");
         setErro("");
-        try {
-          const r = await chamarAPI({ acao: "entrar", modulo: "crm", senha: senha });
-          if (!r.ok) {
-            if (r.erro === "bloqueado") {
-              setErro("Muitas tentativas erradas. Tente de novo em " + (r.minutos || 15) + " minutos.");
-            } else if (r.erro === "senha") {
-              setErro("Senha incorreta. Confira e tente de novo." +
-                (r.restam ? " Restam " + r.restam + " tentativas." : ""));
-            } else {
-              setErro("Não foi possível conectar à planilha. Verifique a publicação do Apps Script.");
-            }
-            setEstado("form");
-            return;
-          }
-          SESSAO.token = r.token;
-          guardarToken(r.token);
-          setEstado("ok");
-        } catch (e) {
-          setErro("Sem conexão com a planilha. Confira a URL do Apps Script e sua internet.");
+        const r = await FloreSerSessao.entrarModulo("crm", senha);
+        setSenha("");
+        if (!r.ok) {
+          setErro(FloreSerAuth.recado(r));
           setEstado("form");
+          return;
         }
+        ORIGEM_SESSAO = { tipo: "senhaModulo" };
+        setEstado("ok");
       }
 
       /* Ao abrir: primeiro a sessão de usuário guardada neste navegador, que
@@ -2980,19 +3077,13 @@
             return;
           }
 
-          const guardado = tokenGuardado();
-          if (!guardado) return;
-          SESSAO.token = guardado;
-          try {
-            const r = await chamarAPI({ acao: "ler", token: guardado });
+          /* a sessão da senha desta aba: quem confere é a primeira leitura do
+             próprio CRM, que diz o motivo se não valer mais */
+          if (FloreSerSessao.tokenDoModulo("crm")) {
+            const r = await FloreSerRede.chamar("sessao.conferir", { modulo: "crm" }, { token: FloreSerSessao.tokenDoModulo("crm"), leitura: true });
             if (!vivo) return;
             if (r.ok) { setEstado("ok"); return; }
-            esquecerToken();
-            SESSAO.token = "";
-            if (r.erro === "sessao") setErro("Sua sessão expirou. Informe a senha de novo.");
-          } catch (e) {
-            esquecerToken();
-            SESSAO.token = "";
+            setErro(FloreSerAuth.recado(r));
           }
         })();
         return () => { vivo = false; };

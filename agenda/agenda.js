@@ -9,10 +9,13 @@
 
    A apresentação fica no agenda.css; a estrutura, no index.html.
 
-   Depende, nesta ordem, de tema.js, version.js, logs.js, pwa.js, auth.js,
-   sync.js, auditoria.js e do SheetJS em vendor/ — e por isso entra depois
-   de todos eles, no mesmo ponto do documento onde o <script> estava: no
-   fim do <body>, com o markup já montado.
+   Depende dos compartilhados (compartilhado/: config, rede, sessao, auth,
+   sync, dados, auditoria) e do SheetJS em vendor/ — por isso entra depois
+   de todos eles, no fim do <body>, com o markup já montado.
+
+   Desde a 4.0.0 a gravação não leva a agenda inteira: o motor de dados
+   manda só as pacientes, follow-ups, categorias, máquinas e vindas que
+   mudaram, cada uma com a revisão de que partiu.
    ===================================================================== */
 
 'use strict';
@@ -109,41 +112,92 @@ function area(k){ return AREAS.find(a=>a.k===k)||{k:k,nome:k,cor:'#A39384',ic:I.
 /* ==========================================================
    ESTADO E ARMAZENAMENTO
    ========================================================== */
-/* Endereco do Apps Script publicado (o mesmo que atende o CRM) */
-var URL_API = "https://script.google.com/macros/s/AKfycbzy9WCfP4l08dn2h2K34uEL6e0mqFBjVMugcHiTc0oUGmpS7gOJjbxs58CB87AoFUw-/exec";
-
-/* O que fica guardado neste aparelho é um token de sessão, não a senha:
-   ele é emitido pelo servidor, vale só para a agenda, expira sozinho por
-   inatividade e pode ser cancelado sem afetar nenhum outro aparelho. */
-const CHAVE_TOKEN='floreser.agenda.sessao';
-const SESSAO={token:'',rev:0};
+/* O endereço do Apps Script mora em compartilhado/config.js. A sessão é do
+   compartilhado/sessao.js: a conta, se houver; senão a senha desta aba. */
+let revConfig=0;
 let state = {pacientes:[], categorias:[], followups:[], maquinas:[], vindas:[],
              criado:null, seedMaq:false};
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
-/* Ler pode ser repetido sem consequência; gravar, não — quem grava tem a
-   revisão em mãos e cuida do próprio reenvio. O que se ganha aqui é o
-   tropeço do redirecionamento do Apps Script, que devolve 404 de vez em
-   quando sem nada estar errado. */
-async function api(dados){
-  if(window.FloreSerRede){
-    const so_leitura = String(dados&&dados.acao||'').indexOf('ler')===0;
-    return await window.FloreSerRede.postar(dados,{repetir:so_leitura});
-  }
-  const resposta=await fetch(URL_API,{
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify(dados),
-    redirect:'follow'
+function tokenAtual(){ return window.FloreSerSessao ? FloreSerSessao.tokenPara('agenda') : ''; }
+
+/* Leituras repetem sozinhas quando o Google tropeça; gravações são do
+   motor, que repete com o mesmo operacaoId. */
+function ler(acao,dados){ return FloreSerRede.chamar(acao,dados||{},{token:tokenAtual(),leitura:true}); }
+
+/* a resposta achatada, no formato que a auditoria entende */
+function achatar(r){
+  if(!r.ok) return {ok:false,erro:r.erro};
+  const s={ok:true}; Object.keys(r.dados||{}).forEach(k=>{ s[k]=r.dados[k]; }); return s;
+}
+
+const CAMPOS_PACIENTE_API=['nome','categoriaId','obs','criadoEm','arquivada','arquivadaEm','whatsapp','origem','crmLeadId'];
+
+/* O que sobe de uma paciente: os campos que mudaram, as áreas cujo ciclo
+   mudou, as condições e máquinas se mudaram, e só o histórico NOVO — o
+   histórico só cresce, e mandar a lista inteira a cada sessão não faria
+   sentido. */
+function diferencaPaciente(b,l){
+  const ig=FloreSerSync.iguais, cp=FloreSerSync.copiar, out={};
+  const campos={}; let mudou=false;
+  CAMPOS_PACIENTE_API.forEach(k=>{ if(l[k]===undefined) return; if(!ig(b[k],l[k])){ campos[k]=cp(l[k]); mudou=true; } });
+  if(mudou) out.campos=campos;
+  const ciclos={}; let mc=false;
+  AREAK.forEach(a=>{
+    const cb=(b.ciclos||{})[a]||null, cl=(l.ciclos||{})[a]||null;
+    if(!ig(cb,cl)){ ciclos[a]=cl?cp(cl):null; mc=true; }
   });
-  return await resposta.json();
+  if(mc) out.ciclos=ciclos;
+  if(!ig(b.condicoes||[],l.condicoes||[])) out.condicoes=cp(l.condicoes||[]);
+  if(!ig(b.maquinas||[],l.maquinas||[])) out.maquinas=cp(l.maquinas||[]);
+  const ja={}; (b.historico||[]).forEach(h=>{ if(h&&h.id) ja[h.id]=true; });
+  const novos=(l.historico||[]).filter(h=>h&&h.id&&!ja[h.id]);
+  if(novos.length) out.historicoNovos=cp(novos);
+  return Object.keys(out).length?out:null;
+}
+
+function criacaoPaciente(l){
+  const cp=FloreSerSync.copiar, d={};
+  CAMPOS_PACIENTE_API.forEach(k=>{ if(l[k]!==undefined) d[k]=cp(l[k]); });
+  const ciclos={}; AREAK.forEach(a=>{ if(l.ciclos&&l.ciclos[a]) ciclos[a]=cp(l.ciclos[a]); });
+  d.ciclos=ciclos; d.condicoes=cp(l.condicoes||[]); d.maquinas=cp(l.maquinas||[]); d.historico=cp(l.historico||[]);
+  return {dados:d};
+}
+
+const motor=FloreSerDados.criarSincronizador({
+  modulo:'agenda', acao:'agenda.aplicar', token:tokenAtual,
+  colecoes:{
+    pacientes:{ criar:'paciente.criar', alterar:'paciente.alterar', remover:'paciente.remover',
+      diferenca:diferencaPaciente, criacao:criacaoPaciente },
+    followups:{ criar:'followup.criar', alterar:'followup.alterar', remover:'followup.remover',
+      campos:['pacienteId','area','data','feito','agendamentoData','criadoEm','feitoEm'] },
+    categorias:{ criar:'categoria.criar', alterar:'categoria.alterar', remover:'categoria.remover', campos:['nome','cor'] },
+    maquinas:{ criar:'maquina.criar', alterar:'maquina.alterar', remover:'maquina.remover', campos:['nome','cadencia','cor','obs'] },
+    vindas:{ criar:'vinda.criar', alterar:'vinda.alterar', remover:'vinda.remover', campos:['maquinaId','data','obs','criadoEm'],
+      extras:(b,l)=>FloreSerSync.iguais(b.resp,l.resp)?null:{resp:FloreSerSync.copiar(l.resp||{})},
+      extrasCriacao:l=>({resp:FloreSerSync.copiar(l.resp||{})}) }
+  },
+  valores:{ config:{ tipo:'config.agenda', rev:'_revConfig', payload:l=>({criado:l.config.criado, seedMaq:l.config.seedMaq}) } }
+});
+
+/* O histórico só cresce, e cada item novo ganha identidade aqui, no
+   estado vivo, antes de subir: assim o mesmo item nunca sobe duas vezes. */
+function garantirIdsDoHistorico(){
+  state.pacientes.forEach(p=>(p.historico||[]).forEach(h=>{ if(h&&!h.id) h.id='h'+uid()+uid(); }));
+}
+
+/* O que o motor compara: as listas e a configuração, nada da tela. */
+function retratoAgenda(){
+  garantirIdsDoHistorico();
+  return { pacientes:state.pacientes, categorias:state.categorias, followups:state.followups,
+    maquinas:state.maquinas, vindas:state.vindas,
+    config:{ criado:state.criado||'', seedMaq:!!state.seedMaq }, _revConfig:revConfig };
 }
 
 async function carregar(){
-  const r=await api({acao:'ler_agenda',token:SESSAO.token});
-  if(!r.ok) throw new Error(r.erro||'falha');
-  SESSAO.rev=r.rev;
+  const r=await ler('agenda.ler');
+  if(!r.ok){ const e=new Error(r.erro.codigo); e.resposta=r; throw e; }
   const o=r.dados||{};
   state.pacientes  = Array.isArray(o.pacientes)?o.pacientes:[];
   state.categorias = Array.isArray(o.categorias)?o.categorias:[];
@@ -152,6 +206,7 @@ async function carregar(){
   state.vindas     = Array.isArray(o.vindas)?o.vindas:[];
   state.seedMaq    = !!o.seedMaq;
   state.criado     = o.criado||D.hoje();
+  revConfig        = Number(o._revConfig)||0;
   const primeiraVez = !o.criado || !o.seedMaq;
   state.pacientes.forEach(normalizar);
   state.vindas.forEach(v=>{ v.resp=v.resp||{}; });
@@ -335,7 +390,7 @@ const ROTULOS_AGENDA={
   valores:{ area:{ facial:'Facial', corporal:'Corporal', capilar:'Capilar' } },
 };
 
-function guardarBase(){ BASE=FloreSerSync.copiar(state); }
+function guardarBase(){ motor.definirBase(retratoAgenda()); BASE=motor.base(); }
 
 function salvar(){
   if(travado) return;
@@ -349,56 +404,86 @@ function salvar(){
   timerEnvio=setTimeout(enviar,350);
 }
 
-/* Uma gravação leva a agenda inteira e demora o que a rede demorar. Quem
-   edita rápido mexe em outra ficha antes de a anterior voltar — e é aí que
-   o rodapé mentia: ele dizia "salvo" no instante em que a resposta chegava,
-   sem olhar se algo novo tinha entrado na fila enquanto isso. A pessoa via
-   "salvo", fechava a aba e levava um susto com o aviso do navegador.
+function agendarEnvio(ms){ clearTimeout(timerEnvio); timerEnvio=setTimeout(enviar,ms); }
 
-   Agora o envio anuncia que está no ar, e "salvo" só aparece quando não
-   sobrou nada para mandar. */
+/* O envio anuncia que está no ar, e "salvo" só aparece quando o servidor
+   confirmou e não sobrou nada para mandar — inclusive o que foi editado
+   enquanto esta rodada voava. */
 async function enviar(){
   if(travado||emVoo||!precisaSalvar||conflitoPendente) return;
   emVoo=true; precisaSalvar=false;
   sinc='salvando'; statusRodape();
-  const instantaneo=JSON.parse(JSON.stringify(state));
-  let deuCerto=false;
-  try{
-    const r=await api({acao:'salvar_agenda',token:SESSAO.token,rev:SESSAO.rev,dados:instantaneo});
-    if(!r.ok){
-      if(r.erro==='conflito'){ conflito(r); return; }
-      /* não recarrego sozinho: o que estiver aberto agora seria perdido */
-      if(r.erro==='sem_acesso'){ travado=true; sinc='erro'; statusRodape();
-        toast('Seu acesso a este módulo foi retirado. Recarregue a página.',true); return; }
-      if(r.erro==='sessao'||r.erro==='expirada'||r.erro==='inativo'){
-        travado=true; sinc='erro'; esquecerToken(); statusRodape();
-        toast('Sua sessão expirou. Recarregue a página e informe a senha.',true); return; }
-      throw new Error(r.erro||'falha');
-    }
-    SESSAO.rev=r.rev; tentativa=0; tentativasDeMerge=0; deuCerto=true;
-    /* só agora o que está na tela virou o que o servidor tem */
-    BASE=instantaneo;
-    /* mas "o que o servidor tem" só é "o que está na tela" se nada entrou
-       na fila enquanto esta gravação voava */
-    if(precisaSalvar){ sinc='pendente'; }
-    else { sinc='ok'; if(statusSinc) statusSinc.salvoAgora(); }
-  }catch(e){
-    precisaSalvar=true; tentativa++; sinc='offline';
-    clearTimeout(timerEnvio);
-    timerEnvio=setTimeout(enviar, Math.min(20000,2000*tentativa));
-    if(tentativa===1) toast('Sem conexão com a planilha — vou tentar de novo.',true);
-  }finally{
-    emVoo=false;
-    statusRodape();
-    /* Quem reagenda é o resultado desta gravação, não a cor do rodapé. A
-       condição antiga era sinc==='ok', e ela deixou de valer no momento em
-       que "salvo" passou a depender da fila: com alteração pendente o
-       estado é 'pendente', e o reenvio nunca teria saído. Erro e conflito
-       têm caminho próprio e não passam por aqui. */
-    if(deuCerto&&precisaSalvar&&!travado&&!conflitoPendente){
-      clearTimeout(timerEnvio); timerEnvio=setTimeout(enviar,200);
-    }
+  let r;
+  try{ r=await motor.enviar(retratoAgenda()); }
+  catch(e){ r={ok:false,transitorio:true}; }
+  emVoo=false;
+
+  if(r.ok){
+    tentativa=0; tentativasDeMerge=0;
+    adotarCorrecoes(r.corrigidas);
+    BASE=motor.base();
+    revConfig=Number(BASE._revConfig)||revConfig;
+    if(precisaSalvar||motor.contar(retratoAgenda())){ precisaSalvar=true; sinc='pendente'; statusRodape(); agendarEnvio(200); }
+    else { sinc='ok'; if(statusSinc) statusSinc.salvoAgora(); statusRodape(); }
+    return;
   }
+  if(r.sessaoPerdida){ precisaSalvar=true; sinc='erro'; travado=true; statusRodape(); pedirLoginDeNovo(); return; }
+  if(r.semAcesso){ travado=true; sinc='erro'; statusRodape();
+    toast('Seu acesso a este módulo foi retirado. O que está na tela continua aqui, mas não sobe mais.',true); return; }
+  if(r.contaTrocada){ travado=true; sinc='erro'; statusRodape();
+    toast('Outra conta entrou neste navegador. Recarregue a página para continuar com ela.',true); return; }
+  if(r.versao&&!(r.erro&&r.erro.codigo==='manutencao')){ travado=true; sinc='erro'; statusRodape();
+    toast('O site e o servidor estão em versões diferentes. Recarregue a página — o que está na tela fica até lá.',true); return; }
+  if(r.erros&&r.erros.length) tratarRecusas(r.erros);
+  if(r.conflitos&&r.conflitos.length){ BASE=motor.base(); conflito({dados:r.servidor}); return; }
+  if(r.transitorio||r.versao){
+    precisaSalvar=true; tentativa++;
+    sinc=(!navigator.onLine||(r.erro&&r.erro.codigo==='sem_conexao'))?'offline':'erro';
+    statusRodape();
+    agendarEnvio(Math.min(60000,2000*tentativa));
+    if(tentativa===1) toast(r.erro&&r.erro.codigo==='manutencao'?'O sistema está em manutenção — vou tentar de novo sozinho.'
+      :'Sem conexão com a planilha — vou tentar de novo.',true);
+    return;
+  }
+  sinc='erro'; statusRodape();
+}
+
+/* O servidor normalizou alguma ficha (a série reordenada, por exemplo):
+   a tela adota, sem desfazer o que foi editado depois do envio. */
+function adotarCorrecoes(lista){
+  if(!lista||!lista.length) return;
+  lista.forEach(c=>{
+    const col=state[c.colecao]; if(!Array.isArray(col)) return;
+    const i=col.findIndex(x=>x.id===c.id);
+    if(i>=0){ col[i]=FloreSerDados.adotarCorrecao(col[i],c.enviado,c.servidor); if(c.colecao==='pacientes') normalizar(col[i]); }
+  });
+  tudo();
+}
+
+function tratarRecusas(erros){
+  erros.forEach(e=>{
+    if(e.codigo==='na_lixeira'){
+      state.pacientes=state.pacientes.filter(x=>x.id!==e.id);
+      motor.esquecer('pacientes',e.id);
+      toast('Uma paciente foi para a lixeira em outro aparelho e saiu desta lista.',true);
+      return;
+    }
+    toast('O servidor recusou uma alteração: '+(e.mensagem||e.codigo)+' As outras foram salvas.',true);
+  });
+  tudo();
+}
+
+/* A sessão acabou no meio do trabalho: entrar de novo POR CIMA da tela; o
+   que não foi salvo continua aqui e sobe depois. */
+let pedindoLogin=false;
+async function pedirLoginDeNovo(){
+  if(pedindoLogin) return;
+  pedindoLogin=true;
+  const conta=origemSessao==='usuario'||FloreSerSessao.temConta();
+  const ok=conta?!!(await FloreSerAuth.pedirNovamente('agenda')):await pedirSenhaDoModulo();
+  pedindoLogin=false;
+  if(ok){ travado=false; precisaSalvar=true; agendarEnvio(0); }
+  else toast('Sem entrar de novo, o que está na tela não sobe para a planilha.',true);
 }
 
 /* O servidor recusou por revisão diferente e mandou junto o estado atual
@@ -414,7 +499,10 @@ async function conflito(resposta){
     return;
   }
 
-  const local = FloreSerSync.copiar(state);
+  /* as fichas que vieram do servidor ganham a mesma forma das da tela */
+  (servidor.pacientes||[]).forEach(normalizar);
+  (servidor.vindas||[]).forEach(v=>{ v.resp=v.resp||{}; });
+  const local = FloreSerSync.copiar(retratoAgenda());
   const base  = BASE || local;
   const m = FloreSerSync.mesclar(base, local, servidor, ESQUEMA_AGENDA);
 
@@ -424,7 +512,7 @@ async function conflito(resposta){
   if(!m.conflitos.length){
     /* nada se cruzou: junta e reenvia com a revisão nova */
     registrarSync('SYNC_CONFLITO_AUTO_MESCLADO', m.automaticos.length+' alteração(ões)');
-    await aplicarMerge(m.estado, resposta.rev);
+    await aplicarMerge(m.estado, servidor);
     return;
   }
 
@@ -439,7 +527,7 @@ async function conflito(resposta){
       registrarSync('SYNC_CONFLITO_RESOLVIDO_MANUAL',
         doMeu+' de '+escolhas.length+' campo(s) ficaram com a versão deste aparelho');
       conflitoPendente=false;
-      await aplicarMerge(fim, resposta.rev);
+      await aplicarMerge(fim, servidor);
     },
     aoCancelar: function(){
       /* fica em conflito, sem perder nada, e dá para reabrir */
@@ -449,12 +537,17 @@ async function conflito(resposta){
   });
 }
 
-/* Aplica o estado conciliado e tenta gravar com a revisão que o servidor
-   informou. Se alguém salvar de novo nesse meio-tempo, recomeça — com
-   limite, para não virar laço. */
-async function aplicarMerge(estado, rev){
-  state = estado;
-  SESSAO.rev = rev;
+/* Aplica o estado conciliado: o servidor sintético (a base com as fichas
+   como estão lá) vira a base, e o que sobrou de diferença sobe com as
+   revisões novas. Se alguém salvar de novo nesse meio-tempo, recomeça —
+   com limite, para não virar laço. */
+async function aplicarMerge(estado, servidor){
+  state.pacientes=estado.pacientes; state.categorias=estado.categorias; state.followups=estado.followups;
+  state.maquinas=estado.maquinas; state.vindas=estado.vindas;
+  if(estado.config){ state.criado=estado.config.criado||state.criado; state.seedMaq=!!estado.config.seedMaq; }
+  motor.adotarServidor(servidor);
+  BASE=motor.base();
+  revConfig=Number(BASE._revConfig)||revConfig;
   normalizarTudo();
   tudo();
 
@@ -2340,7 +2433,8 @@ function modalFicha(id){
   if(caixaAud && window.FloreSerAuditoria){
     FloreSerAuditoria.montar(caixaAud,{
       modulo:'agenda', entidade:'paciente', entidadeId:p.id,
-      api: corpo => api(Object.assign({token:SESSAO.token}, corpo)),
+      api: corpo => ler('auditoria.listar',{modulo:corpo.modulo,entidade:corpo.entidade,
+        entidadeId:corpo.entidadeId,inicio:corpo.inicio,quantos:corpo.quantos}).then(achatar),
     });
   }
 }
@@ -2374,12 +2468,15 @@ let pendenteFn=null;
    que ele já fez, para a tela não ficar mostrando quem saiu. */
 async function paraLixeira(id,nome,motivo){
   try{
-    const r=await api({acao:'lixeira_mover',token:SESSAO.token,tipo:'agenda',id:id,motivo:motivo||''});
-    if(!r||!r.ok){
-      if(r&&r.erro==='sem_acesso'){ toast('Você não possui acesso a este módulo.',true); return; }
-      toast('Não foi possível concluir a operação. Tente novamente.',true); return;
+    /* o mesmo operacaoId nas repetições: mover duas vezes não guarda duas */
+    const r=await FloreSerRede.chamar('lixeira.mover',
+      {tipo:'agenda',id:id,motivo:motivo||'',operacaoId:FloreSerRede.novoId('lx-')},
+      {token:tokenAtual(),tentativas:2,repetirIncerto:true});
+    if(!r.ok){
+      if(r.erro.codigo==='sem_acesso'){ toast('Você não possui acesso a este módulo.',true); return; }
+      toast(FloreSerAuth.recado(r),true); return;
     }
-    if(typeof r.rev==='number') SESSAO.rev=r.rev;
+    refletirLixeiraNaBase(id);
     state.pacientes=state.pacientes.filter(x=>x.id!==id);
     state.followups=state.followups.filter(f=>f.pacienteId!==id);
     state.vindas.forEach(v=>{ if(v.resp) delete v.resp[id]; });
@@ -2389,6 +2486,16 @@ async function paraLixeira(id,nome,motivo){
   }catch(e){
     toast('Não foi possível concluir a operação. Tente novamente.',true);
   }
+}
+
+/* O servidor tirou a paciente, os follow-ups e as respostas dela: a base
+   do motor acompanha, para nada disso voltar como "removido aqui". */
+function refletirLixeiraNaBase(id){
+  const b=motor.base();
+  motor.esquecer('pacientes',id);
+  (b.followups||[]).filter(f=>f.pacienteId===id).forEach(f=>motor.esquecer('followups',f.id));
+  (b.vindas||[]).forEach(v=>{ if(v.resp&&v.resp[id]){ delete v.resp[id]; motor.definirEntidade('vindas',v); } });
+  BASE=motor.base();
 }
 
 function confirmar(titulo,texto,rotulo,fn){
@@ -3069,11 +3176,6 @@ let origemSessao='senhaModulo';
 
 document.body.style.overflow='hidden';
 
-/* sessionStorage: vale para esta aba, neste navegador, neste aparelho */
-function guardarToken(x){ try{ sessionStorage.setItem(CHAVE_TOKEN,x); }catch(e){} }
-function tokenGuardado(){ try{ return sessionStorage.getItem(CHAVE_TOKEN)||''; }catch(e){ return ''; } }
-function esquecerToken(){ try{ sessionStorage.removeItem(CHAVE_TOKEN); }catch(e){} }
-
 const AVISO='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '+
   'stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3.8 21 19.5H3L12 3.8Z"/>'+
   '<path d="M12 10v4M12 16.6v.4"/></svg>';
@@ -3087,56 +3189,53 @@ function ocupado(ligado){
   elBtn.textContent=ligado?'Conectando…':'Entrar'; elSenha.disabled=ligado;
 }
 
-/* Troca a senha por um token de sessão. A senha não fica guardada aqui nem
-   é reenviada depois: daqui para a frente só o token viaja. */
+/* Troca a senha compartilhada por uma sessão desta aba. A senha não fica
+   guardada aqui nem é reenviada: daqui para a frente só o token viaja. */
 async function entrar(senha){
   if(!senha){ elSenha.focus(); return; }
   ocupado(true); avisar('');
-  try{
-    const r=await api({acao:'entrar',modulo:'agenda',senha:senha});
-    if(!r.ok){
-      if(r.erro==='bloqueado'){
-        avisar('Muitas tentativas erradas. Tente de novo em '+(r.minutos||15)+' minutos.');
-      } else if(r.erro==='senha'){
-        avisar('Senha incorreta. Confira e tente de novo.'+
-          (r.restam?' Restam '+r.restam+' tentativas.':''));
-      } else {
-        avisar('Não foi possível falar com a planilha. Confira sua internet.');
-      }
-      elSenha.value=''; ocupado(false); elSenha.focus(); return;
-    }
-    SESSAO.token=r.token;
-    guardarToken(r.token);
-    await carregar();
-    abrirApp();
-  }catch(e){
-    const erro=String(e&&e.message||e);
-    avisar(erro==='ocupado'
-      ? 'A planilha está ocupada. Tente de novo em instantes.'
-      : 'Não foi possível falar com a planilha. Confira sua internet.');
-    elSenha.value=''; ocupado(false); elSenha.focus();
+  const r=await FloreSerSessao.entrarModulo('agenda',senha);
+  if(!r.ok){
+    avisar(esc(FloreSerAuth.recado(r)));
+    elSenha.value=''; ocupado(false); elSenha.focus(); return;
   }
+  elSenha.value='';
+  if(reentrada){ concluirReentrada(true); return; }
+  origemSessao='senhaModulo';
+  try{ await carregar(); abrirApp(); }
+  catch(e){ ocupado(false); avisar(esc('Não foi possível carregar os dados agora. '+FloreSerAuth.recado(e.resposta))); }
 }
 
-/* volta com o token guardado; se ele já não valer, o portão reaparece */
-async function retomar(token){
+/* volta com a sessão da senha desta aba; se ela já não valer, o portão fica */
+async function retomarModulo(){
   ocupado(true);
-  SESSAO.token=token;
-  try{
-    await carregar();
-    abrirApp();
-  }catch(e){
-    esquecerToken(); SESSAO.token=''; ocupado(false);
-    if(String(e&&e.message||e)==='sessao') avisar('Sua sessão expirou. Informe a senha de novo.');
-    elSenha.focus();
-  }
+  try{ await carregar(); abrirApp(); }
+  catch(e){ ocupado(false); avisar(esc(FloreSerAuth.recado(e.resposta))); elSenha.focus(); }
 }
 
 async function sair(){
-  const token=SESSAO.token;
-  esquecerToken(); SESSAO.token='';
-  try{ await api({acao:'sair',token:token}); }catch(e){ /* segue assim mesmo */ }
+  await FloreSerSessao.sairDoModulo('agenda');
   location.reload();
+}
+
+/* A senha do módulo venceu no meio do trabalho: o portão volta por cima da
+   tela, e entrar de novo só retoma o envio — nada é recarregado. */
+let portaoGuardado=null, reentrada=null;
+function pedirSenhaDoModulo(){
+  return new Promise(resolver=>{
+    if(!portaoGuardado){ resolver(false); return; }
+    reentrada=resolver;
+    document.body.appendChild(portaoGuardado);
+    ocupado(false);
+    avisar(esc('A sessão da senha do módulo expirou. Informe a senha para salvar o que está na tela — nada foi perdido.'));
+    elSenha.focus();
+  });
+}
+function concluirReentrada(ok){
+  const fim=reentrada; reentrada=null;
+  if(portaoGuardado&&portaoGuardado.parentNode) portaoGuardado.remove();
+  ocupado(false);
+  if(fim) fim(ok);
 }
 
 /* ---------- entrada por usuário ----------
@@ -3149,11 +3248,11 @@ function abrirLoginDeUsuario(){
   avisar('');
   window.FloreSerAuth.abrirLogin({
     modulo:'agenda',
-    aoEntrar: async function(r){
-      SESSAO.token=r.token;
+    aoEntrar: async function(){
       origemSessao='usuario';
+      if(reentrada){ concluirReentrada(true); return; }
       try{ await carregar(); abrirApp(); }
-      catch(e){ avisar('Não foi possível carregar os dados. Tente de novo.'); }
+      catch(e){ avisar(esc('Não foi possível carregar os dados agora. '+FloreSerAuth.recado(e.resposta))); }
     },
   });
 }
@@ -3164,17 +3263,15 @@ function abrirLoginDeUsuario(){
 async function retomarUsuario(){
   const entrou = await window.FloreSerAuth.tentarRetomar('agenda', {
     aoPedirSenha(){ elSenha.focus(); },
-    aoEntrar(r){
-      SESSAO.token=r.token;
+    aoEntrar(){
       origemSessao='usuario';
-      carregar().then(abrirApp).catch(()=>{
-        avisar('Não foi possível carregar os dados. Tente de novo.');
+      carregar().then(abrirApp).catch(e=>{
+        avisar(esc('Não foi possível carregar os dados agora. '+FloreSerAuth.recado(e.resposta)));
       });
     },
   });
   if(!entrou) return false;
 
-  SESSAO.token=window.FloreSerAuth.token();
   origemSessao='usuario';
   try{
     await carregar();
@@ -3194,6 +3291,8 @@ async function retomarUsuario(){
 }
 
 function abrirApp(){
+  portaoGuardado=elPortao;
+  document.body.classList.add('entrou');
   elPortao.remove();
   document.body.style.overflow='';
   setTimeout(abrirFichaPedida,0);
@@ -3241,10 +3340,14 @@ document.getElementById('ir-usuario').addEventListener('click',abrirLoginDeUsuar
    esconderia o motivo, e a pessoa nunca saberia que a conta dela não abre
    este módulo. */
 (async function(){
-  if(window.FloreSerAuth && window.FloreSerAuth.token()){
-    await retomarUsuario();
-    return;
-  }
-  const guardado=tokenGuardado();
-  if(guardado) retomar(guardado); else elSenha.focus();
+  if(FloreSerSessao.temConta()){ await retomarUsuario(); return; }
+  if(FloreSerSessao.tokenDoModulo('agenda')) retomarModulo(); else elSenha.focus();
 })();
+
+/* o servidor recusou a sessão em outra chamada, ou outra aba trocou a
+   conta: o que está na tela fica, e a tela diz o que fazer */
+FloreSerSessao.ouvir(function(tipo){
+  if(!document.body.classList.contains('entrou')) return;
+  if(tipo==='perdida'){ sinc='erro'; statusRodape(); if(precisaSalvar||emVoo||motor.contar(retratoAgenda())) pedirLoginDeNovo(); }
+  if(tipo==='trocou') toast('Outra conta entrou neste navegador. Recarregue a página para usar a conta nova.',true);
+});

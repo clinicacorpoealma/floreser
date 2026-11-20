@@ -5,13 +5,16 @@
    não é proteção: nada aqui é mostrado antes de o Apps Script conferir a
    senha e devolver uma credencial temporária. A senha não existe neste
    arquivo, só viaja para o servidor.
+
+   Desde a 4.0.0 a sessão do painel é uma sessão de módulo ("dev") no
+   compartilhado/sessao.js, e a conversa passa pelo compartilhado/rede.js
+   — sem repetição automática: manutenção não se repete sem alguém mandar.
    ===================================================================== */
 
 (function (global) {
   "use strict";
 
-  var URL_API = "https://script.google.com/macros/s/AKfycbzy9WCfP4l08dn2h2K34uEL6e0mqFBjVMugcHiTc0oUGmpS7gOJjbxs58CB87AoFUw-/exec";
-  var CHAVE = "floreser.cred";
+  var CHAVE = "floreser.sessao.modulo.dev";
   var PACIENCIA = 8000;      // ms de tolerância entre um toque e o seguinte
   var POR_PAGINA = 50;
 
@@ -34,40 +37,55 @@
     }
   }
 
+  /* A credencial é a sessão "dev" do sessao.js. Ler devolve o token; null
+     esquece só esta aba (o servidor já recusou); um valor não faz nada —
+     quem guarda é o próprio entrarModulo. */
   function credencial(valor) {
-    if (valor === undefined) return tentar(function () { return sessionStorage.getItem(CHAVE); }, null);
-    tentar(function () {
-      if (valor === null) sessionStorage.removeItem(CHAVE);
-      else sessionStorage.setItem(CHAVE, valor);
-      return true;
-    }, false);
+    if (valor === undefined) return global.FloreSerSessao ? FloreSerSessao.tokenDoModulo("dev") : null;
+    if (valor === null) tentar(function () { sessionStorage.removeItem(CHAVE); return true; }, false);
   }
 
-  /* O painel fala com o Apps Script por fetch próprio — ele não usa o
-     FloreSerRede, que repete leitura sozinho, e manutenção não é coisa
-     para repetir sem alguém mandar. Então o selo de atividade é aberto e
-     fechado aqui, à mão, com o mesmo contrato das outras telas. */
-  function chamar(corpo) {
-    var op = tentar(function () {
-      return window.FloreSerAtividade
-        ? window.FloreSerAtividade.iniciar(corpo && corpo.acao) : null;
-    }, null);
+  /* As ações do painel no formato de sempre, traduzidas para a API v2. A
+     resposta volta achatada, como o resto deste arquivo espera; recusa de
+     sessão vira "sessao", que é o que faz o painel pedir a senha de novo. */
+  var ACOES_PAINEL = {
+    dev_dados: "painel.dados", dev_limpar: "painel.limpar", auditoria_geral: "painel.auditoria",
+    usuarios_listar: "painel.usuarios.listar", usuario_criar: "painel.usuarios.criar",
+    usuario_editar: "painel.usuarios.editar", usuario_status: "painel.usuarios.status",
+    usuario_senha: "painel.usuarios.senha", usuario_encerrar: "painel.usuarios.encerrarSessoes",
+    lixeira_listar: "painel.lixeira.listar", lixeira_restaurar: "painel.lixeira.restaurar",
+    lixeira_excluir: "painel.lixeira.excluir", lixeira_limpar: "painel.lixeira.limpar",
+    painel_sistema: "painel.sistema", painel_senha_modulo: "painel.senhaModulo"
+  };
 
-    return fetch(URL_API, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(corpo),
-      redirect: "follow",
-    }).then(function (r) { return r.json(); })
-      .then(function (r) {
-        if (op) tentar(function () { return window.FloreSerAtividade.concluir(op, r); }, null);
-        return r;
-      }, function (erro) {
-        /* resposta que não vira JSON cai aqui junto com a queda de rede:
-           nos dois casos a operação fecha, e uma vez só */
-        if (op) tentar(function () { return window.FloreSerAtividade.falhaDeRede(op, erro); }, null);
-        throw erro;
+  function achatar(r, acao) {
+    if (r.ok) {
+      if (acao === "dev_dados") return { ok: true, dados: r.dados };
+      var saida = { ok: true };
+      Object.keys(r.dados || {}).forEach(function (k) { saida[k] = r.dados[k]; });
+      return saida;
+    }
+    var e = r.erro || {};
+    var codigo = e.codigo;
+    if (e.categoria === "autenticacao" || codigo === "sem_acesso") codigo = acao === "dev_entrar" && codigo === "credenciais" ? "senha" : "sessao";
+    if (codigo === "dados_invalidos" || codigo === "nao_encontrado") codigo = "dados";
+    var plano = { ok: false, erro: codigo, mensagem: e.mensagem };
+    ["minutos", "restam"].forEach(function (k) { if (e[k] !== undefined) plano[k] = e[k]; });
+    return plano;
+  }
+
+  function chamar(corpo) {
+    var acao = String(corpo && corpo.acao || "");
+    if (acao === "dev_entrar") {
+      return FloreSerSessao.entrarModulo("dev", corpo.senha).then(function (r) {
+        return r.ok ? { ok: true, token: r.dados.token } : achatar(r, acao);
       });
+    }
+    var dados = {};
+    Object.keys(corpo).forEach(function (k) { if (k !== "acao" && k !== "token") dados[k] = corpo[k]; });
+    if (acao === "lixeira_restaurar" && !dados.operacaoId) dados.operacaoId = FloreSerRede.novoId("painel-");
+    return FloreSerRede.chamar(ACOES_PAINEL[acao] || acao, dados, { token: credencial() || "", tentativas: 1 })
+      .then(function (r) { return achatar(r, acao); });
   }
 
   /* mostra "Não disponível" em vez de vazio, sem inventar valor */
@@ -85,6 +103,15 @@
 
   function dataHora(iso) {
     if (!iso) return "";
+    /* instante com fuso (o servidor grava em UTC): mostra na hora local */
+    if (/(Z|[+-]\d{2}:?\d{2})$/.test(String(iso))) {
+      var d = new Date(iso);
+      if (!isNaN(d.getTime())) {
+        var p = function (n) { return String(n).padStart(2, "0"); };
+        return p(d.getDate()) + "/" + p(d.getMonth() + 1) + "/" + d.getFullYear() + " " +
+          p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+      }
+    }
     var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})T?(\d{2})?:?(\d{2})?:?(\d{2})?/);
     if (!m) return String(iso);
     return m[3] + "/" + m[2] + "/" + m[1] + (m[4] ? " " + m[4] + ":" + m[5] + ":" + (m[6] || "00") : "");
@@ -205,7 +232,7 @@
       } else if (r && r.erro === "senha") {
         aviso.textContent = "Senha incorreta." + (r.restam ? " Restam " + r.restam + "." : "");
       } else {
-        aviso.textContent = "Não foi possível falar com o servidor.";
+        aviso.textContent = (r && r.mensagem) || "Não foi possível falar com o servidor.";
       }
       campo.value = "";
       campo.focus();
@@ -363,7 +390,7 @@
     var corpo = document.getElementById("painel-corpo");
     if (!corpo) return;
     var selo = document.getElementById("painel-selo");
-    if (selo) selo.textContent = (base.resumo && base.resumo.servidor) ? "Servidor · " + base.resumo.servidor : "";
+    if (selo) selo.textContent = (base.resumo && base.resumo.servidor) ? "Servidor · " + dataHora(base.resumo.servidor) : "";
 
     var html = recado ? '<div class="nota-privacidade">' + esc(recado) + "</div>" : "";
     if (aba === "visao") html += visaoGeral();
@@ -559,7 +586,7 @@
       '<div class="titulo-secao">Agora</div><div class="grade">' +
       '<div class="cartao"><div class="rot">Horário do sistema</div>' +
       '<div class="val" id="relogio">' + esc(new Date().toLocaleTimeString("pt-BR")) + "</div></div>" +
-      cartao("Horário do servidor", resumo.servidor) +
+      cartao("Horário do servidor", dataHora(resumo.servidor)) +
       cartao("Estado da API", estadoApi) +
       cartao("Ambiente", ambiente()) +
       "</div>" +
@@ -1359,7 +1386,20 @@
   var estadoPWA = null;
   var recadoPWA = "";
 
+  /* o estado do servidor: versões, schema, migração, senhas de módulo */
+  var estadoServidor = null;
+  var recadoServidor = "";
+  function pedirEstadoServidor() {
+    chamar({ acao: "painel_sistema" }).then(function (r) {
+      if (r && r.erro === "sessao") { credencial(null); fechar(dlgPainel); pedirSenha(); return; }
+      if (r && r.ok) { estadoServidor = r; recadoServidor = ""; }
+      else recadoServidor = (r && r.mensagem) || "Não foi possível ler o estado do servidor.";
+      if (aba === "sistema") desenhar();
+    }).catch(function () { recadoServidor = "Sem conexão com o servidor."; if (aba === "sistema") desenhar(); });
+  }
+
   function pedirEstadoPWA() {
+    pedirEstadoServidor();
     if (!global.Alveare || !global.Alveare.estadoTecnico) return;
     global.Alveare.estadoTecnico().then(function (e) {
       estadoPWA = e;
@@ -1435,12 +1475,43 @@
       "sai do sistema por causa disso.</p>" +
       (recadoPWA ? '<div class="aviso-form">' + esc(recadoPWA) + "</div>" : "") +
 
-      '<div class="titulo-secao">Planilha</div><div class="grade">' +
-      cartao("Revisão do CRM", String(resumo.revCRM === undefined ? "" : resumo.revCRM)) +
-      cartao("Revisão da agenda", String(resumo.revAgenda === undefined ? "" : resumo.revAgenda)) +
-      cartao("Retenção", resumo.retencao ? resumo.retencao + " dias" : "") +
-      cartao("Horário do servidor", resumo.servidor) +
+      telaServidor(resumo);
+  }
+
+  /* O que o servidor diz de si: versões (produto, API, schema), migração,
+     operações pendentes, sessões abertas e a transição da senha
+     compartilhada — que pode ser desligada módulo a módulo quando todo
+     mundo já tiver conta. */
+  function telaServidor(resumo) {
+    var srv = estadoServidor || {};
+    var abertas = srv.sessoesAbertas || {};
+    var faltam = srv.segredosFaltando || [];
+    var compat = (global.FLORESER && global.FLORESER.compat) || {};
+    var html = '<div class="titulo-secao">Servidor</div><div class="grade">' +
+      cartao("Versão do servidor", srv.versao ? "v" + srv.versao : "") +
+      cartao("Contrato (API)", srv.api ? srv.api + (compat.api && compat.api !== srv.api ? " · o site fala " + compat.api : "") : "") +
+      cartao("Schema dos dados", srv.schema ? srv.schemaAtivo + " ativo · código " + srv.schema : "") +
+      cartao("Manutenção", srv.versao ? (srv.manutencao ? "ligada" : "desligada") : "") +
+      cartao("Operações pendentes", srv.versao ? (srv.opsPendentes ? "há — rode recuperarOperacoesAgora()" : "nenhuma") : "") +
+      cartao("Sessões abertas", srv.versao ? (abertas.conta || 0) + " de conta · " + (abertas.modulo || 0) + " de senha" : "") +
+      cartao("Fuso da clínica", srv.fuso) +
+      cartao("Segredos", srv.versao ? (faltam.length ? "faltam: " + faltam.join(", ") : "configurados") : "") +
+      cartao("Horário do servidor", dataHora(resumo.servidor)) +
       "</div>";
+    var senhas = srv.senhasDeModulo || {};
+    html += '<div class="titulo-secao">Senha compartilhada dos módulos</div><div class="grade">';
+    ["crm", "agenda", "entradas"].forEach(function (m) {
+      var ligada = senhas[m] !== false;
+      html += '<div class="cartao"><div class="rot">' + esc({ crm: "CRM", agenda: "Agenda", entradas: "Entradas" }[m]) + "</div>" +
+        '<div class="val">' + (srv.versao ? (ligada ? "ligada" : "desligada") : "—") + "</div>" +
+        (srv.versao ? '<button class="btn-fino" data-senha-mod="' + m + '" data-ligar="' + (ligada ? "0" : "1") + '">' +
+          (ligada ? "Desligar" : "Ligar") + "</button>" : "") + "</div>";
+    });
+    html += "</div>" +
+      '<p class="nota-privacidade">Desligar a senha compartilhada não derruba quem já entrou por ela: a sessão ' +
+      "dessa pessoa vence sozinha em até 30 minutos sem uso. As contas individuais continuam valendo.</p>" +
+      (recadoServidor ? '<div class="aviso-form">' + esc(recadoServidor) + "</div>" : "");
+    return html;
   }
 
   /* ---------------------------------------------------- eventos da tela */
@@ -1464,6 +1535,17 @@
     em("#f-limpar", "click", limpar);
 
     em("#pwa-conferir", "click", function () { recadoPWA = ""; pedirEstadoPWA(); });
+    Array.prototype.forEach.call(corpo.querySelectorAll("[data-senha-mod]"), function (b) {
+      b.addEventListener("click", function () {
+        b.disabled = true;
+        chamar({ acao: "painel_senha_modulo", modulo: b.getAttribute("data-senha-mod"), ligada: b.getAttribute("data-ligar") === "1" })
+          .then(function (r) {
+            if (r && r.erro === "sessao") { credencial(null); fechar(dlgPainel); pedirSenha(); return; }
+            if (r && r.ok) estadoServidor = r; else recadoServidor = (r && r.mensagem) || "O servidor recusou a mudança.";
+            desenhar();
+          });
+      });
+    });
     em("#pwa-limpar", "click", function () {
       if (!global.Alveare || !global.Alveare.limparCasca) return;
       recadoPWA = "Limpando…";

@@ -247,8 +247,10 @@
       if (ocupado) return;
       ocupado = true;
 
+      /* o módulo entrega a chamada: FloreSerRede.chamar("auditoria.listar", ...)
+         com a resposta achatada ({ ok, eventos, temMais } ou { ok:false, erro }) */
       o.api({
-        acao: "auditoria_listar",
+        acao: "auditoria.listar",
         modulo: o.modulo,
         entidade: o.entidade,
         entidadeId: o.entidadeId,
@@ -258,7 +260,8 @@
         ocupado = false;
         if (!r || !r.ok) {
           /* nada de lista vazia fingindo que não houve alteração nenhuma */
-          var motivo = (r && r.erro === "sem_acesso")
+          var codigo = r && r.erro && typeof r.erro === "object" ? r.erro.codigo : r && r.erro;
+          var motivo = (codigo === "sem_acesso")
             ? "Sua conta não tem acesso ao histórico deste módulo."
             : "Não foi possível carregar o histórico agora.";
           elemento.innerHTML = '<div class="au-erro">' + esc(motivo) + "</div>";

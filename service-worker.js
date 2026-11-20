@@ -17,25 +17,29 @@
 
 "use strict";
 
-/* Identificador técnico do cache. Não é a versão do sistema, que continua
-   morando só no version.js: é o número que faz o navegador saber que a
-   casca mudou. Suba um degrau quando alterar a lista do PRECACHE — e
-   também quando mudar o conteúdo de um .css ou .js da casca de que o HTML
-   novo dependa. A página vem da rede, mas o CSS vem guardado: sem subir o
-   número, a primeira abertura depois de publicar juntaria HTML novo com
-   CSS velho. */
+/* A versão da casca sai do version.js, a fonte única dos metadados de
+   lançamento: publicar uma versão nova troca o nome do cache sozinho, sem
+   número para lembrar de subir à mão. O navegador confere este arquivo E
+   o version.js importado a cada visita (updateViaCache: "none", no pwa.js),
+   então mudar só o version.js já instala a casca nova.
+
+   Pelas regras do projeto, toda mudança que a pessoa vê sobe a versão;
+   ferramentas/conferir-publicacao.js recusa casca alterada com a versão
+   antiga (confere o carimbo FLORESER.casca). */
+importScripts("version.js");
 const CACHE_PREFIXO = "alveare-casca-";
-const CACHE_ATUAL = CACHE_PREFIXO + "10";
+const CACHE_ATUAL = CACHE_PREFIXO + ((self.FLORESER && self.FLORESER.casca) || "sem-versao");
 
 /* A raiz do site, seja ela / ou /floreser/ */
 const RAIZ = new URL("./", self.registration.scope).pathname;
 
 const paginaOffline = RAIZ + "offline.html";
 
-/* A casca: o que precisa existir para a interface abrir sem rede.
-   Dados da clínica não entram nesta lista — nem poderiam, são resposta
-   de API. */
-const PRECACHE = [
+/* A casca ESSENCIAL: sem qualquer um destes, a interface não abre igual.
+   A instalação usa addAll — ou entra tudo, ou a versão nova não instala e
+   a anterior continua valendo. Nada de casca pela metade (HTML novo com
+   script velho). Dados da clínica não entram aqui — nem poderiam. */
+const ESSENCIAIS = [
   RAIZ,
   RAIZ + "crm/",
   RAIZ + "agenda/",
@@ -47,22 +51,30 @@ const PRECACHE = [
   RAIZ + "agenda.html",
   RAIZ + "entradas.html",
 
-  /* os compartilhados, da raiz */
   RAIZ + "version.js",
-  RAIZ + "logs.js",
-  RAIZ + "atividade-rede.js",
-  RAIZ + "atividade-rede.css",
-  RAIZ + "tema.js",
-  RAIZ + "auth.js",
-  RAIZ + "painel.js",
-  RAIZ + "pwa.js",
-  RAIZ + "sync.js",
-  RAIZ + "auditoria.js",
-  RAIZ + "busca.js",
+  RAIZ + "manifest.webmanifest",
+  RAIZ + "logo.png",
+  RAIZ + "favicon.png",
 
-  /* o portal */
-  RAIZ + "portal.css",
-  RAIZ + "portal.js",
+  /* frontend compartilhado */
+  RAIZ + "compartilhado/config.js",
+  RAIZ + "compartilhado/tema.js",
+  RAIZ + "compartilhado/rede.js",
+  RAIZ + "compartilhado/logs.js",
+  RAIZ + "compartilhado/atividade-rede.js",
+  RAIZ + "compartilhado/atividade-rede.css",
+  RAIZ + "compartilhado/pwa.js",
+  RAIZ + "compartilhado/sessao.js",
+  RAIZ + "compartilhado/auth.js",
+  RAIZ + "compartilhado/sync.js",
+  RAIZ + "compartilhado/dados.js",
+  RAIZ + "compartilhado/auditoria.js",
+  RAIZ + "compartilhado/busca.js",
+
+  /* portal e painel de manutenção */
+  RAIZ + "portal/portal.css",
+  RAIZ + "portal/portal.js",
+  RAIZ + "admin/painel.js",
 
   /* cada módulo, com o seu par de arquivos */
   RAIZ + "crm/crm.css",
@@ -72,30 +84,28 @@ const PRECACHE = [
   RAIZ + "entradas/entradas.css",
   RAIZ + "entradas/entradas.js",
 
-  /* Biblioteca de terceiros, local. Antes ela vinha embutida no HTML da
-     Agenda e do cdnjs no CRM; agora é um arquivo só, que os dois usam. */
+  /* biblioteca de terceiros, local (Agenda e CRM) */
   RAIZ + "vendor/xlsx.full.min.js",
+];
 
-  /* As fontes da marca. Estavam em base64 dentro do HTML da Agenda, então
-     nunca precisaram de rede; agora que são arquivos, precisam entrar aqui
-     para a Agenda continuar desenhando igual sem conexão. */
+/* Guardar ajuda; faltar não impede a interface de abrir (há fonte de
+   reserva e ícone padrão do sistema). */
+const OPCIONAIS = [
   RAIZ + "assets/fonts/cormorant-garamond-600.woff2",
   RAIZ + "assets/fonts/cormorant-garamond-700.woff2",
   RAIZ + "assets/fonts/montserrat-300.woff2",
   RAIZ + "assets/fonts/montserrat-400.woff2",
   RAIZ + "assets/fonts/montserrat-500.woff2",
   RAIZ + "assets/fonts/montserrat-600.woff2",
-
-  RAIZ + "logo.png",
-  RAIZ + "favicon.png",
-  RAIZ + "manifest.webmanifest",
-
   RAIZ + "icons/icon-192.png",
   RAIZ + "icons/icon-512.png",
   RAIZ + "icons/icon-maskable-192.png",
   RAIZ + "icons/icon-maskable-512.png",
   RAIZ + "icons/apple-touch-icon.png",
 ];
+
+/* A lista completa, para quem confere (ferramentas/conferir-publicacao.js). */
+const PRECACHE = ESSENCIAIS.concat(OPCIONAIS);
 
 /* Bibliotecas que o CRM ainda carrega de fora: React, ReactDOM e o Babel,
    que compila o JSX do crm.js no próprio navegador. Sem elas o CRM não
@@ -120,14 +130,12 @@ self.addEventListener("install", function (evento) {
   evento.waitUntil((async function () {
     const cache = await caches.open(CACHE_ATUAL);
 
-    /* Um a um: se um endereço falhar, os outros continuam. addAll desiste
-       de tudo por causa de um só, e aí a instalação inteira se perde. */
-    await Promise.all(PRECACHE.map(async function (endereco) {
-      try {
-        await cache.add(new Request(endereco, { cache: "reload" }));
-      } catch (e) {
-        /* segue sem este arquivo; a rede resolve quando houver */
-      }
+    /* o essencial entra inteiro, ou a instalação falha e a versão anterior
+       continua servindo — nunca uma casca pela metade */
+    await cache.addAll(ESSENCIAIS.map(function (e) { return new Request(e, { cache: "reload" }); }));
+
+    await Promise.all(OPCIONAIS.map(async function (endereco) {
+      try { await cache.add(new Request(endereco, { cache: "reload" })); } catch (e) { }
     }));
 
     await Promise.all(BIBLIOTECAS.map(async function (endereco) {

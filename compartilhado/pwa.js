@@ -14,21 +14,18 @@
    a Service Worker abre o FloreSer do mesmo jeito — o que falha aqui falha
    em silêncio, e o site segue.
 
-   O endereço da raiz sai do próprio <script>, como no logs.js: assim vale
-   tanto em /floreser/ quanto em localhost, e das páginas de dentro também.
+   O endereço da raiz vem do config.js: assim vale tanto em /floreser/
+   quanto em localhost, e das páginas de dentro também.
+
+   Trocar de versão NUNCA recarrega por cima de uma edição: se o rodapé do
+   módulo diz que há alteração pendente, a troca espera o "salvo". O
+   login e a sessão não são tocados por atualização nem por limpar o cache.
    ===================================================================== */
 
 (function (global) {
   "use strict";
 
-  var RAIZ = (function () {
-    try {
-      var meu = document.currentScript && document.currentScript.src;
-      return meu ? String(meu).replace(/[^/]*$/, "") : "./";
-    } catch (e) {
-      return "./";
-    }
-  })();
+  var RAIZ = (global.FLORESER_CONFIG && global.FLORESER_CONFIG.raiz) || "./";
 
   var registrar = (global.FloreSerLogs && global.FloreSerLogs.registrar) ||
     function () { };
@@ -302,7 +299,7 @@
   function registrarWorker() {
     if (!("serviceWorker" in navigator)) return;
 
-    navigator.serviceWorker.register(RAIZ + "service-worker.js", { scope: RAIZ })
+    navigator.serviceWorker.register(RAIZ + "service-worker.js", { scope: RAIZ, updateViaCache: "none" })
       .then(function (reg) {
         registro = reg;
         acompanhar(reg);
@@ -320,8 +317,20 @@
     navigator.serviceWorker.addEventListener("controllerchange", function () {
       if (jaRecarregou) return;
       jaRecarregou = true;
-      registrar("PWA_ATUALIZADA", { mensagem: "Versão nova assumiu" });
-      global.location.reload();
+      var sync = global.FloreSerSync;
+      var recarregar = function () {
+        registrar("PWA_ATUALIZADA", { mensagem: "Versão nova assumiu" });
+        global.location.reload();
+      };
+      if (sync && sync.temPendencias && sync.temPendencias()) {
+        /* esta aba tem coisa por salvar: troca depois do "salvo" */
+        registrar("PWA_ATUALIZACAO_ADIADA", { mensagem: "Esperando as alterações serem salvas" });
+        faixa({ icone: ICONE_SETA, titulo: "Versão nova pronta",
+          detalhe: "A página atualiza sozinha assim que o que você fez estiver salvo." });
+        sync.quandoSalvo(function () { setTimeout(recarregar, 600); });
+        return;
+      }
+      recarregar();
     });
   }
 
