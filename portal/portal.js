@@ -171,7 +171,7 @@
 
   var Auth = window.FloreSerAuth;
   var canto = document.getElementById("canto-conta");
-  var CHAVES = { CRM: "crm", Agenda: "agenda", Entradas: "entradas" };
+  var CHAVES = { CRM: "crm", Agenda: "agenda", Entradas: "entradas", Financeiro: "financeiro" };
 
   function limparCanto() {
     while (canto.firstChild) canto.removeChild(canto.firstChild);

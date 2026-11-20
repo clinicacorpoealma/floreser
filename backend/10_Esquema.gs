@@ -1,5 +1,5 @@
 /* =====================================================================
-   10_Esquema — o desenho do banco (schema v2)
+   10_Esquema — o desenho do banco (schema 3)
    ---------------------------------------------------------------------
    A fonte única das tabelas: nome da aba, chave, campos e tipos. A camada
    de tabelas (02) valida o cabeçalho real contra isto; a migração (40)
@@ -16,11 +16,15 @@
 
    "grande": aba que só cresce; procurar nela é pelo TextFinder, nunca
    lendo a aba inteira.
+
+   "desde": a versão do schema em que a tabela (ou a coluna, em
+   COLUNAS_DESDE) apareceu. A migração 2 → 3 (42_MigracaoV3) cria só o que
+   tem "desde: 3"; nada do schema 2 é reescrito.
    ===================================================================== */
 
 var CAMPOS_RAIZ = ["rev:inteiro", "opId:texto", "atualizadoEm:instante", "atualizadoPor:texto"];
 
-var ESQUEMA_V2 = {
+var ESQUEMA = {
   crm_leads: { chave: ["id"], campos: ["id:texto", "nome:texto", "whatsapp:texto", "interesse:texto",
     "observacoes:texto", "etapa:texto", "cadencia:texto", "exCliente:booleano", "ultimoContato:data",
     "criadoEm:data", "dtConversa:data", "dtAgendamento:data", "dtComparecimento:data", "dtVenda:data",
@@ -48,14 +52,14 @@ var ESQUEMA_V2 = {
     "em:data", "adiadaPara:data", "vezes:inteiro"] },
 
   ent_entradas: { chave: ["id"], campos: ["id:texto", "nome:texto", "data:data", "descricao:texto", "obs:texto",
-    "criadoEm:instante", "legado:json"], raiz: true },
+    "criadoEm:instante", "legado:json", "origem:texto", "loteId:texto"], raiz: true },
   ent_pagamentos: { chave: ["id"], campos: ["id:texto", "entradaId:texto", "ordem:inteiro", "metodo:texto",
     "valor:dinheiro", "parcelas:inteiro"] },
 
   sis_usuarios: { chave: ["id"], campos: ["id:texto", "nome:texto", "usuario:texto", "esquema:texto",
     "senhaHash:texto", "salt:texto", "iteracoes:inteiro", "ativo:booleano", "admin:booleano", "crm:booleano",
     "agenda:booleano", "entradas:booleano", "credencialVersao:inteiro", "criadoEm:instante", "criadoPor:texto",
-    "ultimoLogin:instante", "alteradoEm:instante", "legado:json"] },
+    "ultimoLogin:instante", "alteradoEm:instante", "legado:json", "financeiro:booleano"] },
   sis_fotos: { chave: ["usuarioId"], campos: ["usuarioId:texto", "foto:texto", "atualizadoEm:instante"] },
   sis_sessoes: { chave: ["tokenHash"], campos: ["tokenHash:texto", "tipo:texto", "usuarioId:texto", "modulo:texto",
     "criadoEm:epoch", "ultimoUso:epoch", "expiraEm:epoch", "expiraAbsoluto:epoch", "revogadoEm:epoch",
@@ -76,7 +80,62 @@ var ESQUEMA_V2 = {
     "dpr:texto", "toque:texto", "tipo:texto", "fuso:texto", "conexao:texto", "memoria:texto", "nucleos:texto", "dnt:texto"] },
   sis_config: { chave: ["chave"], campos: ["chave:texto", "valor:json"], raiz: true },
   sis_migracoes: { chave: ["id"], campos: ["id:texto", "versao:inteiro", "etapa:texto", "estado:texto",
-    "iniciadoEm:instante", "concluidoEm:instante", "relatorio:json"] }
+    "iniciadoEm:instante", "concluidoEm:instante", "relatorio:json"] },
+  sis_importacoes: { chave: ["id"], desde: 3, campos: ["id:texto", "modulo:texto", "arquivo:texto", "planilha:texto",
+    "mapeamento:json", "total:inteiro", "importadas:inteiro", "repetidas:inteiro", "erros:inteiro", "detalhes:json",
+    "estado:texto", "criadoEm:instante", "criadoPor:texto", "operacaoId:texto"] },
+
+  /* ---- Financeiro (schema 3) ---- */
+  fin_categorias: { chave: ["id"], desde: 3, campos: ["id:texto", "nome:texto", "paiId:texto", "ativa:booleano",
+    "ordem:inteiro"], raiz: true },
+  fin_fornecedores: { chave: ["id"], desde: 3, campos: ["id:texto", "nome:texto", "documento:texto", "contato:texto",
+    "notas:texto", "ativo:booleano"], raiz: true },
+  fin_despesas: { chave: ["id"], desde: 3, campos: ["id:texto", "descricao:texto", "categoriaId:texto",
+    "fornecedorId:texto", "valor:dinheiro", "competencia:texto", "vencimento:data", "meio:texto", "conta:texto",
+    "area:texto", "notas:texto", "cancelada:booleano", "canceladaEm:instante", "motivoCancelamento:texto",
+    "grupoId:texto", "grupoTipo:texto", "sequencia:inteiro", "totalSequencia:inteiro", "origem:texto",
+    "loteId:texto", "criadoEm:instante"], raiz: true },
+  fin_movimentos: { chave: ["id"], desde: 3, campos: ["id:texto", "despesaId:texto", "tipo:texto", "data:data",
+    "valor:dinheiro", "meio:texto", "conta:texto", "evidencia:texto", "notas:texto", "estornaId:texto",
+    "criadoEm:instante", "autorNome:texto"] },
+  fin_grupos: { chave: ["id"], desde: 3, campos: ["id:texto", "tipo:texto", "descricao:texto", "valorTotal:dinheiro",
+    "quantidade:inteiro", "frequencia:texto", "inicio:data", "fim:data", "modelo:json", "geradoAte:data",
+    "encerrado:booleano"], raiz: true },
+  fin_orcamentos: { chave: ["id"], desde: 3, campos: ["id:texto", "categoriaId:texto", "mes:texto", "valor:dinheiro",
+    "alertaPct:inteiro"], raiz: true },
+  fin_saldos: { chave: ["id"], desde: 3, campos: ["id:texto", "conta:texto", "data:data", "valor:dinheiro",
+    "notas:texto"], raiz: true },
+  fin_insumos: { chave: ["id"], desde: 3, campos: ["id:texto", "nome:texto", "unidadeCompra:texto",
+    "conteudo:texto", "unidadeConteudo:texto", "valorEmbalagem:dinheiro", "rendimento:texto", "perdaPct:texto",
+    "notas:texto", "ativo:booleano"], raiz: true },
+  fin_fichas: { chave: ["id"], desde: 3, campos: ["id:texto", "tipo:texto", "nome:texto", "precoAtual:dinheiro",
+    "dados:json", "versaoAprovada:inteiro", "clinicorpProcedimentoId:texto", "arquivada:booleano"], raiz: true },
+  fin_fichas_versoes: { chave: ["id"], desde: 3, grande: true, campos: ["id:texto", "fichaId:texto", "versao:inteiro",
+    "aprovadaEm:instante", "aprovadaPor:texto", "dados:json", "resultado:json"] },
+
+  /* ---- Integrações (schema 3) ---- */
+  int_vinculos: { chave: ["id"], desde: 3, campos: ["id:texto", "sistema:texto", "assinante:texto", "unidade:texto",
+    "tipo:texto", "externoId:texto", "localTipo:texto", "localId:texto", "estado:texto", "assinatura:texto",
+    "sincronizadoEm:instante", "criadoEm:instante", "criadoPor:texto"], raiz: true },
+  int_externos: { chave: ["id"], desde: 3, campos: ["id:texto", "sistema:texto", "assinante:texto", "unidade:texto",
+    "tipo:texto", "externoId:texto", "dados:json", "assinatura:texto", "alteradoExterno:texto", "vistoEm:instante",
+    "ausenteDesde:instante", "complemento:json", "execucaoId:texto"], raiz: true },
+  int_execucoes: { chave: ["id"], desde: 3, grande: true, campos: ["id:texto", "recurso:texto", "modo:texto",
+    "estado:texto", "origem:texto", "autor:texto", "iniciadoEm:instante", "atualizadoEm:instante",
+    "concluidoEm:instante", "de:data", "ate:data", "cursor:json", "contagens:json", "erros:json"] },
+  int_pendencias: { chave: ["id"], desde: 3, campos: ["id:texto", "recurso:texto", "tipo:texto", "chave:texto",
+    "externoId:texto", "localTipo:texto", "localId:texto", "resumo:texto", "detalhes:json", "estado:texto",
+    "criadoEm:instante", "resolvidoEm:instante", "resolvidoPor:texto", "resolucao:texto"], raiz: true },
+  int_passos: { chave: ["id"], desde: 3, campos: ["id:texto", "operacaoId:texto", "tipo:texto", "estado:texto",
+    "tentativas:inteiro", "pedido:json", "resposta:json", "localTipo:texto", "localId:texto", "externoId:texto",
+    "criadoEm:instante", "atualizadoEm:instante", "autor:texto"] }
+};
+
+/* Colunas que o schema 3 acrescentou a tabelas do schema 2 (no fim da
+   aba, sem mover nada). */
+var COLUNAS_DESDE = {
+  ent_entradas: { origem: 3, loteId: 3 },
+  sis_usuarios: { financeiro: 3 }
 };
 
 /* Relações, conferidas pela migração e por conferirIntegridade().
@@ -98,7 +157,14 @@ var RELACOES_V2 = [
   { de: "agenda_respostas", campo: "pacienteId", para: "agenda_pacientes", forca: "fraca" },
   { de: "ent_pagamentos", campo: "entradaId", para: "ent_entradas", forca: "forte" },
   { de: "sis_fotos", campo: "usuarioId", para: "sis_usuarios", forca: "fraca" },
-  { de: "sis_sessoes", campo: "usuarioId", para: "sis_usuarios", forca: "fraca" }
+  { de: "sis_sessoes", campo: "usuarioId", para: "sis_usuarios", forca: "fraca" },
+  { de: "fin_movimentos", campo: "despesaId", para: "fin_despesas", forca: "forte" },
+  { de: "fin_despesas", campo: "categoriaId", para: "fin_categorias", forca: "fraca" },
+  { de: "fin_despesas", campo: "fornecedorId", para: "fin_fornecedores", forca: "fraca" },
+  { de: "fin_despesas", campo: "grupoId", para: "fin_grupos", forca: "fraca" },
+  { de: "fin_categorias", campo: "paiId", para: "fin_categorias", forca: "fraca" },
+  { de: "fin_orcamentos", campo: "categoriaId", para: "fin_categorias", forca: "fraca" },
+  { de: "fin_fichas_versoes", campo: "fichaId", para: "fin_fichas", forca: "forte" }
 ];
 
 var _DEFS = null;
@@ -106,11 +172,11 @@ var _DEFS = null;
 function definicoes() {
   if (_DEFS) return _DEFS;
   _DEFS = {};
-  Object.keys(ESQUEMA_V2).forEach(function (nome) {
-    var e = ESQUEMA_V2[nome];
+  Object.keys(ESQUEMA).forEach(function (nome) {
+    var e = ESQUEMA[nome];
     var lista = e.campos.concat(e.raiz ? CAMPOS_RAIZ : []);
     _DEFS[nome] = {
-      nome: nome, aba: nome, chave: e.chave, grande: !!e.grande, raiz: !!e.raiz,
+      nome: nome, aba: nome, chave: e.chave, grande: !!e.grande, raiz: !!e.raiz, desde: e.desde || 2,
       campos: lista.map(function (s) { var p = s.split(":"); return { n: p[0], t: p[1] }; })
     };
   });
@@ -124,18 +190,18 @@ function definicaoTabela(nome) {
 }
 
 function nomesDasTabelas() {
-  return Object.keys(ESQUEMA_V2);
+  return Object.keys(ESQUEMA);
 }
 
 /* Os campos de negócio de uma raiz — o que o navegador lê e pode mandar.
    Os técnicos (rev, opId, ...) e "legado" ficam de fora. */
 function camposDeNegocio(nome) {
-  return ESQUEMA_V2[nome].campos.map(function (s) { return s.split(":")[0]; })
+  return ESQUEMA[nome].campos.map(function (s) { return s.split(":")[0]; })
     .filter(function (n) { return n !== "legado"; });
 }
 
 /* Assinatura do esquema: muda quando muda o desenho, e invalida cabeçalhos
    guardados em cache por versões anteriores do código. */
 function assinaturaDoEsquema() {
-  return sha256Hex(JSON.stringify(ESQUEMA_V2)).slice(0, 12);
+  return sha256Hex(JSON.stringify(ESQUEMA)).slice(0, 12);
 }

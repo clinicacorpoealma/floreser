@@ -33,6 +33,32 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "4.1.0",
+      codinome: "FAVO",
+      data: "20/11/2026",
+      mudancas: {
+        "Adicionado": [
+          "Módulo Financeiro, com quatro partes: Visão geral, Despesas, Planejamento e Precificação. Só entra quem tem a permissão Financeiro (ou é administrador); ter acesso às Entradas não dá acesso ao Financeiro, e o Financeiro não tem senha compartilhada.",
+          "Despesas com obrigação e pagamento separados: pagamento parcial, estorno com histórico, cancelamento, parcelamento com cada parcela no seu vencimento e a soma exata ao centavo, e despesas que se repetem (com fim de mês respeitado, alteração “desta em diante” que preserva o que já foi pago, e nenhuma ocorrência paga sozinha).",
+          "Visão geral do período com saídas pagas, competência, o que falta pagar, vencidas, próximos vencimentos, entradas registradas e comparação com o período anterior, na mesma base. Clicar num número mostra as despesas que o compõem.",
+          "Planejamento: orçamento mensal por categoria com alerta, recorrências, categorias, fornecedores e saldo inicial — sem saldo inicial confiável, o saldo não é calculado.",
+          "Precificação: fichas de custo de procedimentos, produtos e pacotes, com materiais (conversão de unidade, rendimento e perda), tempo, mão de obra, equipamentos, rateio de custos fixos, taxas, comissão, impostos e margem. Mostra a memória de cálculo, o preço sugerido, a margem de contribuição e o resultado depois do rateio; campo em branco não vira zero; simulação de desconto e forma de pagamento sem gravar; versão aprovada guardada.",
+          "Importar planilha (CSV ou Excel) no Financeiro e nas Entradas: escolha da aba e das colunas, como ler datas e dinheiro, prévia linha a linha com erros e repetidos, e histórico de cada importação. Importar de novo o mesmo arquivo não duplica.",
+          "Integração com o Clinicorp, administrada no painel → Integrações: teste de conexão que diz o que foi verificado, recursos ligados um a um (só consulta, importação ou envio), prévia antes da primeira importação, importação de orçamentos, agendamentos e recebimentos, pendências para revisar, vínculos sempre explícitos, sincronização agendada opcional, suspender e desconectar sem apagar nada.",
+          "Nas fichas do CRM, da Agenda e das Entradas aparece, quando houver vínculo, o que veio do Clinicorp (orçamentos, agendamentos, recebimento), só como contexto."
+        ],
+        "Alterado": [
+          "O portal ganhou o quarto quadrado, Financeiro, e a busca global passa a encontrar despesas para quem tem o Financeiro.",
+          "No painel → Usuários, a permissão Financeiro é marcada à parte."
+        ],
+        "Técnico": [
+          "Schema 3: abas novas do Financeiro, das importações e das integrações, e três colunas acrescentadas no fim (origem e lote das entradas, permissão Financeiro das contas). A migração parte do schema 2, não reescreve nada dele e não refaz a migração da 3.5.0.",
+          "Credenciais do Clinicorp só nas propriedades do script; nenhuma chamada ao Clinicorp com a trava do servidor; escrita no Clinicorp com passos registrados e “resultado desconhecido” quando a resposta se perde; falha de credencial do Clinicorp suspende a integração sem encerrar a sessão de ninguém.",
+          "Testes novos do Financeiro, da importação, da migração 2 → 3 e da integração (simulada, sem rede)."
+        ]
+      }
+    },
+    {
       versao: "4.0.0",
       codinome: "COLMEIA",
       data: "20/11/2026",
@@ -841,14 +867,14 @@
   /* Carimbo do conteúdo da casca (hash curto dos arquivos que o Service
      Worker guarda). Atualizado por ferramentas/preparar-publicacao.js; se
      ninguém rodar a ferramenta, a versão sozinha já troca o cache. */
-  var CARIMBO_CASCA = "a18ee785e3";
+  var CARIMBO_CASCA = "740200691c";
 
   global.FLORESER = {
     changelog: CHANGELOG,
     categorias: CATEGORIAS,
     atual: atual,
     rotulo: "v" + atual.versao + " — " + atual.codinome,
-    compat: { api: 2, schema: 2 },
+    compat: { api: 2, schema: 3 },
     casca: atual.versao + (CARIMBO_CASCA ? "-" + CARIMBO_CASCA : "")
   };
 

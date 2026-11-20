@@ -19,13 +19,24 @@
      FLORESER_FUSO              opcional. Fuso da clínica; padrão America/Cuiaba.
      FLORESER_MANUTENCAO        "sim" recusa toda gravação (migração final).
      FLORESER_SENHA_MODULO_<M>  "nao" desliga a senha compartilhada do módulo.
+     FLORESER_CLINICORP_USUARIO o "Usuário API" do Clinicorp (Gerenciar
+                                Assinatura → Acesso Externo e Integrações).
+     FLORESER_CLINICORP_TOKEN   o "Token API" do Clinicorp. Os dois são
+                                segredos: só no editor, nunca pelo site, e
+                                nenhuma resposta, log ou exportação os mostra.
+     FLORESER_CLINICORP_CONFIG  configuração não secreta da integração
+                                (assinante, unidade, recursos, modos,
+                                frequência), editada pelo painel → Integrações.
 
    Arquivos do backend, na ordem em que dependem uns dos outros:
      00_Config · 01_Http · 02_Tabelas · 03_Concorrencia · 04_Sessoes ·
      05_Autorizacao · 10_Esquema · 20_RegrasCRM · 21_ServicoCRM ·
      22_RegrasAgenda · 23_ServicoAgenda · 24_ServicoEntradas ·
      25_ServicoUsuarios · 26_ServicoAuditoria · 27_ServicoLixeira ·
-     28_ServicoBusca · 29_ServicoDiagnostico · 40_Migracoes · 41_Manutencao
+     28_ServicoBusca · 29_ServicoDiagnostico · 30_RegrasFinanceiro ·
+     31_ServicoFinanceiro · 32_ServicoImportacao · 35_ClinicorpContrato ·
+     36_ClinicorpCliente · 37_ServicoIntegracao · 38_ClinicorpRecursos ·
+     40_Migracoes · 41_Manutencao · 42_MigracaoV3
    Nenhum deles executa código no carregamento além de declarar constantes
    literais e funções: a ordem dos arquivos no editor não importa.
    ===================================================================== */
@@ -38,15 +49,16 @@
      o identificador da casca da PWA, que sai do version.js no navegador.
    ferramentas/conferir-publicacao.js confere que VERSAO_PRODUTO bate com
    o topo do changelog e que VERSAO_API bate com o que o site espera. */
-var VERSAO_PRODUTO = "4.0.0";
+var VERSAO_PRODUTO = "4.1.0";
 var VERSAO_API = 2;
-var VERSAO_SCHEMA = 2;
+var VERSAO_SCHEMA = 3;
 
 /* Capacidades que o site pode perguntar antes de usar. Uma ação nova
    entra aqui junto com a rota. */
 var CAPACIDADES = [
   "operacoes-por-entidade", "operacao-idempotente", "sessao-unificada",
-  "conflito-localizado", "lixeira", "auditoria", "busca-global", "crm-agenda"
+  "conflito-localizado", "lixeira", "auditoria", "busca-global", "crm-agenda",
+  "financeiro", "importacao-planilha", "integracao-clinicorp"
 ];
 
 var FUSO_PADRAO = "America/Cuiaba";
@@ -80,7 +92,9 @@ var DIAS_LIXEIRA = 30;
 var DIAS_CONTATOS_NA_TELA = 62;
 var DIAS_OPERACOES_GUARDADAS = 30;
 
-var MODULOS = ["crm", "agenda", "entradas"];
+/* O Financeiro não tem senha compartilhada: só conta individual com a
+   permissão "financeiro" (ou administradora) entra nele. */
+var MODULOS = ["crm", "agenda", "entradas", "financeiro"];
 var MODULOS_COM_SENHA = ["crm", "agenda", "entradas", "dev"];
 
 /* ---------------------------------------------------------------------
@@ -119,6 +133,7 @@ function reiniciarExecucao() {
   _PROPS = null;
   if (typeof esquecerTabelas === "function") esquecerTabelas();
   if (typeof reiniciarMedidor === "function") reiniciarMedidor();
+  if (typeof reiniciarClinicorp === "function") reiniciarClinicorp();
 }
 
 function fusoDaClinica() {

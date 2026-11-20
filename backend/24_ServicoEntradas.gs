@@ -30,7 +30,7 @@ function pagamentosDaEntrada(idPag, entradaId) {
 function entradaPublica(e, idPag) {
   return {
     id: e.id, nome: e.nome || "", data: e.data || "", descricao: e.descricao || "", obs: e.obs || "",
-    criadoEm: e.criadoEm || "",
+    criadoEm: e.criadoEm || "", origem: e.origem || "",
     pagamentos: pagamentosDaEntrada(idPag, e.id).map(function (p) {
       return { metodo: METODOS_ENTRADA.indexOf(p.metodo) >= 0 ? p.metodo : "pix", valor: Number(p.valor) || 0,
         parcelas: Math.min(12, Math.max(1, Number(p.parcelas) || 1)) };

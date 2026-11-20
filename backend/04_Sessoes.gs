@@ -123,7 +123,8 @@ function usuarioPorId(id) {
 
 function permissoesDe(u) {
   var admin = u.admin === true;
-  return { crm: admin || u.crm === true, agenda: admin || u.agenda === true, entradas: admin || u.entradas === true };
+  return { crm: admin || u.crm === true, agenda: admin || u.agenda === true, entradas: admin || u.entradas === true,
+    financeiro: admin || u.financeiro === true };
 }
 
 function publicoDaConta(u, comFoto) {
@@ -302,6 +303,7 @@ function validarSessao(token) {
       if (!u) falhar("sessao_invalida", "A conta desta sessão não existe mais.");
       guardada.usuario = { id: u.id, nome: u.nome, usuario: u.usuario, ativo: u.ativo === true,
         admin: u.admin === true, crm: u.crm === true, agenda: u.agenda === true, entradas: u.entradas === true,
+        financeiro: u.financeiro === true,
         credencialVersao: Number(u.credencialVersao) || 0 };
     }
     guardarSessaoNoCache(guardada);

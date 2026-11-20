@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financeiro &middot; Corpo e Alma</title>
+<meta name="description" content="Despesas, planejamento e precificação da Clínica Corpo e Alma.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#3B6E6A">
+<link rel="icon" type="image/png" href="../favicon.png">
+<meta name="floreser-estrutura" content="2">
+  <script src="../compartilhado/tema.js"></script>
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+  <link rel="manifest" href="../manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Alveare">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Montserrat:wght@300;400;500;600;700&display=swap">
+<script src="../version.js"></script>
+<script src="../compartilhado/config.js"></script>
+<script src="../compartilhado/atividade-rede.js"></script>
+<script src="../compartilhado/logs.js"></script>
+<script src="../compartilhado/rede.js"></script>
+<script src="../compartilhado/pwa.js"></script>
+<script src="../compartilhado/sessao.js"></script>
+<script src="../compartilhado/auth.js"></script>
+<script src="../compartilhado/sync.js"></script>
+<script src="../compartilhado/dados.js"></script>
+<script src="../compartilhado/auditoria.js"></script>
+<script src="../compartilhado/importacao.js"></script>
+
+<link rel="stylesheet" href="../compartilhado/atividade-rede.css">
+<link rel="stylesheet" href="../compartilhado/importacao.css">
+<link rel="stylesheet" href="financeiro.css">
+</head>
+<body>
+
+<!-- Portão: o Financeiro não tem senha compartilhada. Só conta individual
+     com a permissão "financeiro" (ou administradora). -->
+<div id="portao">
+  <div class="cartao">
+    <img src="../logo.png" width="366" height="380" alt="Símbolo FloreSer">
+    <h2>Financeiro</h2>
+    <p class="tag">Clínica Corpo e Alma</p>
+    <div class="risco"></div>
+    <p class="portao-texto">Entre com a sua conta. O Financeiro não tem senha compartilhada: o acesso é dado por pessoa, no painel.</p>
+    <div class="erro" id="portao-erro" role="alert"></div>
+    <button id="portao-btn" type="button">Entrar com a minha conta</button>
+  </div>
+  <a class="volta" href="../">&lsaquo; Início</a>
+</div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <img src="../logo.png" width="366" height="380" alt="Símbolo FloreSer">
+      <div>
+        <span class="brand-name">Financeiro</span>
+        <span class="brand-sub">Corpo e Alma</span>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="voltar" href="../">&lsaquo; Início</a>
+      <span id="quemEsta"></span>
+      <span class="save-status" id="saveStatus" data-sync="carregando">Carregando</span>
+      <button class="btn btn-primary" id="btnNovaDespesa" type="button">Nova despesa</button>
+    </div>
+  </div>
+  <nav class="abas" id="abas" role="tablist" aria-label="Seções do Financeiro">
+    <button type="button" role="tab" id="aba-visao" aria-controls="painel-visao" aria-selected="true" data-aba="visao">Visão geral</button>
+    <button type="button" role="tab" id="aba-despesas" aria-controls="painel-despesas" aria-selected="false" data-aba="despesas">Despesas</button>
+    <button type="button" role="tab" id="aba-planejamento" aria-controls="painel-planejamento" aria-selected="false" data-aba="planejamento">Planejamento</button>
+    <button type="button" role="tab" id="aba-precificacao" aria-controls="painel-precificacao" aria-selected="false" data-aba="precificacao">Precificação</button>
+    <span class="abas-espaco"></span>
+    <span class="selo-integracao" id="seloIntegracao" title="Integração com o Clinicorp"></span>
+  </nav>
+</header>
+
+<main class="shell">
+  <div class="aviso-geral" id="avisoGeral" role="status" hidden></div>
+
+  <!-- ===================== Visão geral ===================== -->
+  <section class="painel" id="painel-visao" role="tabpanel" aria-labelledby="aba-visao">
+    <div class="filtros" id="filtrosVisao">
+      <div class="campo-inline">
+        <label for="fvDe">De</label>
+        <input type="month" id="fvDe" class="input">
+      </div>
+      <div class="campo-inline">
+        <label for="fvAte">Até</label>
+        <input type="month" id="fvAte" class="input">
+      </div>
+      <div class="seg" id="fvAtalhos" role="group" aria-label="Período">
+        <button type="button" data-atalho="mes">Este mês</button>
+        <button type="button" data-atalho="tri">3 meses</button>
+        <button type="button" data-atalho="ano">Este ano</button>
+      </div>
+      <details class="mais-filtros">
+        <summary>Filtros</summary>
+        <div class="grade-filtros">
+          <label>Categoria <select id="fvCategoria" class="input"></select></label>
+          <label>Fornecedor <select id="fvFornecedor" class="input"></select></label>
+          <label>Estado <select id="fvEstado" class="input"></select></label>
+          <label>Área <select id="fvArea" class="input"></select></label>
+          <label>Origem <select id="fvOrigem" class="input"></select></label>
+        </div>
+      </details>
+    </div>
+
+    <div class="cartoes" id="cartoesVisao" aria-live="polite"></div>
+    <p class="nota-base" id="notaBase"></p>
+
+    <div class="duas-colunas">
+      <section class="bloco">
+        <h3 class="bloco-titulo">Por categoria</h3>
+        <div class="tabela-rolagem"><table class="tabela" id="tabelaCategorias"></table></div>
+      </section>
+      <section class="bloco">
+        <h3 class="bloco-titulo">Evolução mensal</h3>
+        <div class="evolucao" id="evolucao"></div>
+        <p class="legenda-evolucao"><span class="ponto ponto-saida"></span> saídas pagas <span class="ponto ponto-competencia"></span> competência <span class="ponto ponto-entrada"></span> entradas registradas</p>
+      </section>
+    </div>
+
+    <section class="bloco" id="blocoClinicorp" hidden>
+      <h3 class="bloco-titulo">Clinicorp — só para conferência</h3>
+      <div id="conteudoClinicorp"></div>
+    </section>
+  </section>
+
+  <!-- ===================== Despesas ===================== -->
+  <section class="painel" id="painel-despesas" role="tabpanel" aria-labelledby="aba-despesas" hidden>
+    <div class="filtros">
+      <label class="busca">
+        <span class="sr">Buscar</span>
+        <input type="search" id="fdBusca" class="input" placeholder="Buscar descrição ou fornecedor" autocomplete="off">
+      </label>
+      <select id="fdEstado" class="input" aria-label="Estado"></select>
+      <select id="fdCategoria" class="input" aria-label="Categoria"></select>
+      <div class="campo-inline">
+        <label for="fdDe">Vence de</label>
+        <input type="date" id="fdDe" class="input">
+      </div>
+      <div class="campo-inline">
+        <label for="fdAte">até</label>
+        <input type="date" id="fdAte" class="input">
+      </div>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-ghost" id="btnImportar">Importar planilha</button>
+      <button type="button" class="btn btn-ghost" id="btnExportar">Exportar CSV</button>
+    </div>
+    <div class="recorte" id="recorteDespesas" hidden>
+      <span id="recorteTexto"></span>
+      <button type="button" class="link-btn" id="recorteLimpar">Mostrar todas</button>
+    </div>
+    <div class="tabela-rolagem">
+      <table class="tabela tabela-despesas" id="tabelaDespesas">
+        <thead><tr><th>Vence</th><th>Descrição</th><th>Categoria</th><th class="dir">Valor</th><th class="dir">Pago</th><th>Situação</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="vazio" id="vazioDespesas" hidden>Nenhuma despesa com esses filtros.</p>
+  </section>
+
+  <!-- ===================== Planejamento ===================== -->
+  <section class="painel" id="painel-planejamento" role="tabpanel" aria-labelledby="aba-planejamento" hidden>
+    <section class="bloco">
+      <div class="bloco-topo">
+        <h3 class="bloco-titulo">Orçamento por categoria</h3>
+        <input type="month" id="orcMes" class="input" aria-label="Mês do orçamento">
+      </div>
+      <p class="nota">O realizado é a competência do mês (a que mês a despesa pertence). O alerta aparece quando o realizado chega à porcentagem escolhida.</p>
+      <div class="tabela-rolagem"><table class="tabela" id="tabelaOrcamento"></table></div>
+    </section>
+
+    <section class="bloco">
+      <div class="bloco-topo">
+        <h3 class="bloco-titulo">Recorrências</h3>
+      </div>
+      <p class="nota">Cada ocorrência vira uma despesa própria. Nenhuma é paga sozinha; alterar "esta e as seguintes" preserva as já pagas.</p>
+      <ul class="lista" id="listaRecorrencias"></ul>
+    </section>
+
+    <div class="duas-colunas">
+      <section class="bloco">
+        <div class="bloco-topo">
+          <h3 class="bloco-titulo">Categorias</h3>
+          <button type="button" class="btn btn-quiet" id="btnNovaCategoria">Nova categoria</button>
+        </div>
+        <ul class="lista" id="listaCategorias"></ul>
+      </section>
+      <section class="bloco">
+        <div class="bloco-topo">
+          <h3 class="bloco-titulo">Fornecedores</h3>
+          <button type="button" class="btn btn-quiet" id="btnNovoFornecedor">Novo fornecedor</button>
+        </div>
+        <ul class="lista" id="listaFornecedores"></ul>
+      </section>
+    </div>
+
+    <section class="bloco">
+      <div class="bloco-topo">
+        <h3 class="bloco-titulo">Saldo inicial</h3>
+        <button type="button" class="btn btn-quiet" id="btnNovoSaldo">Informar saldo</button>
+      </div>
+      <p class="nota">Sem um saldo inicial confiável (valor numa data, de uma conta), o Financeiro não calcula saldo.</p>
+      <ul class="lista" id="listaSaldos"></ul>
+    </section>
+  </section>
+
+  <!-- ===================== Precificação ===================== -->
+  <section class="painel" id="painel-precificacao" role="tabpanel" aria-labelledby="aba-precificacao" hidden>
+    <section class="bloco">
+      <div class="bloco-topo">
+        <h3 class="bloco-titulo">Fichas de custo</h3>
+        <button type="button" class="btn btn-primary" id="btnNovaFicha">Nova ficha</button>
+      </div>
+      <div class="tabela-rolagem">
+        <table class="tabela" id="tabelaFichas">
+          <thead><tr><th>Nome</th><th>Tipo</th><th class="dir">Custo total</th><th class="dir">Preço sugerido</th><th class="dir">Preço atual</th><th>Versão</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="vazio" id="vazioFichas" hidden>Nenhuma ficha ainda.</p>
+    </section>
+    <section class="bloco">
+      <div class="bloco-topo">
+        <h3 class="bloco-titulo">Materiais</h3>
+        <button type="button" class="btn btn-quiet" id="btnNovoInsumo">Novo material</button>
+      </div>
+      <div class="tabela-rolagem">
+        <table class="tabela" id="tabelaInsumos">
+          <thead><tr><th>Material</th><th>Embalagem</th><th class="dir">Valor</th><th>Rende</th><th>Perda</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+</main>
+
+<footer class="rodape">
+  <div class="rodape-marca">
+    <img src="../logo.png" width="366" height="380" alt="">
+    <span>FloreSer &middot; Corpo e Alma</span>
+  </div>
+  <span class="rodape-fio" aria-hidden="true"></span>
+  <span class="rodape-versao" id="rodapeVersao"></span>
+  <a class="rodape-link" href="../">&lsaquo; Voltar ao início</a>
+</footer>
+
+<!-- ============ Diálogo: despesa (nova / editar) ============ -->
+<dialog id="dlgDespesa" aria-labelledby="dlgDespesaTitulo">
+  <form class="folha" id="formDespesa" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="dlgDespesaTitulo">Nova despesa</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <div class="campo"><label for="dDescricao">Descrição</label><input class="input" id="dDescricao" required maxlength="300" autocomplete="off"></div>
+      <div class="linha-2">
+        <div class="campo"><label for="dValor" id="dValorRotulo">Valor</label><div class="dinheiro"><span>R$</span><input class="input" id="dValor" inputmode="decimal" placeholder="0,00" required></div></div>
+        <div class="campo"><label for="dVencimento" id="dVencimentoRotulo">Vencimento</label><input class="input" type="date" id="dVencimento" required></div>
+      </div>
+      <div class="campo"><label for="dCategoria">Categoria</label><select class="input" id="dCategoria"></select></div>
+
+      <fieldset class="modo-despesa" id="dModo">
+        <legend>Como é paga</legend>
+        <label><input type="radio" name="dModo" value="unica" checked> Uma vez</label>
+        <label><input type="radio" name="dModo" value="parcelada"> Parcelada</label>
+        <label><input type="radio" name="dModo" value="recorrente"> Repete</label>
+      </fieldset>
+      <div class="sub-bloco" id="dBlocoParcelas" hidden>
+        <div class="linha-2">
+          <div class="campo"><label for="dParcelas">Parcelas</label><input class="input" type="number" id="dParcelas" min="2" max="120" value="2"></div>
+          <div class="campo"><label for="dParcFreq">A cada</label><select class="input" id="dParcFreq"></select></div>
+        </div>
+        <label class="marca"><input type="checkbox" id="dCompetenciaCompra"> Todas na competência da compra</label>
+      </div>
+      <div class="sub-bloco" id="dBlocoRecorrencia" hidden>
+        <div class="linha-2">
+          <div class="campo"><label for="dRecFreq">Frequência</label><select class="input" id="dRecFreq"></select></div>
+          <div class="campo"><label for="dRecQtd">Quantas vezes (vazio = sem fim)</label><input class="input" type="number" id="dRecQtd" min="1" max="120"></div>
+        </div>
+        <div class="campo"><label for="dRecFim">Ou até (data)</label><input class="input" type="date" id="dRecFim"></div>
+      </div>
+      <div class="previa-serie" id="dPrevia" hidden></div>
+
+      <details class="avancado" id="dAvancado">
+        <summary>Mais campos</summary>
+        <div class="linha-2">
+          <div class="campo"><label for="dFornecedor">Fornecedor</label><select class="input" id="dFornecedor"></select></div>
+          <div class="campo"><label for="dCompetencia">Competência</label><input class="input" type="month" id="dCompetencia"></div>
+        </div>
+        <div class="linha-2">
+          <div class="campo"><label for="dMeio">Meio de pagamento</label><input class="input" id="dMeio" list="listaMeios" maxlength="60"></div>
+          <div class="campo"><label for="dConta">Conta</label><input class="input" id="dConta" list="listaContas" maxlength="80"></div>
+        </div>
+        <div class="campo"><label for="dArea">Área / centro de custo</label><input class="input" id="dArea" list="listaAreas" maxlength="80"></div>
+        <div class="campo"><label for="dNotas">Notas</label><textarea class="input" id="dNotas" maxlength="4000"></textarea></div>
+      </details>
+      <p class="erro-form" id="dErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Cancelar</button>
+      <button type="submit" class="btn btn-primary" id="dSalvar">Salvar</button>
+    </div>
+  </form>
+</dialog>
+<datalist id="listaMeios"><option value="PIX"><option value="Boleto"><option value="Cartão de crédito"><option value="Débito automático"><option value="Transferência"><option value="Dinheiro"></datalist>
+<datalist id="listaContas"></datalist>
+<datalist id="listaAreas"></datalist>
+
+<!-- ============ Diálogo: detalhe da despesa ============ -->
+<dialog id="dlgDetalhe" aria-labelledby="detTitulo">
+  <div class="folha">
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="detTitulo">Despesa</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <dl class="ficha-dados" id="detDados"></dl>
+      <h3 class="sub-titulo">Pagamentos</h3>
+      <ul class="lista lista-compacta" id="detMovimentos"></ul>
+      <div class="sub-bloco" id="detPagar">
+        <h3 class="sub-titulo">Registrar pagamento</h3>
+        <div class="linha-2">
+          <div class="campo"><label for="pData">Data do pagamento</label><input class="input" type="date" id="pData"></div>
+          <div class="campo"><label for="pValor">Valor pago</label><div class="dinheiro"><span>R$</span><input class="input" id="pValor" inputmode="decimal"></div></div>
+        </div>
+        <div class="linha-2">
+          <div class="campo"><label for="pMeio">Meio</label><input class="input" id="pMeio" list="listaMeios" maxlength="60"></div>
+          <div class="campo"><label for="pEvidencia">Comprovante / referência</label><input class="input" id="pEvidencia" maxlength="500" placeholder="opcional"></div>
+        </div>
+        <button type="button" class="btn btn-primary" id="pRegistrar">Registrar pagamento</button>
+      </div>
+      <div class="historico" id="detHistorico"></div>
+      <p class="erro-form" id="detErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" id="detCancelar">Cancelar despesa</button>
+      <button type="button" class="btn btn-ghost" id="detHistoricoBtn">Histórico</button>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-ghost" id="detEditar">Editar</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ Diálogo: cadastro simples (categoria, fornecedor, saldo, material) ============ -->
+<dialog id="dlgCadastro" aria-labelledby="cadTitulo">
+  <form class="folha folha-estreita" id="formCadastro" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="cadTitulo">Cadastro</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo" id="cadCampos"></div>
+    <p class="erro-form" id="cadErro" role="alert"></p>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Cancelar</button>
+      <button type="submit" class="btn btn-primary">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Diálogo: ficha de custo ============ -->
+<dialog id="dlgFicha" class="dlg-largo" aria-labelledby="fichaTitulo">
+  <form class="folha folha-larga" id="formFicha" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="fichaTitulo">Ficha de custo</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo ficha-grade">
+      <div class="ficha-entrada">
+        <div class="linha-2">
+          <div class="campo"><label for="fNome">Nome</label><input class="input" id="fNome" maxlength="160" required></div>
+          <div class="campo"><label for="fTipo">Tipo</label>
+            <select class="input" id="fTipo"><option value="procedimento">Procedimento</option><option value="produto">Produto</option><option value="pacote">Pacote</option></select></div>
+        </div>
+        <div class="linha-2">
+          <div class="campo"><label for="fPreco">Preço atual</label><div class="dinheiro"><span>R$</span><input class="input" id="fPreco" inputmode="decimal" placeholder="opcional"></div></div>
+          <div class="campo"><label for="fClinicorp">Procedimento no Clinicorp</label><input class="input" id="fClinicorp" list="listaCatalogo" placeholder="opcional" maxlength="40"></div>
+        </div>
+
+        <div id="fBlocoItens">
+          <h3 class="sub-titulo">Materiais por atendimento</h3>
+          <ul class="lista-edicao" id="fItens"></ul>
+          <button type="button" class="link-btn" id="fAddItem">+ Material</button>
+          <div class="linha-3">
+            <div class="campo"><label for="fTempo">Tempo (min)</label><input class="input" id="fTempo" inputmode="decimal"></div>
+            <div class="campo"><label for="fMaoObra">Mão de obra por hora</label><div class="dinheiro"><span>R$</span><input class="input" id="fMaoObra" inputmode="decimal" placeholder="opcional"></div></div>
+          </div>
+          <h3 class="sub-titulo">Equipamentos (custo por uso)</h3>
+          <ul class="lista-edicao" id="fEquip"></ul>
+          <button type="button" class="link-btn" id="fAddEquip">+ Equipamento</button>
+          <h3 class="sub-titulo">Rateio dos custos fixos</h3>
+          <div class="linha-2">
+            <div class="campo"><label for="fRateioModo">Como ratear</label>
+              <select class="input" id="fRateioModo"><option value="nenhum">Não ratear</option><option value="por_hora">Por hora de atendimento</option><option value="por_atendimento">Por atendimento</option></select></div>
+            <div class="campo"><label for="fRateioValor">Valor do rateio</label><div class="dinheiro"><span>R$</span><input class="input" id="fRateioValor" inputmode="decimal"></div></div>
+          </div>
+          <div class="campo"><label for="fRateioBase">De onde vem o valor (anotação)</label><input class="input" id="fRateioBase" maxlength="200" placeholder="Ex.: custos fixos de outubro ÷ 120 h"></div>
+          <div class="campo"><span class="rotulo">Categorias incluídas no rateio</span><div class="marcas" id="fRateioCats"></div></div>
+        </div>
+
+        <div id="fBlocoPacote" hidden>
+          <h3 class="sub-titulo">Composição do pacote</h3>
+          <p class="nota">Sessões são atendimentos; parcelas são a forma de pagamento — uma coisa não decide a outra.</p>
+          <ul class="lista-edicao" id="fComp"></ul>
+          <button type="button" class="link-btn" id="fAddComp">+ Procedimento</button>
+        </div>
+
+        <h3 class="sub-titulo">Percentuais sobre o preço</h3>
+        <p class="nota">Deixe em branco o que ainda não sabe: o preço sugerido só aparece quando tudo estiver preenchido. Zero é um valor — digite 0.</p>
+        <div class="linha-4">
+          <div class="campo"><label for="fTaxa">Taxa de pagamento (%)</label><input class="input" id="fTaxa" inputmode="decimal"></div>
+          <div class="campo"><label for="fComissao">Comissão (%)</label><input class="input" id="fComissao" inputmode="decimal"></div>
+          <div class="campo"><label for="fImpostos">Impostos (%)</label><input class="input" id="fImpostos" inputmode="decimal"></div>
+          <div class="campo"><label for="fMargem">Margem desejada (%)</label><input class="input" id="fMargem" inputmode="decimal"></div>
+        </div>
+      </div>
+
+      <aside class="ficha-resultado" aria-live="polite">
+        <div id="fResultado" class="resultado"></div>
+        <details class="memoria" open>
+          <summary>Memória de cálculo</summary>
+          <ol id="fMemoria"></ol>
+        </details>
+        <div class="sub-bloco">
+          <h3 class="sub-titulo">Simular (não grava)</h3>
+          <div class="linha-3">
+            <div class="campo"><label for="sDesconto">Desconto (%)</label><input class="input" id="sDesconto" inputmode="decimal"></div>
+            <div class="campo"><label for="sTaxa">Taxa da forma (%)</label><input class="input" id="sTaxa" inputmode="decimal"></div>
+            <div class="campo"><label for="sParcelas">Parcelas</label><input class="input" type="number" id="sParcelas" min="1" max="24" value="1"></div>
+          </div>
+          <div id="sResultado" class="resultado resultado-sim"></div>
+        </div>
+        <ul class="lista lista-compacta" id="fVersoes"></ul>
+      </aside>
+    </div>
+    <p class="erro-form" id="fErro" role="alert"></p>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-ghost" id="fAprovar">Aprovar versão</button>
+      <button type="submit" class="btn btn-primary">Salvar ficha</button>
+    </div>
+  </form>
+</dialog>
+<datalist id="listaCatalogo"></datalist>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="financeiro.js"></script>
+</body>
+</html>

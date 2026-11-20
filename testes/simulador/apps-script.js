@@ -12,6 +12,11 @@
        data formatada; getValues() devolve o Date.
      · TRAVA DO SCRIPT: uma só; tryLock pode falhar (sim.travaOcupada).
 
+   UrlFetchApp e ScriptApp são de mentira: sim.http(pedido) decide a
+   resposta de cada chamada ao Clinicorp (nenhum teste fala com a rede), e
+   sim.chamadasHttp guarda o que foi pedido — sem o cabeçalho de
+   autorização, que nenhum teste precisa ler.
+
    E duas injeções para os testes de recuperação:
      · sim.falharEm = "gravar:crm_leads"  → a próxima escrita naquela aba
        lança erro DEPOIS de gravar (a execução "morre" no meio do plano);
@@ -176,6 +181,7 @@ function criarSimulador(opcoes) {
   const sim = {
     seq: 0, planilhas: {}, props: {}, cache: new Map(), travaOcupada: false, comTrava: false,
     contadores: {}, falharEm: null, agora: null, logs: [],
+    http: null, chamadasHttp: [], gatilhos: [],
     contar(t) {
       sim.contadores[t] = (sim.contadores[t] || 0) + 1;
       /* o que aconteceu com a trava do script segura: é o que faz os outros esperarem */
@@ -233,6 +239,7 @@ function criarSimulador(opcoes) {
       getUuid: () => crypto.randomUUID(),
       formatDate: (d, fuso, padrao) => formatarData(d, fuso, padrao),
       newBlob: (t) => ({ getBytes: () => assinados(Buffer.from(String(t), "utf8")) }),
+      base64Encode: (t) => Buffer.from(String(t), "utf8").toString("base64"),
       sleep: () => { }
     },
     ContentService: {
@@ -240,6 +247,33 @@ function criarSimulador(opcoes) {
       createTextOutput: (t) => ({ conteudo: t, setMimeType() { return this; }, getContent() { return this.conteudo; } })
     },
     Logger: { log: (m) => { sim.logs.push(String(m)); } },
+    UrlFetchApp: {
+      fetch: (url, opcoes) => {
+        const o = opcoes || {};
+        const u = new URL(url);
+        const query = {};
+        u.searchParams.forEach((v, k) => { query[k] = v; });
+        const pedido = { url, metodo: String(o.method || "get").toLowerCase(), caminho: u.pathname.replace(/^\/rest\/v1/, ""), query,
+          corpo: o.payload ? JSON.parse(o.payload) : null, autorizacao: (o.headers || {}).Authorization || "", comTrava: sim.comTrava };
+        sim.chamadasHttp.push(Object.assign({}, pedido, { autorizacao: pedido.autorizacao ? "(presente)" : "" }));
+        if (!sim.http) throw new Error("rede indisponível no simulador");
+        const r = sim.http(pedido);
+        if (r && r.lancar) throw new Error(r.lancar);
+        const status = r && r.status ? r.status : 200;
+        const corpo = r && r.texto !== undefined ? r.texto : JSON.stringify(r && r.json !== undefined ? r.json : null);
+        return { getResponseCode: () => status, getContentText: () => corpo };
+      }
+    },
+    ScriptApp: {
+      getProjectTriggers: () => sim.gatilhos.slice(),
+      deleteTrigger: (t) => { sim.gatilhos = sim.gatilhos.filter((g) => g !== t); },
+      newTrigger: (fn) => {
+        const g = { fn, getHandlerFunction: () => fn };
+        const b = { timeBased: () => b, everyHours: (h) => { g.horas = h; return b; }, everyDays: (d) => { g.dias = d; return b; },
+          create: () => { sim.gatilhos.push(g); return g; } };
+        return b;
+      }
+    },
     falhaSimulada: (onde) => {
       if (sim.falharEm && sim.falharEm === onde) { sim.falharEm = null; throw new Error("falha simulada em " + onde); }
     }

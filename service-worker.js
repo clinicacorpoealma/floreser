@@ -44,6 +44,7 @@ const ESSENCIAIS = [
   RAIZ + "crm/",
   RAIZ + "agenda/",
   RAIZ + "entradas/",
+  RAIZ + "financeiro/",
   RAIZ + "offline.html",
 
   /* endereços antigos: quem tiver o link salvo continua chegando */
@@ -70,11 +71,16 @@ const ESSENCIAIS = [
   RAIZ + "compartilhado/dados.js",
   RAIZ + "compartilhado/auditoria.js",
   RAIZ + "compartilhado/busca.js",
+  RAIZ + "compartilhado/importacao.js",
+  RAIZ + "compartilhado/importacao.css",
+  RAIZ + "compartilhado/integracao.js",
+  RAIZ + "compartilhado/integracao.css",
 
   /* portal e painel de manutenção */
   RAIZ + "portal/portal.css",
   RAIZ + "portal/portal.js",
   RAIZ + "admin/painel.js",
+  RAIZ + "admin/integracoes.js",
 
   /* cada módulo, com o seu par de arquivos */
   RAIZ + "crm/crm.css",
@@ -83,8 +89,10 @@ const ESSENCIAIS = [
   RAIZ + "agenda/agenda.js",
   RAIZ + "entradas/entradas.css",
   RAIZ + "entradas/entradas.js",
+  RAIZ + "financeiro/financeiro.css",
+  RAIZ + "financeiro/financeiro.js",
 
-  /* biblioteca de terceiros, local (Agenda e CRM) */
+  /* biblioteca de terceiros, local (CRM, Agenda e a importação de planilha) */
   RAIZ + "vendor/xlsx.full.min.js",
 ];
 

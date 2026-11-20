@@ -3,11 +3,12 @@
 Site estático servido pelo GitHub Pages, sem build, falando com um Google
 Apps Script que guarda tudo numa planilha do Google. O portal fica na raiz e
 cada módulo mora numa pasta, para o endereço não mostrar `.html`:
-`/`, `/crm/`, `/agenda/`, `/entradas/`.
+`/`, `/crm/`, `/agenda/`, `/entradas/`, `/financeiro/`.
 
 Documentação completa em `docs/`: [ARQUITETURA](docs/ARQUITETURA.md),
 [API](docs/API.md), [ESQUEMA](docs/ESQUEMA.md), [SESSOES](docs/SESSOES.md),
-[PUBLICACAO](docs/PUBLICACAO.md). Leia o documento da área antes de mexer nela.
+[PUBLICACAO](docs/PUBLICACAO.md), [FINANCEIRO](docs/FINANCEIRO.md),
+[CLINICORP](docs/CLINICORP.md). Leia o documento da área antes de mexer nela.
 
 ## Onde cada coisa mora
 
@@ -19,7 +20,7 @@ comporta*. Nenhum dos três volta a morar dentro do outro.
 
 | Arquivo | Papel |
 |---|---|
-| `index.html` | portal: os três quadrados (CRM, Agendamentos, Entradas), o rodapé e as duas janelas |
+| `index.html` | portal: os quatro quadrados (CRM, Agendamentos, Entradas, Financeiro), o rodapé e as duas janelas |
 | `crm.html` `agenda.html` `entradas.html` | atalhos de uma linha para os endereços antigos |
 | `version.js` | **fonte única** dos metadados de lançamento: versão, codinome, changelog, `compat` (API e schema que o site espera) e `casca` (cache da PWA). O Service Worker importa este arquivo; ele não pode depender de `window` |
 | `service-worker.js` | cache da casca; **um só**, na raiz, para todo o Alveare |
@@ -37,6 +38,8 @@ comporta*. Nenhum dos três volta a morar dentro do outro.
 | `auth.js` | `FloreSerAuth` — só interface: caixa de entrar, retomada, quem está, `pedirNovamente` |
 | `sync.js` | `FloreSerSync` — conciliação de três vias, repetidos, indicador de salvamento, `temPendencias` |
 | `auditoria.js` · `busca.js` | histórico da ficha · busca global |
+| `importacao.js` / `.css` | `FloreSerImportacao` — importar CSV/XLSX em qualquer módulo: aba, colunas, formatos de data e dinheiro, prévia conferida pelo servidor, lote |
+| `integracao.js` / `.css` | `FloreSerIntegracao` — o contexto do Clinicorp nas fichas (só leitura de `integracao.contexto`, nunca chama o Clinicorp) |
 | `pwa.js` | registra o Service Worker, instalar, versão nova (espera o "salvo"), conexão |
 | `logs.js` | registro técnico (telemetria), com envio próprio |
 | `atividade-rede.js` / `.css` | o selo que mostra quando o sistema fala com a planilha |
@@ -47,19 +50,21 @@ comporta*. Nenhum dos três volta a morar dentro do outro.
 |---|---|
 | `portal/portal.css` · `portal/portal.js` | apresentação e comportamento do portal (o CSS também veste o painel) |
 | `admin/painel.js` | painel de manutenção (entrada discreta + senha `dev` no servidor) |
+| `admin/integracoes.js` | `FloreSerPainelIntegracoes` — a aba Integrações do painel (Clinicorp) |
 | `crm/index.html` | casca do CRM, as bibliotecas e a aplicação React em JSX — que fica aqui dentro de propósito, ver abaixo |
 | `crm/crm.css` | paleta `--crm-*`, portão `.pt-*`, resumos, fila do Comercial 2, ficha, diálogos (`.crm-dialogo-*`, `.crm-botao`) |
 | `crm/crm-core.js` | a ponte do JSX com o compartilhado: `window.storage` sobre o motor, `chamarAPI` (tradução das chamadas antigas), `motorCRM` |
 | `agenda/index.html` · `agenda.css` · `agenda.js` | Agenda (as seis `@font-face` locais ficam no CSS) |
 | `entradas/index.html` · `entradas.css` · `entradas.js` | Entradas |
+| `financeiro/index.html` · `financeiro.css` · `financeiro.js` | Financeiro (Visão geral, Despesas, Planejamento, Precificação) |
 
 ### Backend, testes e ferramentas
 
 | Pasta | Papel |
 |---|---|
-| `backend/` | Apps Script (V8), **sem segredo nenhum**: `00_Config` · `01_Http` (contrato e rotas) · `02_Tabelas` (acesso às abas, tipos) · `03_Concorrencia` (trava, revisão, operações, diário) · `04_Sessoes` · `05_Autorizacao` · `10_Esquema` · `20`–`29` regras e serviços · `40_Migracoes` · `41_Manutencao` |
+| `backend/` | Apps Script (V8), **sem segredo nenhum**: `00_Config` · `01_Http` (contrato e rotas) · `02_Tabelas` (acesso às abas, tipos) · `03_Concorrencia` (trava, revisão, operações, diário) · `04_Sessoes` · `05_Autorizacao` · `10_Esquema` · `20`–`29` regras e serviços · `30`–`32` Financeiro e importação · `35`–`38` integração (contrato, cliente HTTP, serviço, recursos) · `40_Migracoes` · `41_Manutencao` · `42_MigracaoV3` |
 | `backend/legado/` | o `Codigo.gs` da 3.5.0, com as senhas — **só no computador, fora do GitHub** |
-| `testes/` | simulador do Apps Script, testes (`backend.js`, `migracao.js`, `frontend.js`), servidor local |
+| `testes/` | simulador do Apps Script (com `UrlFetchApp` e `ScriptApp` de mentira), testes (`backend.js`, `migracao.js`, `frontend.js`, `financeiro.js`, `integracao.js`), Clinicorp simulado (`util/clinicorp-falso.js`), servidor local |
 | `ferramentas/` | `conferir-publicacao.js`, `preparar-publicacao.js`, `ensaiar-migracao-xlsx.js`, `medir-antes-depois.js` |
 | `vendor/` | bibliotecas de terceiros, **intocadas**: `xlsx.full.min.js` (SheetJS 0.18.5) |
 | `assets/fonts/` | as seis WOFF2 da marca |
@@ -87,15 +92,17 @@ estrutural por `innerHTML` só para encurtar o HTML.
 O projeto continua **sem build**: HTML, CSS e JavaScript clássicos, globais
 controlados (`window.FLORESER`, `FLORESER_CONFIG`, `FloreSerRede`,
 `FloreSerSessao`, `FloreSerDados`, `FloreSerAuth`, `FloreSerSync`,
-`FloreSerAuditoria`, `FloreSerBusca`, `FloreSerLogs`, `FloreSerAtividade`) e o
+`FloreSerAuditoria`, `FloreSerBusca`, `FloreSerLogs`, `FloreSerAtividade`,
+`FloreSerImportacao`, `FloreSerIntegracao`, `FloreSerPainelIntegracoes`) e o
 Babel Standalone só no CRM. Sem npm, sem bundler, sem ES modules. Os testes e
 ferramentas rodam com `node` puro, sem dependências.
 
 **A ordem dos `<script>` importa:** `compartilhado/tema.js` primeiro, no
 `<head>`; depois `version.js`, `config.js`, `atividade-rede.js`, `logs.js`,
 `rede.js`, `pwa.js`, `sessao.js`, `auth.js` e, nos módulos, `sync.js`,
-`dados.js`, `auditoria.js`; o script do módulo por último, no fim do `<body>`.
-Nenhum leva `defer`/`async`, exceto `admin/painel.js` (sempre teve `defer`).
+`dados.js`, `auditoria.js` (e, onde usa, `importacao.js`, `integracao.js`); o
+script do módulo por último, no fim do `<body>`. Nenhum leva `defer`/`async`,
+exceto `admin/integracoes.js` e `admin/painel.js`, nessa ordem.
 Toda página leva `<meta name="floreser-estrutura" content="2">` — sem ela o
 `version.js` entende que é uma página velha em cache e recarrega uma vez.
 
@@ -110,8 +117,10 @@ do bloco compilado.
 
 ## Os dados
 
-O desenho das abas é o **schema 2** (`backend/10_Esquema.gs`,
-[ESQUEMA](docs/ESQUEMA.md)): uma aba por entidade, id estável, cabeçalho manda,
+O desenho das abas é o **schema 3** (`backend/10_Esquema.gs`,
+[ESQUEMA](docs/ESQUEMA.md)) — o schema 2 mais as abas `fin_*`, `int_*` e
+`sis_importacoes`, e três colunas no fim (`COLUNAS_DESDE`). Tabela ou coluna
+nova leva `desde` e entra numa migração incremental. Uma aba por entidade, id estável, cabeçalho manda,
 tipos conferidos, tudo gravado como texto. Datas de calendário `AAAA-MM-DD`;
 instantes em UTC; dinheiro em **centavos inteiros** na lógica e `"350.00"` na
 planilha, convertido por texto. As abas da 3.5.0 ficam intactas para retorno.
@@ -207,6 +216,48 @@ cada `entradas.ler`); a trava de verdade é do servidor: `entrada.remover` e
 de segurança (`EXCLUSAO_NEGADA`). Nas Entradas não fica entrada nenhuma no
 disco do navegador — só a data do último backup, por conta.
 
+### O Financeiro
+
+[FINANCEIRO](docs/FINANCEIRO.md). Só conta com a permissão `financeiro` (ou
+admin) — **sem senha compartilhada**, e Entradas não dá Financeiro; o
+servidor confere em todas as rotas, no resumo, na importação e na busca.
+- Obrigação (`fin_despesas`) ≠ pagamento (`fin_movimentos`). Pagar é sempre
+  uma ação explícita; correção é estorno + novo pagamento, nunca apagar.
+- Parcelas: `dividirCentavos` (resto nas primeiras), cada uma com id e
+  vencimento; a compra não conta à parte. Recorrência: `datasDaSerie` guarda
+  o dia original; gerar de novo não duplica (id `<grupo>-<índice>`); "desta em
+  diante" preserva pagas; nada vira pago sozinho.
+- Caixa, competência e previsão são bases separadas, calculadas no servidor
+  (`resumirFinanceiro`). Sem saldo inicial confiável, não há saldo. Valor do
+  Clinicorp nunca entra nas somas. "Resultado parcial" nunca é "lucro".
+- Precificação: `C / (1 − r − m)` com percentuais sobre o preço; campo vazio é
+  falta, não zero; `1 − r − m ≤ 0` bloqueia; margem ≠ markup; versão aprovada
+  é imutável. Nunca altere preço no Clinicorp.
+
+### A integração com o Clinicorp
+
+[CLINICORP](docs/CLINICORP.md) tem a matriz de capacidades e a recuperação.
+- Credenciais só nas Script Properties (`FLORESER_CLINICORP_USUARIO`,
+  `FLORESER_CLINICORP_TOKEN`); nunca no site, em log, exportação ou backup.
+  Nunca a senha de login de uma pessoa; nada de scraping ou cookies.
+- Operação nova só entra em `CLINICORP_OPERACOES` depois de conferida na
+  especificação; `efeito` diz se muda dados (não o verbo: `change_status` é
+  GET e muda). Escrita nova começa desligada e só roda por ação explícita.
+- Chamada ao Clinicorp **nunca** dentro de `comTrava` (o cliente recusa).
+  Leitura repete; escrita não — sem resposta clara é "resultado desconhecido"
+  (`int_passos`), verificar antes de reenviar.
+- Vínculo só explícito (`int_vinculos`), nunca por nome. Ausência numa
+  resposta filtrada não é exclusão (`ausenteDesde`). Mudança externa vira
+  pendência; aplicar passa pelas regras do módulo (`conferirLeadCRM`).
+  Atualização do Clinicorp nunca apaga o `complemento` local.
+- 401/403 suspendem a integração e avisam o administrador; os erros
+  `integracao_*` nunca são da categoria `autenticacao` (ninguém é
+  desconectado do Alveare).
+- Os módulos só mostram contexto (`FloreSerIntegracao`); nenhuma tela chama o
+  Clinicorp. A área de ação é o painel → Integrações.
+- Testes de integração são **simulados**; o que só a conta real responde
+  está em CLINICORP.md §8.
+
 ## Sessões
 
 [SESSOES](docs/SESSOES.md) tem o diagnóstico e a política. O essencial:
@@ -252,7 +303,8 @@ entidade, plano repetível no diário, filhos antes da raiz. Leituras não pegam
 a trava. Mudança de várias abas sem diário não entra.
 
 Rodar os testes: `node testes/backend.js`, `node testes/migracao.js`,
-`node testes/frontend.js`. Servidor local: `node testes/servidor-local.js`
+`node testes/frontend.js`, `node testes/financeiro.js`,
+`node testes/integracao.js`. Servidor local: `node testes/servidor-local.js`
 (`http://localhost:4180/floreser/`, backend real no simulador, dados
 sintéticos). Nunca use dado real em teste nem no repositório.
 
@@ -311,7 +363,7 @@ segmentos, só números, sem pular números.
 Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita. Coerente
 com a marca — natureza, florescimento, cuidado, luz — ou com a atualização.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA, FAROL, COLMEIA.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA, FAROL, COLMEIA, FAVO.
 
 ### Changelog
 
@@ -382,7 +434,7 @@ mostra versão, API e schema do servidor.
 
 ## Ao publicar
 
-[PUBLICACAO](docs/PUBLICACAO.md) tem o passo a passo, inclusive a migração da
-4.0.0, backup e retorno. Em toda publicação: **o Apps Script antes do site, ou
+[PUBLICACAO](docs/PUBLICACAO.md) tem o passo a passo, inclusive as migrações
+da 4.0.0 e da 4.1.0 (schema 2 → 3), backup e retorno. Em toda publicação: **o Apps Script antes do site, ou
 junto** (Nova versão na mesma implantação); `version.js` sempre junto com o
 `index.html`; e a conferência dizendo "Tudo confere".

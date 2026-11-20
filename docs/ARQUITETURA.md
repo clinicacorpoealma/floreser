@@ -1,4 +1,4 @@
-# Arquitetura do Alveare / FloreSer (4.0.0)
+# Arquitetura do Alveare / FloreSer (4.1.0)
 
 Site estático no GitHub Pages + Google Apps Script + Google Sheets. Sem npm,
 sem bundler, sem servidor pago. O volume (centenas de fichas, poucas pessoas
@@ -87,4 +87,19 @@ as linhas daquela paciente (TextFinder) encurtaria a região crítica.
 ## Documentos
 
 [API.md](API.md) · [ESQUEMA.md](ESQUEMA.md) · [SESSOES.md](SESSOES.md) ·
-[PUBLICACAO.md](PUBLICACAO.md)
+[PUBLICACAO.md](PUBLICACAO.md) · [FINANCEIRO.md](FINANCEIRO.md) ·
+[CLINICORP.md](CLINICORP.md)
+
+## Desde a 4.1.0
+
+- **Financeiro**: regras puras (30), serviço (31), importação de planilha
+  (32). Mesmo caminho de gravação dos outros módulos: operações por entidade,
+  revisão, `operacaoId`, diário, auditoria no mesmo plano.
+- **Integração** (35 contrato · 36 cliente HTTP · 37 serviço · 38
+  recursos): o Clinicorp só é chamado pelo backend, por `UrlFetchApp`,
+  **fora** da trava do script. O que vem de lá vai para abas próprias
+  (`int_*`); mudanças em CRM/Agenda/Entradas só por pendência aplicada por
+  uma pessoa, ou por importação explícita de um recebimento.
+- **Contexto nos módulos**: `compartilhado/integracao.js` lê
+  `integracao.contexto` uma vez por módulo aberto. Nenhuma tela chama o
+  Clinicorp.

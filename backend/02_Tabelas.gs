@@ -185,7 +185,13 @@ function tabela(nome) {
 
   var cab = {};
   nomes.forEach(function (n, i) { if (n && cab[n] === undefined) cab[n] = i; });
-  var faltam = def.campos.filter(function (c) { return cab[c.n] === undefined; }).map(function (c) { return c.n; });
+  /* coluna que um schema mais novo acrescentou só é exigida depois que
+     ele estiver ativo: antes disso (migração em curso) ela pode faltar, é
+     lida como vazia e não é escrita */
+  var novas = (typeof COLUNAS_DESDE !== "undefined" && COLUNAS_DESDE[nome]) || {};
+  var faltam = def.campos.filter(function (c) {
+    return cab[c.n] === undefined && !(novas[c.n] && novas[c.n] > schemaAtivo());
+  }).map(function (c) { return c.n; });
   if (faltam.length) {
     falhar("instalacao_incompleta", "A aba " + def.aba + " está sem as colunas: " + faltam.join(", ") + ".",
       { aba: def.aba, faltam: faltam });

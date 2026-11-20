@@ -38,7 +38,7 @@ teste("login guarda só o hash do token e devolve a validade definida pelo servi
   const linhas = a.linhas("sis_sessoes");
   v.igual(linhas.length, 1);
   v.verdade(linhas[0].tokenHash !== d.token && linhas[0].tokenHash.length === 64, "a planilha guarda o hash");
-  v.igual(d.conta.permissoes, { crm: true, agenda: true, entradas: true });
+  v.igual(d.conta.permissoes, { crm: true, agenda: true, entradas: true, financeiro: false }, "Entradas não dá Financeiro");
 });
 
 teste("senha errada conta tentativas e bloqueia na quinta", () => {
@@ -491,7 +491,7 @@ teste("toda resposta diz versão do servidor, API e schema; nenhuma traz token o
   const tk = a.entrar("bia", "segredo-bia");
   const r = a.pedir("crm.ler", {}, tk);
   v.igual(r.servidor.api, 2);
-  v.igual(r.servidor.schema, 2);
+  v.igual(r.servidor.schema, 3);
   const texto = JSON.stringify(r);
   v.falso(texto.indexOf(tk) >= 0, "o token não volta");
   v.falso(/senhaHash|"salt"/.test(texto));

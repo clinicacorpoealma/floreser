@@ -45,7 +45,11 @@
     versao_cliente: "versao", versao_servidor: "versao", manutencao: "versao",
     ocupado: "indisponivel", servidor_falhou: "indisponivel", instalacao_incompleta: "indisponivel",
     sem_conexao: "indisponivel", prazo: "indisponivel", resposta_invalida: "indisponivel",
-    resultado_desconhecido: "incerto"
+    resultado_desconhecido: "incerto",
+    /* integração: nenhum é "autenticacao" — o Clinicorp recusar a credencial
+       não encerra a sessão de ninguém no Alveare */
+    integracao_nao_configurada: "validacao", integracao_suspensa: "validacao", integracao_recusou: "validacao",
+    integracao_incerta: "validacao", integracao_indisponivel: "indisponivel"
   };
 
   var emVoo = {};

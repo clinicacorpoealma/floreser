@@ -32,8 +32,12 @@
 <script src="../compartilhado/sync.js"></script>
 <script src="../compartilhado/dados.js"></script>
 <script src="../compartilhado/auditoria.js"></script>
+<script src="../compartilhado/importacao.js"></script>
+<script src="../compartilhado/integracao.js"></script>
 
 <link rel="stylesheet" href="../compartilhado/atividade-rede.css">
+<link rel="stylesheet" href="../compartilhado/importacao.css">
+<link rel="stylesheet" href="../compartilhado/integracao.css">
 <link rel="stylesheet" href="entradas.css">
 </head>
 <body>
@@ -271,6 +275,7 @@
         <div class="backup-actions">
           <button type="button" class="btn btn-ghost" id="btnBackup">Baixar backup (.json)</button>
           <button type="button" class="btn btn-ghost" id="btnImport">Restaurar backup</button>
+          <button type="button" class="btn btn-ghost" id="btnImportPlanilha">Importar planilha (CSV/XLSX)</button>
           <input type="file" id="fileImport" accept=".json,application/json" hidden>
         </div>
       </div>

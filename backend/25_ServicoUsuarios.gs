@@ -62,6 +62,7 @@ function usuariosCriar(ctx) {
     var s = derivarNova(senha);
     var u = { id: novoId("u"), nome: nome, usuario: login, esquema: s.esquema, senhaHash: s.senhaHash, salt: s.salt,
       iteracoes: s.iteracoes, ativo: true, admin: !!d.admin, crm: !!d.crm, agenda: !!d.agenda, entradas: !!d.entradas,
+      financeiro: !!d.financeiro,
       credencialVersao: 1, criadoEm: agoraISO(), criadoPor: "painel", ultimoLogin: null, alteradoEm: agoraISO() };
     inserir("sis_usuarios", [u]);
     registrarTecnico("SECURITY", "USUARIO_CRIADO", "Usuário @" + login + " criado pelo painel.");
@@ -80,8 +81,10 @@ function usuariosEditar(ctx) {
     var u = usuarioPorId(d.id);
     if (!u) falhar("nao_encontrado", "Usuário não encontrado.");
     var login = validarLoginNovo(d.usuario, u.id);
-    var mudouAcesso = u.admin !== !!d.admin || u.crm !== !!d.crm || u.agenda !== !!d.agenda || u.entradas !== !!d.entradas;
+    var mudouAcesso = u.admin !== !!d.admin || u.crm !== !!d.crm || u.agenda !== !!d.agenda || u.entradas !== !!d.entradas ||
+      (u.financeiro === true) !== !!d.financeiro;
     u.nome = nome; u.usuario = login; u.admin = !!d.admin; u.crm = !!d.crm; u.agenda = !!d.agenda; u.entradas = !!d.entradas;
+    u.financeiro = !!d.financeiro;
     u.alteradoEm = agoraISO();
     atualizar("sis_usuarios", [u]);
     if (mudouAcesso) avancarEpoca();

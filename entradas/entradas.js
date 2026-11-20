@@ -145,6 +145,8 @@
         obs: String(r.obs || "").trim(),
         pagamentos: pags,
         criadoEm: String(r.criadoEm || new Date().toISOString()),
+        /* de onde veio (manual, importação, Clinicorp): só leitura, nunca sobe */
+        _origem: String(r.origem || r._origem || ""),
         _rev: Number(r._rev) || 0
       });
     }
@@ -1011,8 +1013,14 @@
       '<span class="det-val">' + (formas || "—") + "</span></div>" +
       (e.obs ? '<div class="det-linha"><span class="det-rot">Observação</span>' +
         '<span class="det-val">' + esc(e.obs) + "</span></div>" : "") +
+      (e._origem && e._origem !== "manual" ? '<div class="det-linha"><span class="det-rot">Origem</span>' +
+        '<span class="det-val">' + esc({ importacao: "Importada de planilha", clinicorp: "Recebimento do Clinicorp" }[e._origem] || e._origem) + "</span></div>" : "") +
       '<div class="det-sec"><div class="det-sec-nome">Histórico de alterações</div>' +
       '<div id="detalheHistorico"></div></div>';
+
+    /* contexto do Clinicorp (só leitura; a conciliação é no painel) */
+    const blocoInt = window.FloreSerIntegracao ? FloreSerIntegracao.bloco("entradas", id) : null;
+    if (blocoInt) el("detalheCorpo").insertBefore(blocoInt, el("detalheCorpo").querySelector(".det-sec"));
 
     if (detalheDialog.showModal) detalheDialog.showModal();
     else detalheDialog.setAttribute("open", "");
@@ -1536,6 +1544,7 @@
     el("btnCopyCsv").addEventListener("click", copyCsv);
     el("btnBackup").addEventListener("click", baixarBackup);
     el("btnImport").addEventListener("click", () => el("fileImport").click());
+    el("btnImportPlanilha").addEventListener("click", abrirImportacaoPlanilha);
     el("fileImport").addEventListener("change", ev => {
       const f = ev.target.files && ev.target.files[0];
       if (f) restaurarBackup(f);
@@ -1554,6 +1563,29 @@
 
     attachAutocomplete(el("fNome"), el("acNome"), nameSuggestions, "Já registrados");
     attachAutocomplete(el("fDesc"), el("acDesc"), descSuggestions, "Serviços");
+  }
+
+  /* Importar planilha (CSV/XLSX): a janela é a compartilhada
+     (compartilhado/importacao.js). O servidor confere tudo de novo, acusa
+     repetidas e guarda o lote; só administradores importam. */
+  function abrirImportacaoPlanilha() {
+    if (!window.FloreSerImportacao) { toast("A importação não carregou. Recarregue a página."); return; }
+    if (exportDialog.open) exportDialog.close();
+    FloreSerImportacao.abrir({
+      modulo: "entradas", titulo: "Importar entradas", token: tokenAtual,
+      campos: [
+        { id: "nome", nome: "Nome", obrigatorio: true, tipo: "texto", apelidos: ["nome", "paciente", "cliente"] },
+        { id: "data", nome: "Data", obrigatorio: true, tipo: "data", apelidos: ["data", "dia"] },
+        { id: "valor", nome: "Valor", obrigatorio: true, tipo: "dinheiro", apelidos: ["valor", "total"] },
+        { id: "metodo", nome: "Forma de pagamento", obrigatorio: true, tipo: "texto", apelidos: ["forma", "forma de pagamento", "metodo", "método", "pagamento"] },
+        { id: "parcelas", nome: "Parcelas", tipo: "inteiro", apelidos: ["parcelas"] },
+        { id: "descricao", nome: "Procedimento", tipo: "texto", apelidos: ["procedimento", "descricao", "descrição", "servico", "serviço"] },
+        { id: "obs", nome: "Observação", tipo: "texto", apelidos: ["obs", "observacao", "observação"] }
+      ],
+      aoConcluir: async function () {
+        try { await carregar(); render(); } catch (e) { toast("Importado. Recarregue a página para ver tudo."); }
+      }
+    });
   }
 
   function maskMoney(input) {
@@ -1711,6 +1743,7 @@
     render();
     setTimeout(abrirEntradaPedida, 0);
     renderBackupNote();
+    if (window.FloreSerIntegracao) FloreSerIntegracao.carregar("entradas", tokenAtual);
     if (origemSessao === "usuario" && window.FloreSerAuth) {
       window.FloreSerAuth.montarIdentidade(el("quemEsta"), function () { location.reload(); });
       const sair = el("btnSair");

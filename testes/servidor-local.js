@@ -22,6 +22,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { novoAmbiente } = require("./util/ambiente");
+const { clinicorpFalso } = require("./util/clinicorp-falso");
 
 const PORTA = Number(process.argv[2]) || 4180;
 const BASE = "/floreser/";
@@ -31,11 +32,32 @@ const RAIZ = path.join(__dirname, "..");
 const CONTAS_DE_TESTE = [
   { usuario: "teste.admin", nome: "Admin de Teste", senha: "senha-teste-admin", admin: true },
   { usuario: "teste.equipe", nome: "Equipe de Teste", senha: "senha-teste-equipe", crm: true, agenda: true, entradas: true },
-  { usuario: "teste.crm", nome: "Só CRM de Teste", senha: "senha-teste-crm", crm: true }
+  { usuario: "teste.crm", nome: "Só CRM de Teste", senha: "senha-teste-crm", crm: true },
+  { usuario: "teste.financeiro", nome: "Financeiro de Teste", senha: "senha-teste-financeiro", financeiro: true }
 ];
 
 const amb = novoAmbiente();
 CONTAS_DE_TESTE.forEach((c) => amb.criarConta(c));
+
+/* Um Clinicorp SIMULADO, com dados sintéticos, para exercitar o painel →
+   Integrações sem rede. As "credenciais" são marcadores falsos: este
+   servidor nunca fala com o Clinicorp de verdade. */
+const clinicorp = clinicorpFalso();
+amb.sim.http = clinicorp.handler;
+amb.sim.props.FLORESER_CLINICORP_USUARIO = "usuario-simulado";
+amb.sim.props.FLORESER_CLINICORP_TOKEN = "token-simulado";
+(function () {
+  const hoje = new Date();
+  const dia = (n) => new Date(hoje.getTime() + n * 86400000).toISOString().slice(0, 10);
+  clinicorp.pagamentos = [1, 2, 3].map((i) => ({ id: 700 + i, PaymentHeaderId: 800 + i, Amount: 150 * i + 0.5, AmountWithDiscounts: (150 * i + 0.5) * 0.97,
+    DueDate: dia(-i * 3), ReceivedDate: dia(-i * 3), PaymentReceived: "X", PaymentConfirmed: "X", ConfirmedDate: dia(-i * 3), InstallmentNumber: "1",
+    InstallmentsCount: "1", PaymentForm: i === 2 ? "PIX" : "Cartão de Crédito", PatientId: 9001, PatientName: "Paciente Sintética Um", ReceiverBusinessId: 111,
+    z_LastChange_Date: dia(-i * 3) + "T12:00:00Z" }));
+  clinicorp.orcamentos = [{ id: 3001, TreatmentId: 70, Status: "APPROVED", CreateDate: dia(-10), ApprovedDate: dia(-2), Amount: 1200, PatientId: 9001,
+    PatientName: "Paciente Sintética Um", ProfessionalName: "Profissional Sintético", ProcedureList: [{ OperationDescription: "Limpeza de pele", FinalAmount: 1200 }] }];
+  clinicorp.agendamentos = [{ ItemType: "APPOINTMENT", id: 801, date: dia(3) + "T04:00:00.000Z", fromTime: "09:00", toTime: "10:00", Clinic_BusinessId: 111,
+    Dentist_PersonId: 5, PatientName: "Paciente Sintética Um", StatusId: 1, z_LastChange_Date: dia(-1) + "T10:00:00Z", _paciente: 9001 }];
+})();
 semear();
 
 function semear() {
@@ -61,6 +83,26 @@ function semear() {
     { tipo: "entrada.criar", id: "ent-2", dados: { nome: "Eva Exemplo", data: dia(-1), descricao: "Drenagem", pagamentos: [{ metodo: "credito", valor: 48050, parcelas: 3 }] } }
   ]), tk);
   amb.pedir("sessao.sair", {}, tk);
+
+  /* Financeiro: algumas despesas, uma recorrência, um material e uma ficha */
+  const tf = amb.entrar("teste.financeiro", "senha-teste-financeiro");
+  amb.pedir("financeiro.aplicar", ops([
+    { tipo: "despesa.criar", id: "dp-aluguel", dados: { descricao: "Aluguel da sala", valor: 320000, vencimento: dia(-5), categoriaId: "cat-aluguel", meio: "Boleto" } },
+    { tipo: "despesa.criar", id: "dp-energia", dados: { descricao: "Energia", valor: 41870, vencimento: dia(4), categoriaId: "cat-energia" } },
+    { tipo: "despesa.criar", id: "dp-autoclave", dados: { descricao: "Autoclave", valor: 450000, vencimento: dia(10), categoriaId: "cat-equipamentos" },
+      parcelamento: { quantidade: 3, primeiroVencimento: dia(10), frequencia: "mensal" } },
+    { tipo: "recorrencia.criar", id: "rc-sistema", dados: { descricao: "Sistema de gestão", valor: 19990, categoriaId: "cat-sistemas", frequencia: "mensal", inicio: dia(-20) } },
+    { tipo: "insumo.salvar", id: "in-gel", dados: { nome: "Gel condutor", unidadeCompra: "frasco", conteudo: "500", unidadeConteudo: "ml", valorEmbalagem: 4500, perdaPct: "5" } },
+    { tipo: "orcamento.definir", categoriaId: "cat-aluguel", mes: dia(0).slice(0, 7), valor: 330000, alertaPct: 90 }
+  ]), tf);
+  amb.pedir("financeiro.aplicar", ops([
+    { tipo: "pagamento.registrar", despesaId: "dp-aluguel", revBase: 1, dados: { id: "pg-semente-1", data: dia(-4), valor: 200000, meio: "PIX" } },
+    { tipo: "ficha.salvar", id: "fc-limpeza", revBase: 0, dados: { tipo: "procedimento", nome: "Limpeza de pele", precoAtual: 18000, dados: {
+      itens: [{ insumoId: "in-gel", quantidade: "15", unidade: "ml" }], tempoMin: "60", maoDeObraHora: 4000, equipamentos: [{ nome: "Vapor de ozônio", custoPorUso: 250 }],
+      rateio: { modo: "por_hora", valor: 2200, base: "custos fixos ÷ horas produtivas", categorias: ["cat-aluguel", "cat-energia"] },
+      taxaPagamentoPct: "3", comissaoPct: "10", impostosPct: "6", margemPct: "" } } }
+  ]), tf);
+  amb.pedir("sessao.sair", {}, tf);
 }
 
 const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",

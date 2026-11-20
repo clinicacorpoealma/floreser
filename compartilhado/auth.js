@@ -22,7 +22,7 @@
   "use strict";
 
   var DIAS = 30;
-  var NOMES = { crm: "CRM", agenda: "Agenda", entradas: "Entradas" };
+  var NOMES = { crm: "CRM", agenda: "Agenda", entradas: "Entradas", financeiro: "Financeiro" };
 
   function S() { return global.FloreSerSessao; }
 

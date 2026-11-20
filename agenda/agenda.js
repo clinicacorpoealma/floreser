@@ -2412,6 +2412,7 @@ function modalFicha(id){
         '<span style="font-weight:300">'+(f.feito?'feito':'pendente')+
         (f.area?' · '+area(f.area).nome:'')+'</span></div>').join('')+'</div>'
         :'<span class="hintx">Nenhum follow-up.</span>')+
+      (window.FloreSerIntegracao && FloreSerIntegracao.de('agenda',p.id) ? '<div id="ficha-clinicorp"></div>' : '')+
       bl('Histórico da agenda',hist)+
       bl('Alterações','<div id="ficha-auditoria"></div>')+
     '</div>'+
@@ -2429,6 +2430,10 @@ function modalFicha(id){
 
   /* O histórico da agenda conta o tratamento; este conta quem mexeu na
      ficha. São perguntas diferentes, então ficam em seções diferentes. */
+  /* agendamentos do Clinicorp desta paciente: só contexto — a Agenda
+     continua a fonte dos atendimentos e nada daqui muda ciclos ou séries */
+  const caixaInt=document.getElementById('ficha-clinicorp');
+  if(caixaInt){ const b=FloreSerIntegracao.bloco('agenda',p.id); if(b) caixaInt.appendChild(b); }
   const caixaAud=document.getElementById('ficha-auditoria');
   if(caixaAud && window.FloreSerAuditoria){
     FloreSerAuditoria.montar(caixaAud,{
@@ -3305,6 +3310,7 @@ function abrirApp(){
   }
   maturar();
   tudo();
+  if(window.FloreSerIntegracao) FloreSerIntegracao.carregar('agenda',()=>FloreSerSessao.tokenPara('agenda'));
 
   /* Se o site ficar aberto e o dia virar, tudo se recalcula sozinho */
   let diaAtual=D.hoje();

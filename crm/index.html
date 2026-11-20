@@ -37,6 +37,7 @@
 <script src="../compartilhado/sync.js"></script>
 <script src="../compartilhado/dados.js"></script>
 <script src="../compartilhado/auditoria.js"></script>
+<script src="../compartilhado/integracao.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin
     src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -48,6 +49,7 @@
        na primeira visita mesmo sem internet. -->
   <script src="../vendor/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="../compartilhado/atividade-rede.css">
+  <link rel="stylesheet" href="../compartilhado/integracao.css">
   <link rel="stylesheet" href="crm.css">
 </head>
 
@@ -2367,6 +2369,8 @@
             </button>
           )}
 
+      <ContextoClinicorp leadId={lead.id} />
+
       <HistoricoDaLead leadId={lead.id} />
 
       {confirmando && (
@@ -2396,6 +2400,28 @@
           )}
         </div>
       );
+    }
+
+    /* Orçamentos e envios do Clinicorp desta lead — só contexto, lido da
+       planilha (integracao.contexto) uma vez ao abrir o CRM. O funil não
+       muda por causa disto: proposta do Clinicorp é aplicada no painel,
+       pelas regras do CRM. */
+    function ContextoClinicorp({ leadId }) {
+      const caixa = React.useRef(null);
+      const [, setVersao] = useState(0);
+      useEffect(() => {
+        if (!window.FloreSerIntegracao) return;
+        let vivo = true;
+        FloreSerIntegracao.carregar("crm", () => SESSAO.token).then(() => { if (vivo) setVersao((v) => v + 1); });
+        return () => { vivo = false; };
+      }, []);
+      useEffect(() => {
+        if (!caixa.current || !window.FloreSerIntegracao) return;
+        while (caixa.current.firstChild) caixa.current.removeChild(caixa.current.firstChild);
+        const b = FloreSerIntegracao.bloco("crm", leadId);
+        if (b) caixa.current.appendChild(b);
+      });
+      return <div ref={caixa}></div>;
     }
 
     /* A timeline é a mesma dos três módulos, montada fora do React porque

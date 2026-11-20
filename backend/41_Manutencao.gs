@@ -101,7 +101,7 @@ function limparOperacoesAntigas() {
 function conferirIntegridade() {
   reiniciarExecucao();
   var T = {};
-  nomesDasTabelas().forEach(function (n) { T[n] = lerTudo(n); });
+  nomesDasTabelas().forEach(function (n) { if (definicaoTabela(n).desde <= schemaAtivo()) T[n] = lerTudo(n); });
   var rel = novoRelatorio();
   validarV2(T, rel);
   var texto = "Erros:\n" + (rel.erros.join("\n") || "nenhum") + "\nAvisos:\n" + (rel.avisos.join("\n") || "nenhum");

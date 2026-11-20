@@ -174,6 +174,8 @@ teste("depois de ativar: a conta antiga entra com a senha antiga, e a sessão ab
   const a = ambienteLegado();
   a.gs.migracaoEnsaiar();
   a.gs.migracaoAtivar();
+  a.gs.migracaoV3Ensaiar();
+  a.gs.migracaoV3Ativar();
   const r = a.pedir("crm.ler", {}, a.tokenAntigo);
   const d = v.ok(r, "token da 3.5.0 aceito");
   v.igual(d.leads.length, 2);
@@ -193,6 +195,8 @@ teste("retorno: exportar para a 3.5.0 reescreve as abas antigas (com o cabeçalh
   const a = ambienteLegado();
   a.gs.migracaoEnsaiar();
   a.gs.migracaoAtivar();
+  a.gs.migracaoV3Ensaiar();
+  a.gs.migracaoV3Ativar();
   const tk = a.entrar("pessoa1", "senha-da-conta-antiga");
   a.pedir("entradas.aplicar", { operacoes: [a.op("entrada.criar", { id: "e3", dados: { nome: "Depois", data: "2026-11-20", pagamentos: [{ metodo: "pix", valor: 1000, parcelas: 1 }] } })] }, tk);
   a.sim.props.FLORESER_MANUTENCAO = "sim";
@@ -208,6 +212,74 @@ teste("retorno: exportar para a 3.5.0 reescreve as abas antigas (com o cabeçalh
   a.gs.reiniciarExecucao();
   v.igual(u[3], a.gs.derivarSenhaV1("senha-da-conta-antiga", u[4]), "o verificador antigo volta para a 3.5.0");
   v.igual(a.sim.props.FLORESER_SCHEMA_ATIVO, "1");
+});
+
+
+/* ======================= schema 2 → schema 3 ======================= */
+
+function ambienteV2() {
+  const a = ambienteLegado();
+  a.gs.migracaoEnsaiar();
+  a.gs.migracaoAtivar();
+  a.gs.reiniciarExecucao();
+  return a;
+}
+
+teste("v2 → v3: diagnóstico não escreve, valida relações e soma o dinheiro", () => {
+  const a = ambienteV2();
+  const abasAntes = a.sim.planilha.getSheets().map((s) => s.getName()).join(",");
+  a.sim.zerarContadores();
+  const r = a.gs.migracaoV3Diagnosticar();
+  v.igual(r.erros, [], "pronta");
+  v.igual(a.sim.contadores.escrever || 0, 0, "nada escrito");
+  v.igual(a.sim.planilha.getSheets().map((s) => s.getName()).join(","), abasAntes);
+  v.verdade(r.plano.abasNovas.indexOf("fin_despesas") >= 0 && r.plano.abasNovas.indexOf("int_vinculos") >= 0);
+  v.igual(r.dinheiro.ent_pagamentos, 35029 + 123450);
+});
+
+teste("v2 → v3: exige manutenção e backup; a 3.5.0 nunca roda de novo", () => {
+  const a = ambienteV2();
+  let erro = "";
+  try { a.gs.migracaoV3Executar(); } catch (e) { erro = e.message; }
+  v.verdade(/manutenção/.test(erro), erro);
+  a.sim.props.FLORESER_MANUTENCAO = "sim";
+  a.gs.reiniciarExecucao();
+  try { a.gs.migracaoV3Executar(); } catch (e) { erro = e.message; }
+  v.verdade(/Backup/i.test(erro), erro);
+  try { a.gs.migracaoExecutar(); } catch (e) { erro = e.message; }
+  v.verdade(/já está ativo/.test(erro), "a migração da 3.5.0 se recusa com o schema 2 ativo: " + erro);
+});
+
+teste("v2 → v3: preserva dados, dinheiro e sessões; quem estava conectado continua", () => {
+  const a = ambienteV2();
+  const tk = a.tokenAntigo;
+  const leadsAntes = JSON.stringify(a.linhas("crm_leads").map((l) => [l.id, l.nome, l.etapa]));
+  a.sim.props.FLORESER_MANUTENCAO = "sim";
+  a.gs.reiniciarExecucao();
+  a.gs.migracaoV3Backup();
+  const rel = a.gs.migracaoV3Executar();
+  v.verdade(rel.ok, "conferência OK: " + JSON.stringify(rel));
+  a.gs.migracaoV3Ativar();
+  delete a.sim.props.FLORESER_MANUTENCAO;
+  a.gs.reiniciarExecucao();
+  const ent = v.ok(a.pedir("entradas.ler", {}, tk), "a sessão aberta no schema 2 continua valendo");
+  v.igual(ent.entradas.reduce((s, e) => s + e.pagamentos.reduce((t, p) => t + p.valor, 0), 0), 35029 + 123450);
+  v.igual(JSON.stringify(a.linhas("crm_leads").map((l) => [l.id, l.nome, l.etapa])), leadsAntes);
+  v.erro(a.pedir("financeiro.ler", {}, tk), "sem_acesso", "conta sem a permissão nova não entra no Financeiro");
+  /* rodar de novo não faz nada: o schema 3 já está ativo */
+  let erro = "";
+  try { a.gs.migracaoV3Executar(); } catch (e) { erro = e.message; }
+  v.verdade(/parte do schema 2/.test(erro), erro);
+});
+
+teste("v2 → v3: retorno volta a dizer schema 2 sem apagar nada", () => {
+  const a = ambienteV2();
+  a.gs.migracaoV3Ensaiar();
+  a.gs.migracaoV3Ativar();
+  a.gs.reiniciarExecucao();
+  a.gs.migracaoV3Retornar();
+  v.igual(a.sim.props.FLORESER_SCHEMA_ATIVO, "2");
+  v.verdade(!!a.sim.planilha.getSheetByName("fin_despesas"), "as abas novas ficam");
 });
 
 module.exports = () => executar("Migração");

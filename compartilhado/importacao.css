@@ -1,0 +1,48 @@
+/* =====================================================================
+   FloreSer · Corpo e Alma — a janela de importação de planilha
+   ---------------------------------------------------------------------
+   Usa os tokens da página que a abre (--surface, --accent, ...), com
+   valores de reserva para funcionar em qualquer módulo e nos dois temas.
+   ===================================================================== */
+
+.imp-dialogo{border:none;padding:0;background:transparent;width:100%;max-width:min(860px,calc(100vw - 24px))}
+.imp-dialogo::backdrop{background:rgba(20,32,30,.48)}
+.imp-folha{background:var(--surface,#fff);color:var(--text,#2D2D2D);border-radius:18px;max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+  box-shadow:0 24px 60px -24px rgba(30,45,43,.35),0 4px 12px rgba(30,45,43,.08);font-family:"Montserrat","Segoe UI",sans-serif}
+.imp-topo{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 12px;border-bottom:1px solid var(--border,#E4DCD2)}
+.imp-topo h2{margin:0;font-family:"Cormorant Garamond",Georgia,serif;font-size:24px;font-weight:600;color:var(--accent,#3B6E6A)}
+.imp-fechar{border:none;background:none;font-size:24px;line-height:1;width:34px;height:34px;border-radius:8px;color:var(--text-3,#776C63);cursor:pointer}
+.imp-fechar:hover{background:var(--surface-3,#EEE7DF)}
+.imp-corpo{padding:8px 22px 20px;overflow-y:auto}
+.imp-passo{padding:14px 0;border-bottom:1px solid var(--border,#E4DCD2)}
+.imp-passo:last-child{border-bottom:none}
+.imp-passo h3{display:flex;align-items:center;gap:10px;margin:0 0 10px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2,#6E6259)}
+.imp-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent-soft,#E3EDEA);
+  color:var(--accent,#3B6E6A);font-weight:600;font-size:11px}
+.imp-nota{font-size:12.5px;color:var(--text-3,#776C63);margin:4px 0 10px}
+.imp-ok{font-size:13px;color:var(--accent,#3B6E6A);margin:8px 0 0}
+.imp-erro{font-size:13px;color:var(--danger,#A8452F);margin:8px 0 0}
+.imp-contagem{font-size:13.5px;font-weight:500;margin:12px 0 8px}
+.imp-linha{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.imp-linha label{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2,#6E6259)}
+.imp-input{padding:8px 10px;border:1px solid var(--border,#E4DCD2);border-radius:9px;background:var(--surface,#fff);color:inherit;font:inherit;font-size:13.5px;max-width:100%}
+.imp-input:focus{outline:none;border-color:var(--focus,#5A9490);box-shadow:0 0 0 3px rgba(90,148,144,.16)}
+.imp-marca{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-2,#6E6259);margin-left:8px}
+.imp-tabela{width:100%;border-collapse:collapse;font-size:13px}
+.imp-tabela th{text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3,#776C63);padding:6px 8px;border-bottom:1px solid var(--border,#E4DCD2)}
+.imp-tabela td{padding:7px 8px;border-bottom:1px solid var(--border,#E4DCD2);vertical-align:top}
+.imp-exemplo{color:var(--text-3,#776C63);font-size:12.5px;word-break:break-word}
+.imp-rolagem{max-height:320px;overflow:auto;border:1px solid var(--border,#E4DCD2);border-radius:10px}
+.imp-selo{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px}
+.imp-selo-ok{background:var(--accent-soft,#E3EDEA);color:var(--accent,#3B6E6A)}
+.imp-selo-rep{background:var(--alerta-bg,#F6EBE4);color:var(--alerta,#A8623F)}
+.imp-selo-erro{background:var(--danger-soft,#F7E4DF);color:var(--danger,#A8452F)}
+.imp-btn{border:1.5px solid var(--border,#E4DCD2);background:var(--surface,#fff);color:inherit;border-radius:10px;padding:9px 15px;font:inherit;font-size:12px;
+  font-weight:600;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.imp-btn:hover{border-color:var(--accent,#3B6E6A);color:var(--accent,#3B6E6A)}
+.imp-btn-primario{background:var(--accent,#3B6E6A);border-color:var(--accent,#3B6E6A);color:var(--on-accent,#fff)}
+.imp-btn-primario:hover{color:var(--on-accent,#fff);background:var(--accent-hover,#31605C)}
+.imp-btn:disabled{opacity:.55;cursor:not-allowed}
+.imp-arquivo{font-size:13px}
+:root[data-tema="escuro"] .imp-dialogo::backdrop{background:rgba(6,11,10,.62)}
+@media (max-width:560px){.imp-corpo{padding:6px 14px 16px}.imp-topo{padding:14px}.imp-tabela th:nth-child(3),.imp-tabela td:nth-child(3){display:none}}

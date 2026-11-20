@@ -32,7 +32,11 @@ var CATEGORIA_DO_ERRO = {
   operacao_divergente: "validacao", nao_encontrado: "validacao", sem_confirmacao: "validacao", na_lixeira: "validacao",
   conflito: "conflito",
   versao_cliente: "versao", versao_servidor: "versao", manutencao: "versao",
-  ocupado: "indisponivel", servidor_falhou: "indisponivel", instalacao_incompleta: "indisponivel"
+  ocupado: "indisponivel", servidor_falhou: "indisponivel", instalacao_incompleta: "indisponivel",
+  /* Integração: NENHUM destes é "autenticacao". Credencial do Clinicorp
+     recusada suspende a integração; a sessão da pessoa no Alveare fica. */
+  integracao_nao_configurada: "validacao", integracao_suspensa: "validacao", integracao_recusou: "validacao",
+  integracao_incerta: "validacao", integracao_indisponivel: "indisponivel"
 };
 
 /* Erro de negócio: vira resposta, nunca pilha de execução. */
@@ -81,6 +85,15 @@ function rotas() {
     "agenda.aplicar": { modulo: ["agenda"], fn: agendaAplicar },
     "entradas.ler": { modulo: ["entradas"], fn: entradasLer },
     "entradas.aplicar": { modulo: ["entradas"], fn: entradasAplicar },
+    "financeiro.ler": { modulo: ["financeiro"], fn: financeiroLer },
+    "financeiro.resumo": { modulo: ["financeiro"], fn: financeiroResumo },
+    "financeiro.simular": { modulo: ["financeiro"], fn: financeiroSimular },
+    "financeiro.aplicar": { modulo: ["financeiro"], fn: financeiroAplicar },
+
+    "importacao.previa": { moduloDe: "modulo", fn: importacaoPrevia },
+    "importacao.confirmar": { moduloDe: "modulo", fn: importacaoConfirmar },
+    "importacao.historico": { moduloDe: "modulo", fn: importacaoHistorico },
+    "integracao.contexto": { moduloDe: "modulo", fn: integracaoContexto },
 
     "lixeira.mover": { moduloDe: "tipo", fn: lixeiraMover },
     "lixeira.repetido": { moduloDe: "tipo", fn: lixeiraRepetido },
@@ -101,7 +114,26 @@ function rotas() {
     "painel.lixeira.restaurar": { painel: true, fn: lixeiraRestaurar },
     "painel.lixeira.excluir": { painel: true, fn: lixeiraExcluir },
     "painel.lixeira.limpar": { painel: true, fn: lixeiraLimpar },
-    "painel.auditoria": { painel: true, fn: auditoriaGeral }
+    "painel.auditoria": { painel: true, fn: auditoriaGeral },
+
+    "painel.integracao.estado": { painel: true, fn: integracaoEstado },
+    "painel.integracao.configurar": { painel: true, fn: integracaoConfigurar },
+    "painel.integracao.testar": { painel: true, fn: integracaoTestar },
+    "painel.integracao.executar": { painel: true, fn: integracaoExecutar },
+    "painel.integracao.agendar": { painel: true, fn: integracaoAgendar },
+    "painel.integracao.suspender": { painel: true, fn: integracaoSuspender },
+    "painel.integracao.externos": { painel: true, fn: integracaoExternos },
+    "painel.integracao.locais": { painel: true, fn: integracaoLocais },
+    "painel.integracao.pendencias": { painel: true, fn: integracaoPendencias },
+    "painel.integracao.resolver": { painel: true, fn: integracaoResolver },
+    "painel.integracao.vincular": { painel: true, fn: integracaoVincular },
+    "painel.integracao.desvincular": { painel: true, fn: integracaoDesvincular },
+    "painel.integracao.complemento": { painel: true, fn: integracaoComplemento },
+    "painel.integracao.reconciliar": { painel: true, fn: integracaoReconciliar },
+    "painel.integracao.buscarPaciente": { painel: true, fn: integracaoBuscarPaciente },
+    "painel.integracao.criarPaciente": { painel: true, fn: integracaoCriarPaciente },
+    "painel.integracao.enviarLead": { painel: true, fn: integracaoEnviarLead },
+    "painel.integracao.decidirPasso": { painel: true, fn: integracaoDecidirPasso }
   };
 }
 

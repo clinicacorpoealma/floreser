@@ -1,4 +1,4 @@
-# Esquema de dados (schema 2)
+# Esquema de dados (schema 3)
 
 A fonte é `backend/10_Esquema.gs`. Cada tabela é uma aba com o mesmo nome; a
 linha 1 é o cabeçalho, e **o cabeçalho manda** — a posição de cada campo sai
@@ -43,9 +43,9 @@ revisão dele.
 | `agenda_followups` (raiz) | id | follow-ups |
 | `agenda_categorias`, `agenda_maquinas`, `agenda_vindas` (raiz) | id | cadastros da Agenda |
 | `agenda_respostas` | vindaId + pacienteId | respostas de uma vinda de máquina |
-| `ent_entradas` (raiz) | id | a entrada; `legado` |
+| `ent_entradas` (raiz) | id | a entrada; `legado`; desde o schema 3, `origem` (vazio, `importacao`, `clinicorp`) e `loteId` |
 | `ent_pagamentos` | id | cada forma de pagamento, com `ordem` e valor em dinheiro exato |
-| `sis_usuarios` | id | contas; `esquema` `v1`/`pbkdf2`, `salt`, `iteracoes`, `credencialVersao`; `legado` guarda o verificador da 3.5.0 até `migracaoFinalizar()` |
+| `sis_usuarios` | id | contas; `esquema` `v1`/`pbkdf2`, `salt`, `iteracoes`, `credencialVersao`; `legado` guarda o verificador da 3.5.0 até `migracaoFinalizar()`; desde o schema 3, `financeiro` (permissão própria) |
 | `sis_fotos` | usuarioId | foto (coluna pesada, fora da aba de contas) |
 | `sis_sessoes` | tokenHash | sessões de conta e de senha de módulo (o token nunca é guardado) |
 | `sis_operacoes` | operacaoId | idempotência e diário (plano, estado, resultado) |
@@ -53,12 +53,49 @@ revisão dele.
 | `sis_lixeira` | id | registro excluído com os filhos, em JSON `versao: 2` |
 | `sis_logs`, `sis_visitas` | id | log técnico e visitas (podados) |
 | `sis_config` (raiz) | chave | `crm.cadencias`, `agenda.config` |
-| `sis_migracoes` | id | etapas da migração, com assinatura e relatório |
+| `sis_migracoes` | id | etapas das migrações (`v1-para-v2:*`, `v2-para-v3:*`), com relatório |
+| `sis_importacoes` | id | um lote de planilha importada: arquivo, aba, mapeamento, contagens, linhas recusadas |
+
+### Financeiro (schema 3)
+
+| Tabela | Chave | Conteúdo |
+|---|---|---|
+| `fin_categorias` (raiz) | id | categoria e subcategoria (`paiId`), ativa, ordem. Sem nenhuma gravada, a lista padrão aparece como sugestão |
+| `fin_fornecedores` (raiz) | id | fornecedor |
+| `fin_despesas` (raiz) | id | a obrigação: valor, `competencia` (AAAA-MM), vencimento, categoria, fornecedor, meio, conta, área, notas, cancelada; `grupoId`/`grupoTipo`/`sequencia` para parcela ou recorrência; `origem` (manual, recorrencia, importacao) e `loteId` |
+| `fin_movimentos` | id | pagamento ou estorno (`estornaId`) de uma despesa — só cresce; muda a revisão da despesa |
+| `fin_grupos` (raiz) | id | parcelamento (valor total, quantidade) ou recorrência (frequência, início, fim/quantidade, modelo, gerado até, encerrado) |
+| `fin_orcamentos` (raiz) | id = `<categoria>@<mês>` | valor e alerta (%) |
+| `fin_saldos` (raiz) | id | saldo inicial confiável: conta, data, valor |
+| `fin_insumos` (raiz) | id | material: embalagem, conteúdo e unidade, valor, rendimento, perda |
+| `fin_fichas` (raiz) | id | ficha de custo (`dados` em JSON), preço atual, versão aprovada |
+| `fin_fichas_versoes` | id = `<ficha>@v<n>` | retrato imutável de uma versão aprovada |
+
+### Integrações (schema 3)
+
+| Tabela | Chave | Conteúdo |
+|---|---|---|
+| `int_vinculos` (raiz) | id = `clinicorp:<tipo>:<externo>:<tipoLocal>` | vínculo explícito: sistema, assinante, unidade, tipo, id externo, tipo e id local, estado, assinatura do último estado |
+| `int_externos` (raiz) | id = `clinicorp:<tipo>:<externo>` | registro vindo do Clinicorp: `dados` normalizados (campos de lá preservados), assinatura, última alteração de lá, visto em, `ausenteDesde`, `complemento` local |
+| `int_execucoes` | id | uma sincronização: recurso, modo (prévia/importação), estado, origem (manual/agendada), autor, período, `cursor` (retomada), contagens, erros |
+| `int_pendencias` (raiz) | id (de uma chave única) | revisão: proposta de etapa, conciliação, divergência, vínculo pendente, resultado desconhecido |
+| `int_passos` | id | escrita no Clinicorp: tipo, estado (enviando, confirmado, recusado, desconhecido...), tentativas, pedido sem CPF, resposta |
 
 Relações (conferidas pela migração e por `conferirIntegridade()`): filhos da
 paciente → `agenda_pacientes` (forte); pagamentos → `ent_entradas` (forte);
 respostas → vindas (forte); contato → lead, `crmLeadId` → lead, categoria e
 máquina → cadastros (fracas: podem apontar para algo na lixeira).
+Desde o schema 3: movimentos → `fin_despesas` e versões → `fin_fichas`
+(fortes); despesa → categoria, fornecedor e grupo (fracas).
+
+## Do schema 2 para o schema 3 (`backend/42_MigracaoV3.gs`)
+
+Incremental: cria as abas novas e acrescenta `ent_entradas.origem`,
+`ent_entradas.loteId` e `sis_usuarios.financeiro` **no fim** das abas. Nada
+do schema 2 é reescrito; a conferência compara contagem e assinatura de cada
+aba do schema 2 e a soma dos pagamentos, antes e depois. Antes da ativação,
+as colunas novas podem faltar (`COLUNAS_DESDE`): são lidas como vazias e não
+são escritas. Sessões e contas continuam onde estão.
 
 ## Da 3.5.0 para o schema 2 (`backend/40_Migracoes.gs`)
 

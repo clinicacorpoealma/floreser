@@ -27,6 +27,7 @@
     crm: { nome: "CRM", href: "crm/", chave: "lead" },
     agenda: { nome: "Agenda", href: "agenda/", chave: "paciente" },
     entradas: { nome: "Entradas", href: "entradas/", chave: "entrada" },
+    financeiro: { nome: "Financeiro", href: "financeiro/", chave: "despesa" },
   };
 
   /* Paleta própria, não emprestada.
@@ -191,14 +192,14 @@
         return;
       }
 
-      var porModulo = { crm: [], agenda: [], entradas: [] };
+      var porModulo = { crm: [], agenda: [], entradas: [], financeiro: [] };
       lista.forEach(function (r) {
         if (porModulo[r.modulo]) porModulo[r.modulo].push(r);
       });
 
       itens = [];
       var html = "";
-      ["crm", "agenda", "entradas"].forEach(function (chave) {
+      ["crm", "agenda", "entradas", "financeiro"].forEach(function (chave) {
         var achados = porModulo[chave];
         if (!achados.length) return;                 /* módulo sem resultado não aparece */
         html += '<div class="bg-grupo"><div class="bg-grupo-nome">' +

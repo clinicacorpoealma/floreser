@@ -1,0 +1,12 @@
+/* =====================================================================
+   FloreSer · Corpo e Alma — o bloco "Clinicorp" dentro das fichas
+   ---------------------------------------------------------------------
+   Discreto de propósito: é contexto, não ação. Tokens da página com
+   reservas, para servir no CRM (paleta --crm-*), na Agenda e nas Entradas.
+   ===================================================================== */
+
+.fs-int{margin:14px 0 4px;padding:10px 12px;border:1px dashed var(--border, var(--crm-borda, #E4DCD2));border-radius:10px;
+  font-size:12.5px;line-height:1.5;color:var(--text-2, var(--crm-suave, #6E6259));background:transparent}
+.fs-int-titulo{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent, var(--crm-verde, #3B6E6A));margin-bottom:4px;font-weight:600}
+.fs-int-linha{margin:2px 0}
+.fs-int-pe{margin-top:6px;font-size:11px;color:var(--text-3, var(--crm-suave, #776C63))}

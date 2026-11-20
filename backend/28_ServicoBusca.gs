@@ -1,5 +1,5 @@
 /* =====================================================================
-   28_ServicoBusca — uma pergunta, três módulos
+   28_ServicoBusca — uma pergunta, os módulos que a conta alcança
    ---------------------------------------------------------------------
    Só para contas individuais: somar três senhas compartilhadas para
    fingir uma visão geral daria a quem tem uma delas um caminho para as
@@ -64,7 +64,20 @@ function buscaGlobal(ctx) {
           k++;
         });
     }
+    if (permissoes.financeiro) {
+      var forn = {};
+      lerTudo("fin_fornecedores").forEach(function (f) { forn[f.id] = f.nome; });
+      var q = 0;
+      lerTudo("fin_despesas").slice().sort(function (a, b) { return String(b.vencimento || "").localeCompare(String(a.vencimento || "")); })
+        .forEach(function (d) {
+          if (q >= MAX_POR_MODULO) return;
+          if (!(combina(d.descricao) || combina(forn[d.fornecedorId] || ""))) return;
+          resultados.push({ modulo: "financeiro", tipo: "despesa", id: d.id, titulo: d.descricao || "(sem descrição)",
+            subtitulo: [dinheiroBR(d.valor), "vence " + dataBR(d.vencimento)].join(" · "), arquivado: d.cancelada === true });
+          q++;
+        });
+    }
     return { resultados: resultados.slice(0, MAX_BUSCA_TOTAL),
-      procurouEm: { crm: !!permissoes.crm, agenda: !!permissoes.agenda, entradas: !!permissoes.entradas } };
+      procurouEm: { crm: !!permissoes.crm, agenda: !!permissoes.agenda, entradas: !!permissoes.entradas, financeiro: !!permissoes.financeiro } };
   });
 }

@@ -522,22 +522,22 @@ function resumoDoRelatorio(r) {
   return linhas.join("\n");
 }
 
-function migracaoBackup() {
+function migracaoBackup(rotulo, propriedadeDoId) {
   reiniciarExecucao();
   var ss = planilha();
-  var nome = "FloreSer — backup antes da 4.0.0 — " + Utilities.formatDate(new Date(), fusoDaClinica(), "yyyy-MM-dd HH'h'mm");
+  var nome = "FloreSer — backup antes da " + (rotulo || "4.0.0") + " — " + Utilities.formatDate(new Date(), fusoDaClinica(), "yyyy-MM-dd HH'h'mm");
   var copia = ss.copy(nome);
   /* propriedades: os valores das que não são segredo; dos segredos, só o
      nome — o valor continua só nas Script Properties */
   var props = PropertiesService.getScriptProperties().getProperties();
   var linhas = [["chave", "valor"]];
   Object.keys(props).sort().forEach(function (k) {
-    var secreta = /SENHA|PIMENTA|sessoes/i.test(k);
+    var secreta = /SENHA|PIMENTA|TOKEN|CLINICORP_USUARIO|sessoes/i.test(k);
     linhas.push([k, secreta ? "(segredo — não copiado)" : String(props[k]).slice(0, 4000)]);
   });
   var aba = copia.insertSheet("_propriedades");
   aba.getRange(1, 1, linhas.length, 2).setNumberFormat("@").setValues(linhas);
-  definirPropriedade("FLORESER_BACKUP_ID", copia.getId());
+  definirPropriedade(propriedadeDoId || "FLORESER_BACKUP_ID", copia.getId());
   Logger.log("Backup criado: " + nome + " (" + copia.getUrl() + ")");
   return { id: copia.getId(), url: copia.getUrl(), nome: nome };
 }
@@ -547,9 +547,9 @@ function migracaoExecutar() { return executarMigracao({ ensaio: false }); }
 
 function executarMigracao(opcoes) {
   reiniciarExecucao();
+  if (schemaAtivo() >= 2 && !opcoes.refazer) throw new Error("O schema " + schemaAtivo() + " já está ativo. Migrar da 3.5.0 de novo apagaria o que foi gravado depois.");
   if (!opcoes.ensaio && !emManutencao()) throw new Error("Ligue FLORESER_MANUTENCAO=sim antes: nenhum site pode gravar durante a conversão.");
   if (!opcoes.ensaio && !propriedade("FLORESER_BACKUP_ID", "")) throw new Error("Rode migracaoBackup() antes.");
-  if (schemaAtivo() >= 2 && !opcoes.refazer) throw new Error("O schema 2 já está ativo. Migrar de novo apagaria o que foi gravado depois.");
   var comeco = Date.now();
   var v2 = construirV2(lerTodoLegado(), Date.now());
   if (v2.relatorio.erros.length) {

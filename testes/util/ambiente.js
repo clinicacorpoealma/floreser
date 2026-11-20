@@ -27,7 +27,7 @@ function novoAmbiente(opcoes) {
       const s = gs.derivarNova(c.senha);
       const u = { id: c.id || "u" + (++seq), nome: c.nome || c.usuario, usuario: c.usuario, esquema: s.esquema,
         senhaHash: s.senhaHash, salt: s.salt, iteracoes: s.iteracoes, ativo: c.ativo !== false, admin: !!c.admin,
-        crm: !!c.crm, agenda: !!c.agenda, entradas: !!c.entradas, credencialVersao: 1, criadoEm: new Date().toISOString(),
+        crm: !!c.crm, agenda: !!c.agenda, entradas: !!c.entradas, financeiro: !!c.financeiro, credencialVersao: 1, criadoEm: new Date().toISOString(),
         criadoPor: "teste", ultimoLogin: null, alteradoEm: null, legado: null };
       gs.inserir("sis_usuarios", [u]);
       gs.reiniciarExecucao();

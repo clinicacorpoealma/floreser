@@ -331,6 +331,7 @@
       '<button data-aba="usuarios">Usu\u00e1rios</button>' +
       '<button data-aba="lixeira" id="aba-lixeira">Lixeira</button>' +
       '<button data-aba="auditoria">Auditoria</button>' +
+      '<button data-aba="integracoes">Integrações</button>' +
       '<button data-aba="sistema">Sistema</button>' +
       "</div>" +
       '<div class="janela-corpo" id="painel-corpo" tabindex="0"></div>';
@@ -356,6 +357,16 @@
     if (qual === "lixeira") carregarLixeira();
     if (qual === "auditoria") carregarAuditoria();
     if (qual === "sistema") pedirEstadoPWA();
+    if (qual === "integracoes" && window.FloreSerPainelIntegracoes) {
+      /* a área de integrações fala direto a API v2, com a sessão do painel */
+      window.FloreSerPainelIntegracoes.iniciar({
+        chamar: function (acao, dados) { return FloreSerRede.chamar(acao, dados || {}, { token: credencial() || "", tentativas: 1 }); },
+        redesenhar: function () { if (aba === "integracoes") desenhar(); },
+        esc: esc,
+        novoId: function (p) { return FloreSerRede.novoId(p); }
+      });
+      window.FloreSerPainelIntegracoes.carregar();
+    }
     Array.prototype.forEach.call(dlgPainel.querySelectorAll("[data-aba]"), function (b) {
       b.className = b.getAttribute("data-aba") === qual ? "on" : "";
     });
@@ -399,6 +410,7 @@
     else if (aba === "usuarios") html += telaUsuarios();
     else if (aba === "lixeira") html += telaLixeira();
     else if (aba === "auditoria") html += telaAuditoria();
+    else if (aba === "integracoes") html += (window.FloreSerPainelIntegracoes ? window.FloreSerPainelIntegracoes.tela() : '<div class="vazio">A área de integrações não carregou.</div>');
     else html += telaSistema();
 
     corpo.innerHTML = html;
@@ -407,6 +419,7 @@
     if (aba === "usuarios") ligarEventosUsuarios();
     if (aba === "lixeira") ligarEventosLixeira();
     if (aba === "auditoria") ligarEventosAuditoria();
+    if (aba === "integracoes" && window.FloreSerPainelIntegracoes) window.FloreSerPainelIntegracoes.ligar(corpo);
   }
 
 
@@ -422,7 +435,7 @@
   var auditoria = { eventos: [], temMais: false, varreuTudo: true, inicio: 0, carregando: false };
   var filtroAud = { modulo: "", autor: "", busca: "", de: "", ate: "" };
 
-  var MODULO_NOME = { crm: "CRM", agenda: "Agenda", entradas: "Entradas" };
+  var MODULO_NOME = { crm: "CRM", agenda: "Agenda", entradas: "Entradas", financeiro: "Financeiro" };
 
   function carregarAuditoria(continuar) {
     if (auditoria.carregando) return;
@@ -506,7 +519,7 @@
       '<div class="aud-filtros">' +
       '<label class="aud-campo"><span>Módulo</span>' +
       '<select id="aud-modulo">' + opcao("", "Todos") + opcao("crm", "CRM") +
-      opcao("agenda", "Agenda") + opcao("entradas", "Entradas") + "</select></label>" +
+      opcao("agenda", "Agenda") + opcao("entradas", "Entradas") + opcao("financeiro", "Financeiro") + "</select></label>" +
 
       '<label class="aud-campo aud-largo"><span>Quem alterou</span>' +
       '<input id="aud-autor" placeholder="Nome de quem mexeu" value="' +
@@ -778,6 +791,7 @@
     if (p.crm) quais.push("CRM");
     if (p.agenda) quais.push("Agenda");
     if (p.entradas) quais.push("Entradas");
+    if (p.financeiro) quais.push("Financeiro");
     if (!quais.length) quais.push("sem m\u00f3dulos");
     return quais.join(" &middot; ");
   }
@@ -843,6 +857,7 @@
       caixa("crm", "CRM", !!p.crm) +
       caixa("agenda", "Agenda", !!p.agenda) +
       caixa("entradas", "Entradas", !!p.entradas) +
+      caixa("financeiro", "Financeiro (não vem com as Entradas)", !!p.financeiro && !u.admin) +
       caixa("admin", "Administrador (abre todos)", !!u.admin) +
       "</div>" +
       (recadoUsuario ? '<div class="aviso-form">' + esc(recadoUsuario) + "</div>" : "") +

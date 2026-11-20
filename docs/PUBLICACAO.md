@@ -1,4 +1,4 @@
-# Publicação, migração, backup e retorno (4.0.0)
+# Publicação, migração, backup e retorno
 
 A 4.0.0 muda o servidor, o desenho da planilha e o site ao mesmo tempo. Ela
 é publicada **uma vez**, numa janela curta de manutenção, nesta ordem:
@@ -114,7 +114,54 @@ As abas da 3.5.0 ficam intactas desde a migração.
   apagadas, depois de um backup.
 - `limparOperacoesAntigas()` de vez em quando (o diário guarda 30 dias).
 
-## Publicações seguintes (4.0.x em diante)
+## 4.1.0 — Financeiro e Clinicorp (schema 2 → 3)
+
+Parte da 4.0.0 já publicada (painel → Sistema: schema 2 ativo). Janela curta
+de manutenção (~5 min), nesta ordem:
+
+1. No computador: `node testes/backend.js`, `migracao.js`, `frontend.js`,
+   `financeiro.js`, `integracao.js` e `node ferramentas/conferir-publicacao.js`
+   ("Tudo confere").
+2. **Código.** No editor do Apps Script, atualize os arquivos que mudaram e
+   crie os novos (mesmo nome, mesmo conteúdo): `00_Config`, `01_Http`,
+   `02_Tabelas`, `04_Sessoes`, `05_Autorizacao`, `10_Esquema`,
+   `24_ServicoEntradas`, `25_ServicoUsuarios`, `28_ServicoBusca`,
+   `40_Migracoes`, `41_Manutencao` e os novos `30_RegrasFinanceiro`,
+   `31_ServicoFinanceiro`, `32_ServicoImportacao`, `35_ClinicorpContrato`,
+   `36_ClinicorpCliente`, `37_ServicoIntegracao`, `38_ClinicorpRecursos`,
+   `42_MigracaoV3`. **Todos** antes da Nova versão: um arquivo faltando
+   quebra todas as chamadas (foi o que aconteceu com o `29` na 4.0.0).
+3. Rode `conferirInstalacao()` uma vez e autorize o que o Google pedir
+   (conexão a serviço externo e gatilhos — usados só pela integração).
+4. `ligarManutencao()`.
+5. **Implantar → Gerenciar implantações →** editar → **Nova versão**.
+6. `migracaoV3Diagnosticar()` → "pronta", com a lista de abas e colunas que
+   vai criar e a soma dos pagamentos.
+7. `migracaoV3Backup()` (cópia privada da planilha; credenciais não vão).
+8. `migracaoV3Executar()` → **CONFERÊNCIA: OK**.
+9. `migracaoV3Ativar()`.
+10. **Site**: publique os arquivos (novos: `financeiro/`,
+    `compartilhado/importacao.*`, `compartilhado/integracao.*`,
+    `admin/integracoes.js`; alterados: `index.html`, `version.js`,
+    `service-worker.js`, `portal/*`, `admin/painel.js`, os `compartilhado/*`
+    que mudaram, `crm/index.html`, `agenda/*`, `entradas/*`).
+11. `desligarManutencao()`.
+12. **Conferir**: painel → Sistema mostra v4.1.0 · API 2 · schema 3 ativo;
+    quem estava conectado continua; abra os quatro módulos; dê a permissão
+    Financeiro a quem precisa (painel → Usuários).
+13. **Clinicorp (quando quiser)**: crie `FLORESER_CLINICORP_USUARIO` e
+    `FLORESER_CLINICORP_TOKEN` nas propriedades do script e siga
+    [CLINICORP.md](CLINICORP.md) — teste de conexão, recursos, prévia. Sem as
+    credenciais, a integração fica "não configurada" e o resto funciona igual.
+
+**Retorno para a 4.0.0**: `ligarManutencao()` → `migracaoV3Retornar()`
+(schema 2 de novo; abas e colunas novas ficam, a 4.0.0 as ignora) →
+reimplante a versão anterior do script → republique o site 4.0.0 →
+`desligarManutencao()`. O que foi gravado no Financeiro e nas integrações
+fica nas abas novas, para quando voltar à 4.1.0. **Nunca** rode a migração
+da 3.5.0 de novo: ela se recusa com o schema 2 ou 3 ativo.
+
+## Publicações seguintes (4.1.x em diante)
 
 1. Mudou o servidor? Cole os `.gs` alterados e **Nova versão** na mesma
    implantação — sempre antes do site, ou junto.

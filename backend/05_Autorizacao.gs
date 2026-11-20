@@ -40,12 +40,13 @@ function eAdministrador(auth) {
 }
 
 function nomeDoModulo(m) {
-  return { crm: "CRM", agenda: "Agenda", entradas: "Entradas", dev: "Painel" }[m] || m;
+  return { crm: "CRM", agenda: "Agenda", entradas: "Entradas", financeiro: "Financeiro", dev: "Painel" }[m] || m;
 }
 
 /* Quem fez, no formato da auditoria. */
 function assinaturaDe(auth) {
   if (auth && auth.tipo === "usuario") return { tipo: "usuario", nome: auth.usuarioNome || "Usuário", id: auth.usuarioId || "" };
   if (auth && auth.modulo === "dev") return { tipo: "senhaModulo", nome: "Painel de manutenção", id: "" };
+  if (auth && auth.tipo === "sistema") return { tipo: "sistema", nome: auth.usuarioNome || "Sincronização agendada", id: auth.usuarioId || "" };
   return { tipo: "senhaModulo", nome: "Acesso compartilhado " + nomeDoModulo((auth || {}).modulo || ""), id: "" };
 }
