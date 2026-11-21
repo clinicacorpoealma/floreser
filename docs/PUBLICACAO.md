@@ -189,7 +189,38 @@ Retorno: `ligarManutencao()` → `migracaoV4Retornar()` (desliga a rotina e
 devolve as chaves da 4.1.0) → reimplante a 4.1.0 e o site 4.1.0 →
 `desligarManutencao()`.
 
-## Publicações seguintes (4.2.x em diante)
+## 4.3.0 — Vendas, saldo único e Orçamentos e execução (schema 4 → 5)
+
+Parte da 4.2.0 publicada (schema 4 ativo). Janela curta de manutenção:
+
+1. No computador: os testes (`backend`, `migracao`, `frontend`, `financeiro`,
+   `integracao`, `automacao`, `estoque`, `vendas`, `execucao`) e
+   `node ferramentas/conferir-publicacao.js` ("Tudo confere").
+2. **Código** (todos antes da Nova versão): atualize `00_Config`, `01_Http`,
+   `10_Esquema`, `31_ServicoFinanceiro`, `32_ServicoImportacao`,
+   `33_ServicoEstoque`, `35_ClinicorpContrato`, `36_ClinicorpCliente`,
+   `37_ServicoIntegracao`, `38_ClinicorpRecursos`; crie `34_ServicoExecucao` e
+   `44_MigracaoV5`.
+3. `ligarManutencao()` → **Nova versão** na mesma implantação.
+4. `migracaoV5Diagnosticar()` ("pronta") → `migracaoV5Backup()` →
+   `migracaoV5Executar()` (**CONFERÊNCIA: OK** — nenhum saldo, contagem de
+   linhas ou soma de dinheiro muda) → `migracaoV5Ativar()`.
+5. Publique o site (alterados: `version.js`, `financeiro/index.html`,
+   `financeiro/financeiro.js`, `financeiro/financeiro.css`) →
+   `desligarManutencao()`.
+6. Na próxima sincronização, os orçamentos do Clinicorp são relidos com todos
+   os procedimentos (a migração os devolve à fila; vínculos e complementos
+   ficam).
+
+O que a migração faz com o estoque: item só do Alveare passa a `livro` (corte
+= última contagem que já tinha); item importado fica `retrato`. O saldo que a
+tela mostrava é conferido item a item antes e depois.
+
+Retorno: `ligarManutencao()` → `migracaoV5Retornar()` → reimplante a 4.2.0 e
+o site 4.2.0 → `desligarManutencao()`. Vendas, orçamentos do Alveare e
+execuções ficam nas abas novas, que a 4.2.0 ignora.
+
+## Publicações seguintes (4.3.x em diante)
 
 1. Mudou o servidor? Cole os `.gs` alterados e **Nova versão** na mesma
    implantação — sempre antes do site, ou junto.

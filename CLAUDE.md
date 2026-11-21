@@ -56,15 +56,15 @@ comporta*. Nenhum dos três volta a morar dentro do outro.
 | `crm/crm-core.js` | a ponte do JSX com o compartilhado: `window.storage` sobre o motor, `chamarAPI` (tradução das chamadas antigas), `motorCRM` |
 | `agenda/index.html` · `agenda.css` · `agenda.js` | Agenda (as seis `@font-face` locais ficam no CSS) |
 | `entradas/index.html` · `entradas.css` · `entradas.js` | Entradas |
-| `financeiro/index.html` · `financeiro.css` · `financeiro.js` | Financeiro (Visão geral, Despesas, Planejamento, Precificação) |
+| `financeiro/index.html` · `financeiro.css` · `financeiro.js` | Financeiro (Visão geral, Despesas, Estoque com vendas, Orçamentos e execução, Planejamento, Precificação) |
 
 ### Backend, testes e ferramentas
 
 | Pasta | Papel |
 |---|---|
-| `backend/` | Apps Script (V8), **sem segredo nenhum**: `00_Config` · `01_Http` (contrato e rotas) · `02_Tabelas` (acesso às abas, tipos) · `03_Concorrencia` (trava, revisão, operações, diário) · `04_Sessoes` · `05_Autorizacao` · `10_Esquema` · `20`–`29` regras e serviços · `30`–`32` Financeiro e importação · `35`–`38` integração (contrato, cliente HTTP, serviço, recursos) · `40_Migracoes` · `41_Manutencao` · `42_MigracaoV3` |
+| `backend/` | Apps Script (V8), **sem segredo nenhum**: `00_Config` · `01_Http` (contrato e rotas) · `02_Tabelas` (acesso às abas, tipos) · `03_Concorrencia` (trava, revisão, operações, diário) · `04_Sessoes` · `05_Autorizacao` · `10_Esquema` · `20`–`29` regras e serviços · `30`–`34` Financeiro, importação, estoque e vendas, execução · `35`–`38` integração (contrato, cliente HTTP, serviço, recursos) · `40_Migracoes` · `41_Manutencao` · `42_MigracaoV3` · `43_MigracaoV4` · `44_MigracaoV5` |
 | `backend/legado/` | o `Codigo.gs` da 3.5.0, com as senhas — **só no computador, fora do GitHub** |
-| `testes/` | simulador do Apps Script (com `UrlFetchApp` e `ScriptApp` de mentira), testes (`backend.js`, `migracao.js`, `frontend.js`, `financeiro.js`, `integracao.js`), Clinicorp simulado (`util/clinicorp-falso.js`), servidor local |
+| `testes/` | simulador do Apps Script (com `UrlFetchApp` e `ScriptApp` de mentira), testes (`backend.js`, `migracao.js`, `frontend.js`, `financeiro.js`, `integracao.js`, `automacao.js`, `estoque.js`, `vendas.js`, `execucao.js`), Clinicorp simulado (`util/clinicorp-falso.js`), servidor local |
 | `ferramentas/` | `conferir-publicacao.js`, `preparar-publicacao.js`, `ensaiar-migracao-xlsx.js`, `medir-antes-depois.js` |
 | `vendor/` | bibliotecas de terceiros, **intocadas**: `xlsx.full.min.js` (SheetJS 0.18.5) |
 | `assets/fonts/` | as seis WOFF2 da marca |
@@ -117,7 +117,7 @@ do bloco compilado.
 
 ## Os dados
 
-O desenho das abas é o **schema 4** (estoque e fila de aplicação; antes, o **schema 3** (`backend/10_Esquema.gs`,
+O desenho das abas é o **schema 5** (vendas, orçamentos do Alveare e execuções; antes, o **schema 4** — estoque e fila de aplicação; e o **schema 3** (`backend/10_Esquema.gs`,
 [ESQUEMA](docs/ESQUEMA.md)) — o schema 2 mais as abas `fin_*`, `int_*` e
 `sis_importacoes`, e três colunas no fim — `COLUNAS_DESDE`). Tabela ou coluna
 nova leva `desde` e entra numa migração incremental. Uma aba por entidade, id estável, cabeçalho manda,
@@ -230,6 +230,17 @@ servidor confere em todas as rotas, no resumo, na importação e na busca.
 - Caixa, competência e previsão são bases separadas, calculadas no servidor
   (`resumirFinanceiro`). Sem saldo inicial confiável, não há saldo. Valor do
   Clinicorp nunca entra nas somas. "Resultado parcial" nunca é "lucro".
+- Estoque: **um saldo por item** (`modoSaldo`: `retrato` da fonte ou `livro`
+  = contagem com corte + movimentos depois). Venda só baixa com saída
+  confirmada e em item `livro`; recebimento nunca é venda; uma venda = uma
+  saída por item, pague como pagar; corrigir é estorno + novo movimento.
+  Devolução só repõe com retorno físico. Custo gravado na venda
+  (compra/importação/estimativa/não informado — nunca zero).
+- Orçamentos e execução: **realizado só por registro em `exe_execucoes`
+  ligado a agendamento identificado** — nunca por data, presença,
+  pagamento, aprovação, contador de sessões ou "Executado" do Clinicorp.
+  Associação nunca escolhe entre dois orçamentos pelo nome. Orçado, realizado
+  e recebido ficam separados.
 - Precificação: `C / (1 − r − m)` com percentuais sobre o preço; campo vazio é
   falta, não zero; `1 − r − m ≤ 0` bloqueia; margem ≠ markup; versão aprovada
   é imutável. Nunca altere preço no Clinicorp.
@@ -267,8 +278,10 @@ servidor confere em todas as rotas, no resumo, na importação e na busca.
   `integracao.decidir`. O painel fica para configurar (assistente), diagnóstico
   e manutenção.
 - Estoque do Clinicorp: sem endpoint oficial. Não simular; importação manual
-  identificada como tal (`33_ServicoEstoque`). Item de fonte externa não tem
-  movimento local (sem estoque duplo).
+  identificada como tal (`33_ServicoEstoque`). Item de fonte externa só tem
+  movimento local depois de "Assumir o saldo no Alveare" (contagem) — nunca
+  dois saldos para o mesmo item. Vendas e execução por procedimento também
+  não existem na API (CLINICORP.md §12): entram pela tela ou por relatório.
 - Testes de integração são **simulados**; o que só a conta real responde
   está em CLINICORP.md §8.
 
@@ -318,7 +331,8 @@ a trava. Mudança de várias abas sem diário não entra.
 
 Rodar os testes: `node testes/backend.js`, `node testes/migracao.js`,
 `node testes/frontend.js`, `node testes/financeiro.js`,
-`node testes/integracao.js`, `node testes/automacao.js`, `node testes/estoque.js`. Servidor local: `node testes/servidor-local.js`
+`node testes/integracao.js`, `node testes/automacao.js`, `node testes/estoque.js`,
+`node testes/vendas.js`, `node testes/execucao.js`. Servidor local: `node testes/servidor-local.js`
 (`http://localhost:4180/floreser/`, backend real no simulador, dados
 sintéticos). Nunca use dado real em teste nem no repositório.
 
@@ -377,7 +391,7 @@ segmentos, só números, sem pular números.
 Uma palavra, em MAIÚSCULAS, sem números e sem espaços. Não repita. Coerente
 com a marca — natureza, florescimento, cuidado, luz — ou com a atualização.
 
-**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA, FAROL, COLMEIA, FAVO, ENXAME.
+**Já usados:** RAIZ, SEIVA, POUSIO, ALVORADA, SERENO, LIMIAR, PRUMO, COLHEITA, VERTENTE, ORVALHO, CREPÚSCULO, BRISA, SENTINELA, ATALHO, CANTEIRO, REBROTA, SOLEIRA, PEITORIL, CUMEEIRA, APRUMO, UMBRAL, VERTEDOURO, PARAPEITO, TRAVESSA, VIGA, AZIMUTE, ORVALHADA, PENUMBRA, SOLSTÍCIO, ENSEADA, REMANSO, CLAREIRA, ALICERCE, CULTIVO, POLINIZAÇÃO, SEBE, COMPASSO, TRILHA, FAROL, COLMEIA, FAVO, ENXAME, NÉCTAR.
 
 ### Changelog
 
@@ -449,6 +463,6 @@ mostra versão, API e schema do servidor.
 ## Ao publicar
 
 [PUBLICACAO](docs/PUBLICACAO.md) tem o passo a passo, inclusive as migrações
-da 4.0.0, da 4.1.0 (schema 2 → 3) e da 4.2.0 (schema 3 → 4), backup e retorno. Em toda publicação: **o Apps Script antes do site, ou
+da 4.0.0, da 4.1.0 (schema 2 → 3), da 4.2.0 (schema 3 → 4) e da 4.3.0 (schema 4 → 5), backup e retorno. Em toda publicação: **o Apps Script antes do site, ou
 junto** (Nova versão na mesma implantação); `version.js` sempre junto com o
 `index.html`; e a conferência dizendo "Tudo confere".

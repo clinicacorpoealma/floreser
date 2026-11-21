@@ -33,6 +33,38 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "4.3.0",
+      codinome: "NÉCTAR",
+      data: "20/11/2026",
+      mudancas: {
+        "Adicionado": [
+          "Vendas de produtos no Estoque: cada venda tem os produtos discriminados — quantidade, preço realmente cobrado, desconto por produto ou na venda toda, paciente e origem —, com o vendido, o custo e a diferença de cada uma.",
+          "O estoque acompanha a saída de verdade: só baixa quando a entrega ou retirada do produto é confirmada. Pagamento, parcela ou orçamento não tiram nada do estoque, e uma venda parcelada é uma saída só.",
+          "Corrigir uma venda ajusta o estoque com estorno e novo registro, sem apagar o anterior; cancelar devolve o que saiu; devolução só repõe o estoque quando o produto voltou fisicamente.",
+          "Histórico do produto com entradas (com o custo da compra), vendas, devoluções, perdas, consumo de material e ajustes, e contagem com data e hora de corte.",
+          "Importar relatório de vendas por produto, com o mapeamento salvo. Linhas da mesma venda viram uma venda só, e importar o mesmo relatório de novo não desconta duas vezes.",
+          "Preço praticado na ficha de custo: as vendas do produto ligado e os procedimentos realizados, com data, quantidade, custo unitário e total, preço cobrado, desconto, vendido e diferença. Custo desconhecido aparece como “não informado”, e custo estimado é marcado como estimado.",
+          "Nova área “Orçamentos e execução” no Financeiro: por paciente e orçamento, o que foi orçado, o que está agendado, o que foi realizado e o que falta, com o valor acordado e o valor realizado. O detalhe de cada orçamento mostra os procedimentos e os agendamentos ligados, com a situação de cada um.",
+          "Registrar procedimento realizado ou previsto num agendamento da Agenda ou do Clinicorp: um agendamento pode ter vários procedimentos, e um item do orçamento pode ser feito em vários agendamentos.",
+          "Orçamentos do Alveare para o que não vem do Clinicorp, e importação de relatório de procedimentos realizados (exige o agendamento identificado)."
+        ],
+        "Alterado": [
+          "Cada item do estoque tem um saldo só, e a tela diz de onde ele vem: do arquivo importado (as vendas não descontam, porque o arquivo já traz as saídas) ou calculado no Alveare a partir de uma contagem. “Assumir o saldo no Alveare” faz a troca de vez, por uma contagem; vendas antigas, de antes da contagem, entram no histórico sem descontar de novo.",
+          "Procedimento só conta como realizado quando registrado num agendamento. Data passada, presença, pagamento, orçamento aprovado, contador de sessões e o “executado” do orçamento no Clinicorp não marcam nada sozinhos. Agendamento cancelado ou com falta não aceita procedimento realizado.",
+          "Quando um procedimento pode pertencer a dois orçamentos, ou só o nome é parecido, ele aparece em “Para decidir” e a pessoa escolhe; a escolha é reaproveitada nos próximos registros. O que passa do orçado aparece como excedente."
+        ],
+        "Corrigido": [
+          "A cor das categorias da Agenda não era guardada ao criar ou editar a categoria."
+        ],
+        "Técnico": [
+          "Schema 5: abas de vendas, itens da venda, orçamentos do Alveare e execuções, e colunas novas no fim do estoque (modo e corte do saldo, ficha ligada, origem e custo dos movimentos). A migração parte do schema 4, não muda saldo nenhum e relê os orçamentos do Clinicorp com todos os procedimentos.",
+          "O custo de cada venda e de cada execução fica gravado no registro (médio das compras, da fonte, estimado ou não informado): mudar o custo depois não reescreve o resultado passado.",
+          "Conferido na especificação oficial da API do Clinicorp: não há vendas de produtos, saldo de estoque nem procedimento por agendamento; a matriz de capacidades registra o que falta pedir.",
+          "Testes novos de vendas, livro do estoque e execução, e um teste que recusa nome global repetido entre os arquivos do servidor."
+        ]
+      }
+    },
+    {
       versao: "4.2.0",
       codinome: "ENXAME",
       data: "20/11/2026",
@@ -898,14 +930,14 @@
   /* Carimbo do conteúdo da casca (hash curto dos arquivos que o Service
      Worker guarda). Atualizado por ferramentas/preparar-publicacao.js; se
      ninguém rodar a ferramenta, a versão sozinha já troca o cache. */
-  var CARIMBO_CASCA = "c6ef055e57";
+  var CARIMBO_CASCA = "22757a562f";
 
   global.FLORESER = {
     changelog: CHANGELOG,
     categorias: CATEGORIAS,
     atual: atual,
     rotulo: "v" + atual.versao + " — " + atual.codinome,
-    compat: { api: 2, schema: 4 },
+    compat: { api: 2, schema: 5 },
     casca: atual.versao + (CARIMBO_CASCA ? "-" + CARIMBO_CASCA : "")
   };
 

@@ -491,10 +491,34 @@ teste("toda resposta diz versão do servidor, API e schema; nenhuma traz token o
   const tk = a.entrar("bia", "segredo-bia");
   const r = a.pedir("crm.ler", {}, tk);
   v.igual(r.servidor.api, 2);
-  v.igual(r.servidor.schema, 4);
+  v.igual(r.servidor.schema, 5);
   const texto = JSON.stringify(r);
   v.falso(texto.indexOf(tk) >= 0, "o token não volta");
   v.falso(/senhaHash|"salt"/.test(texto));
+});
+
+teste("nenhum nome global se repete entre os .gs (o Apps Script divide um escopo só e o último arquivo vence)", () => {
+  const fs = require("fs"), path = require("path");
+  const pasta = path.join(__dirname, "..", "backend");
+  const vistos = {}, repetidos = [];
+  fs.readdirSync(pasta).filter((f) => /\.gs$/.test(f)).forEach((f) => {
+    const texto = fs.readFileSync(path.join(pasta, f), "utf8");
+    const re = /^(?:function|var|const|let)\s+([A-Za-z_$][\w$]*)/gm;
+    let m;
+    while ((m = re.exec(texto))) {
+      if (vistos[m[1]] && vistos[m[1]] !== f) repetidos.push(m[1] + " (" + vistos[m[1]] + " e " + f + ")");
+      vistos[m[1]] = vistos[m[1]] || f;
+    }
+  });
+  v.igual(repetidos, []);
+});
+
+teste("categoria da Agenda guarda a cor (a lista de campos não se confunde com a do Financeiro)", () => {
+  const a = ambienteComContas();
+  const tk = a.entrar("bia", "segredo-bia");
+  const r = a.pedir("agenda.aplicar", { operacoes: [a.op("categoria.criar", { id: "cat-azul", dados: { nome: "Facial", cor: "#3B6E6A" } })] }, tk).dados.resultados[0];
+  v.verdade(r.ok, JSON.stringify(r.erro));
+  v.igual(a.linhas("agenda_categorias").find((c) => c.id === "cat-azul").cor, "#3B6E6A");
 });
 
 module.exports = () => executar("Backend");

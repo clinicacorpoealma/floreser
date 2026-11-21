@@ -89,6 +89,8 @@ function rotas() {
     "financeiro.resumo": { modulo: ["financeiro"], fn: financeiroResumo },
     "financeiro.simular": { modulo: ["financeiro"], fn: financeiroSimular },
     "financeiro.estoque": { modulo: ["financeiro"], fn: financeiroEstoque },
+    "financeiro.orcamentosExecucao": { modulo: ["financeiro"], fn: financeiroOrcamentosExecucao },
+    "financeiro.precosPraticados": { modulo: ["financeiro"], fn: financeiroPrecosPraticados },
     "financeiro.aplicar": { modulo: ["financeiro"], fn: financeiroAplicar },
 
     "importacao.previa": { moduloDe: "modulo", fn: importacaoPrevia },

@@ -112,6 +112,25 @@ Painel (sessão da senha `dev`): `painel.dados`, `painel.limpar`,
 `desvincular` `complemento` `reconciliar` `buscarPaciente` `criarPaciente`
 `enviarLead` `decidirPasso` `ativar` `profissionais` `aplicarAgora`) — ver [CLINICORP.md](CLINICORP.md).
 
+### Financeiro 4.3.0
+
+| Ação / operação | Dados |
+|---|---|
+| `financeiro.orcamentosExecucao` | `{ filtros: { busca, situacao: pendente\|concluido\|excedente, base: orcamento\|execucao, de, ate } }` → orcamentos, agendamentos, semOrcamento, pendentes, pacientes, fonte |
+| `financeiro.precosPraticados` | `{ fichaId }` → linhas (venda/execução), resumo, aviso |
+| op `venda.salvar` | `{ id, revBase, dados: { data, pacienteNome, entregueEm, descontoGeral, taxas, notas, itens: [{ id, itemId, quantidade, unidade, precoUnitario, desconto }] } }` |
+| op `venda.confirmarSaida` | `{ id, revBase, data }` |
+| op `venda.cancelar` | `{ id, revBase, motivo }` |
+| op `venda.devolver` | `{ id, revBase, vendaItemId, quantidade, retornoFisico, motivo, data }` |
+| op `estoque.movimento` | `{ itemId, dados: { id, tipo: entrada\|perda\|consumo\|ajuste\|contagem, quantidade, custoUnitario, data, motivo } }` |
+| op `estoque.voltarAoRetrato` | `{ itemId }` |
+| op `exe.registrar` | `{ id, dados: { agendamentoTipo: clinicorp\|agenda\|agenda-hist, agendamentoId, procedimento, procedimentoRef, fichaId, quantidade, estado: realizado\|previsto, itemRef, notas } }` → `associacao` |
+| op `exe.alterar` | `{ id, revBase, campos: { estado, quantidade, itemRef, notas, motivo } }` |
+| op `exe.orcamento.salvar` | `{ id, revBase, dados: { pacienteRef, data, situacao, notas, itens: [{ id, procedimento, procedimentoRef, fichaId, quantidade, valorUnitario, desconto }] } }` |
+| `importacao.previa/confirmar` | `modulo: financeiro`, `tipo: vendas` ou `execucoes` |
+
+Todas só com a permissão Financeiro (ou admin), pelo `financeiro.aplicar`.
+
 ## Idempotência
 
 Cada intenção de gravação tem um `operacaoId` (8 a 80 caracteres

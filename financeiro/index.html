@@ -73,6 +73,7 @@
     <button type="button" role="tab" id="aba-visao" aria-controls="painel-visao" aria-selected="true" data-aba="visao">Visão geral</button>
     <button type="button" role="tab" id="aba-despesas" aria-controls="painel-despesas" aria-selected="false" data-aba="despesas">Despesas</button>
     <button type="button" role="tab" id="aba-estoque" aria-controls="painel-estoque" aria-selected="false" data-aba="estoque">Estoque</button>
+    <button type="button" role="tab" id="aba-execucao" aria-controls="painel-execucao" aria-selected="false" data-aba="execucao">Orçamentos e execução</button>
     <button type="button" role="tab" id="aba-planejamento" aria-controls="painel-planejamento" aria-selected="false" data-aba="planejamento">Planejamento</button>
     <button type="button" role="tab" id="aba-precificacao" aria-controls="painel-precificacao" aria-selected="false" data-aba="precificacao">Precificação</button>
     <span class="abas-espaco"></span>
@@ -178,6 +179,7 @@
       <select id="feLocal" class="input" aria-label="Local"></select>
       <select id="feSituacao" class="input" aria-label="Situação">
         <option value="">Todas as situações</option>
+        <option value="negativo">Saldo negativo</option>
         <option value="esgotado">Esgotado</option>
         <option value="abaixo">Abaixo do mínimo</option>
         <option value="validade">Validade próxima</option>
@@ -185,6 +187,7 @@
         <option value="ok">Em dia</option>
       </select>
       <span class="espaco"></span>
+      <button type="button" class="btn btn-primary" id="btnNovaVenda">Registrar venda</button>
       <button type="button" class="btn btn-ghost" id="btnImportarEstoque">Importar arquivo do estoque</button>
       <button type="button" class="btn btn-quiet" id="btnNovoItem">Item só do Alveare</button>
     </div>
@@ -195,11 +198,76 @@
     </section>
     <div class="tabela-rolagem">
       <table class="tabela" id="tabelaEstoque">
-        <thead><tr><th>Item</th><th class="dir">Quantidade</th><th>Situação</th><th>Atualizado</th></tr></thead>
+        <thead><tr><th>Item</th><th class="dir">Quantidade</th><th>Situação</th><th>Origem do saldo</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
     <p class="vazio" id="vazioEstoque" hidden>Nenhum item. Importe o arquivo de estoque ou cadastre um item só do Alveare.</p>
+
+    <section class="bloco" id="blocoVendas">
+      <div class="bloco-topo">
+        <h3 class="bloco-titulo">Vendas de produtos</h3>
+        <select id="fvdSituacao" class="input" aria-label="Situação da venda">
+          <option value="">Todas</option>
+          <option value="aconfirmar">Saída a confirmar</option>
+          <option value="entregue">Saída confirmada</option>
+          <option value="cancelada">Canceladas</option>
+        </select>
+        <button type="button" class="btn btn-quiet" id="btnImportarVendas">Importar relatório de vendas</button>
+      </div>
+      <p class="nota">O estoque só baixa quando a saída do produto é confirmada. Pagamento, parcela e orçamento não tiram nada do estoque. Diferença = vendido − custo gravado na venda (antes de taxas e despesas fixas): não é lucro.</p>
+      <div class="tabela-rolagem">
+        <table class="tabela" id="tabelaVendas">
+          <thead><tr><th>Data</th><th>Paciente</th><th>Produtos</th><th class="dir">Vendido</th><th class="dir">Custo</th><th class="dir">Diferença</th><th>Saída</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="vazio" id="vazioVendas" hidden>Nenhuma venda registrada.</p>
+    </section>
+  </section>
+
+  <!-- ===================== Orçamentos e execução ===================== -->
+  <section class="painel" id="painel-execucao" role="tabpanel" aria-labelledby="aba-execucao" hidden>
+    <div class="fonte-estoque" id="fonteExecucao"></div>
+    <div class="filtros">
+      <label class="busca">
+        <span class="sr">Buscar paciente ou orçamento</span>
+        <input type="search" id="fxBusca" class="input" placeholder="Paciente ou orçamento" autocomplete="off">
+      </label>
+      <select id="fxSituacao" class="input" aria-label="Situação">
+        <option value="">Todos</option>
+        <option value="pendente">Com procedimentos a realizar</option>
+        <option value="concluido">Concluídos</option>
+        <option value="excedente">Com excedente</option>
+      </select>
+      <select id="fxBase" class="input" aria-label="O período considera">
+        <option value="orcamento">Período pela data do orçamento</option>
+        <option value="execucao">Período pela data de execução</option>
+      </select>
+      <input type="date" id="fxDe" class="input" aria-label="De">
+      <input type="date" id="fxAte" class="input" aria-label="Até">
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-primary" id="btnNovaExecucao">Registrar procedimento</button>
+      <button type="button" class="btn btn-ghost" id="btnNovoOrcamento">Orçamento do Alveare</button>
+      <button type="button" class="btn btn-quiet" id="btnImportarExecucoes">Importar relatório</button>
+    </div>
+    <section class="bloco aviso-bloco" id="blocoPendentesExec" hidden>
+      <h3 class="bloco-titulo">Para decidir: a que orçamento pertence</h3>
+      <p class="nota">Procedimentos com mais de um orçamento possível (ou só com o nome parecido). O Alveare não escolhe sozinho.</p>
+      <ul class="lista" id="listaPendentesExec"></ul>
+    </section>
+    <div class="tabela-rolagem">
+      <table class="tabela" id="tabelaOrcamentos">
+        <thead><tr><th>Paciente</th><th>Orçamento</th><th>Data</th><th>Situação</th><th class="dir">Orçado</th><th class="dir">Agendado</th><th class="dir">Realizado</th><th class="dir">Restante</th><th class="dir">Valor acordado</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="vazio" id="vazioOrcamentos" hidden>Nenhum orçamento com esses filtros.</p>
+    <section class="bloco">
+      <h3 class="bloco-titulo">Realizados sem orçamento</h3>
+      <p class="nota">Procedimentos registrados em agendamentos que não pertencem a nenhum orçamento (ou cujo orçamento já estava completo).</p>
+      <ul class="lista" id="listaSemOrcamento"></ul>
+    </section>
   </section>
 
   <!-- ===================== Planejamento ===================== -->
@@ -415,15 +483,34 @@
       <ul class="lista lista-compacta" id="itemLocais"></ul>
       <h3 class="sub-titulo" id="itemHistTitulo">Histórico</h3>
       <ul class="lista lista-compacta" id="itemHistorico"></ul>
+      <h3 class="sub-titulo">Vendas deste produto</h3>
+      <div id="itemVendas"></div>
       <div class="sub-bloco" id="itemMovimentar" hidden>
-        <h3 class="sub-titulo">Registrar (item só do Alveare)</h3>
+        <h3 class="sub-titulo">Registrar no estoque</h3>
         <div class="linha-3">
-          <div class="campo"><label for="mvTipo">Tipo</label><select class="input" id="mvTipo"><option value="entrada">Entrada</option><option value="saida">Saída</option><option value="contagem">Contagem (saldo contado)</option></select></div>
+          <div class="campo"><label for="mvTipo">Tipo</label><select class="input" id="mvTipo">
+            <option value="entrada">Entrada (compra recebida)</option><option value="perda">Perda</option><option value="consumo">Consumo de material</option>
+            <option value="ajuste">Ajuste (+ ou −)</option><option value="contagem">Contagem (saldo contado agora)</option></select></div>
           <div class="campo"><label for="mvQtd">Quantidade</label><input class="input" id="mvQtd" inputmode="decimal"></div>
+          <div class="campo" id="mvCustoCampo"><label for="mvCusto">Custo unitário da compra</label><div class="dinheiro"><span>R$</span><input class="input" id="mvCusto" inputmode="decimal" placeholder="se souber"></div></div>
+        </div>
+        <div class="linha-2">
+          <div class="campo"><label for="mvData">Data</label><input class="input" type="date" id="mvData"></div>
           <div class="campo"><label for="mvMotivo">Motivo</label><input class="input" id="mvMotivo" maxlength="300"></div>
         </div>
+        <p class="nota" id="mvNota"></p>
         <button type="button" class="btn btn-primary" id="mvRegistrar">Registrar</button>
       </div>
+      <div class="sub-bloco" id="itemAssumir" hidden>
+        <h3 class="sub-titulo">Assumir o saldo no Alveare</h3>
+        <p class="nota">Hoje o saldo deste item é o do arquivo importado, e as vendas não descontam (o arquivo já traz as saídas). Para controlar aqui, conte o que existe agora: a contagem vira o ponto de partida (com data e hora), as vendas e entradas depois dela passam a mexer no saldo, e os arquivos novos ficam só como registro. Nunca há dois saldos para o mesmo item.</p>
+        <div class="linha-2">
+          <div class="campo"><label for="asQtd">Quantidade contada agora</label><input class="input" id="asQtd" inputmode="decimal"></div>
+          <div class="campo"><label for="asCusto">Custo unitário (se souber)</label><div class="dinheiro"><span>R$</span><input class="input" id="asCusto" inputmode="decimal"></div></div>
+        </div>
+        <button type="button" class="btn btn-primary" id="asConfirmar">Assumir com esta contagem</button>
+      </div>
+      <p class="nota" id="itemVoltarFonte" hidden><button type="button" class="link-btn" id="btnVoltarFonte">Voltar a usar o saldo do arquivo importado</button> — o histórico registrado aqui fica guardado.</p>
       <details class="avancado">
         <summary>Ajustes do Alveare (unidade de consumo, mínimo, notas)</summary>
         <div class="linha-3">
@@ -431,6 +518,7 @@
           <div class="campo"><label for="itFator">Quantas por unidade de compra</label><input class="input" id="itFator" inputmode="decimal" placeholder="ex.: 200"></div>
           <div class="campo"><label for="itMinimo">Estoque mínimo</label><input class="input" id="itMinimo" inputmode="decimal"></div>
         </div>
+        <div class="campo"><label for="itFicha">Ficha de custo deste produto (para comparar preço praticado)</label><select class="input" id="itFicha"></select></div>
         <div class="campo"><label for="itNotas">Notas</label><textarea class="input" id="itNotas" maxlength="2000"></textarea></div>
         <button type="button" class="btn btn-ghost" id="itSalvar">Salvar ajustes</button>
       </details>
@@ -518,6 +606,12 @@
           <div id="sResultado" class="resultado resultado-sim"></div>
         </div>
         <ul class="lista lista-compacta" id="fVersoes"></ul>
+        <div class="sub-bloco" id="fPraticadoBloco" hidden>
+          <h3 class="sub-titulo">Preço praticado</h3>
+          <p class="nota">Vendas do produto ligado a esta ficha e procedimentos realizados com ela, cada um com o custo e o valor gravados no registro.</p>
+          <div id="fPraticadoResumo" class="resultado resultado-sim"></div>
+          <div class="tabela-rolagem"><table class="tabela tabela-compacta" id="fPraticado"></table></div>
+        </div>
       </aside>
     </div>
     <p class="erro-form" id="fErro" role="alert"></p>
@@ -529,6 +623,166 @@
     </div>
   </form>
 </dialog>
+<!-- ============ Diálogo: venda de produtos ============ -->
+<dialog id="dlgVenda" class="dlg-largo" aria-labelledby="vendaTitulo">
+  <form class="folha folha-larga" id="formVenda" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="vendaTitulo">Registrar venda</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <p class="aviso-revisar" id="vdAviso" hidden></p>
+      <div class="linha-3">
+        <div class="campo"><label for="vdData">Data da venda</label><input class="input" type="date" id="vdData" required></div>
+        <div class="campo"><label for="vdPaciente">Paciente</label><input class="input" id="vdPaciente" maxlength="200" placeholder="opcional"></div>
+        <div class="campo"><label for="vdEntregueEm">Saída do produto</label><input class="input" type="date" id="vdEntregueEm" aria-describedby="vdEntregueNota"></div>
+      </div>
+      <p class="nota" id="vdEntregueNota">Preencha quando o produto saiu de fato (entregue ou retirado). Vazio: a venda fica registrada e o estoque não muda até a saída ser confirmada.</p>
+      <h3 class="sub-titulo">Produtos</h3>
+      <ul class="lista-edicao venda" id="vdItens"></ul>
+      <button type="button" class="link-btn" id="vdAddItem">+ Produto</button>
+      <div class="linha-3">
+        <div class="campo"><label for="vdDesconto">Desconto na venda toda</label><div class="dinheiro"><span>R$</span><input class="input" id="vdDesconto" inputmode="decimal" placeholder="0,00"></div></div>
+        <div class="campo"><label for="vdTaxas">Taxas (se souber)</label><div class="dinheiro"><span>R$</span><input class="input" id="vdTaxas" inputmode="decimal" placeholder="não informado"></div></div>
+        <div class="campo"><label for="vdNotas">Notas</label><input class="input" id="vdNotas" maxlength="2000"></div>
+      </div>
+      <p class="nota">O desconto da venda toda é dividido entre os produtos pelo valor de cada um. As parcelas e formas de pagamento ficam nas Entradas: a venda é uma só saída, seja qual for o pagamento.</p>
+      <div id="vdTotais" class="resultado resultado-sim" aria-live="polite"></div>
+      <div class="sub-bloco" id="vdAcoes" hidden>
+        <h3 class="sub-titulo">Devolução</h3>
+        <div class="linha-3">
+          <div class="campo"><label for="dvItem">Produto</label><select class="input" id="dvItem"></select></div>
+          <div class="campo"><label for="dvQtd">Quantidade devolvida</label><input class="input" id="dvQtd" inputmode="decimal"></div>
+          <div class="campo"><label for="dvMotivo">Motivo</label><input class="input" id="dvMotivo" maxlength="300"></div>
+        </div>
+        <label class="marca"><input type="checkbox" id="dvRetorno"> O produto voltou fisicamente para o estoque</label>
+        <p class="nota">Sem retorno físico, a devolução diminui o vendido e o estoque não muda.</p>
+        <button type="button" class="btn btn-ghost" id="dvRegistrar">Registrar devolução</button>
+      </div>
+      <p class="erro-form" id="vdErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <button type="button" class="btn btn-perigo" id="vdCancelar" hidden>Cancelar venda</button>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-ghost" id="vdConfirmarSaida" hidden>Confirmar saída hoje</button>
+      <button type="submit" class="btn btn-primary" id="vdSalvar">Salvar venda</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Diálogo: orçamento (detalhe) ============ -->
+<dialog id="dlgOrcamento" class="dlg-largo" aria-labelledby="orcTitulo">
+  <div class="folha folha-larga">
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="orcTitulo">Orçamento</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <dl class="ficha-dados" id="orcDados"></dl>
+      <div class="cartoes" id="orcCartoes"></div>
+      <h3 class="sub-titulo">Procedimentos do orçamento</h3>
+      <div class="tabela-rolagem">
+        <table class="tabela tabela-compacta" id="orcItens">
+          <thead><tr><th>Procedimento</th><th class="dir">Orçado</th><th class="dir">Agendado</th><th class="dir">Realizado</th><th class="dir">Restante</th><th class="dir">Valor acordado</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <h3 class="sub-titulo">Agendamentos ligados</h3>
+      <ul class="lista" id="orcExecucoes"></ul>
+      <p class="nota" id="orcNota"></p>
+      <p class="erro-form" id="orcErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-ghost" id="orcEditar" hidden>Editar orçamento</button>
+      <button type="button" class="btn btn-primary" id="orcRegistrar">Registrar procedimento</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ Diálogo: registrar procedimento ============ -->
+<dialog id="dlgExecucao" aria-labelledby="exTitulo">
+  <form class="folha" id="formExecucao" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="exTitulo">Registrar procedimento</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <p class="nota">O procedimento fica ligado a um agendamento. Presença, data passada, pagamento ou orçamento aprovado não registram nada sozinhos.</p>
+      <div class="campo"><label for="exPaciente">Paciente</label><select class="input" id="exPaciente" required></select></div>
+      <div class="campo"><label for="exAgendamento">Agendamento</label><select class="input" id="exAgendamento" required></select></div>
+      <div class="linha-2">
+        <div class="campo"><label for="exProcedimento">Procedimento</label><input class="input" id="exProcedimento" maxlength="160" list="listaProcedimentos" required></div>
+        <div class="campo"><label for="exQtd">Quantidade</label><input class="input" id="exQtd" inputmode="decimal" value="1"></div>
+      </div>
+      <div class="linha-2">
+        <div class="campo"><label for="exEstado">Situação</label><select class="input" id="exEstado"><option value="realizado">Realizado</option><option value="previsto">Previsto neste agendamento</option></select></div>
+        <div class="campo"><label for="exItem">Item do orçamento</label><select class="input" id="exItem"></select></div>
+      </div>
+      <div class="campo"><label for="exNotas">Notas</label><input class="input" id="exNotas" maxlength="1000"></div>
+      <p class="erro-form" id="exErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="submit" class="btn btn-primary">Registrar</button>
+    </div>
+  </form>
+</dialog>
+<datalist id="listaProcedimentos"></datalist>
+
+<!-- ============ Diálogo: associar a um orçamento ============ -->
+<dialog id="dlgAssociar" aria-labelledby="assocTitulo">
+  <form class="folha" id="formAssociar" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="assocTitulo">A que orçamento pertence?</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <p class="nota" id="assocResumo"></p>
+      <div class="campo"><label for="assocItem">Item do orçamento</label><select class="input" id="assocItem"></select></div>
+      <p class="nota">A escolha fica registrada e é reaproveitada nos próximos registros do mesmo procedimento desta paciente, enquanto o item tiver saldo.</p>
+      <p class="erro-form" id="assocErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="submit" class="btn btn-primary">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Diálogo: orçamento do Alveare ============ -->
+<dialog id="dlgOrcLocal" class="dlg-largo" aria-labelledby="olTitulo">
+  <form class="folha folha-larga" id="formOrcLocal" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="olTitulo">Orçamento do Alveare</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <p class="nota">Para orçamentos que não vêm do Clinicorp. Os do Clinicorp chegam pela sincronização e só mudam lá.</p>
+      <div class="linha-3">
+        <div class="campo"><label for="olPaciente">Paciente</label><select class="input" id="olPaciente" required></select></div>
+        <div class="campo"><label for="olData">Data</label><input class="input" type="date" id="olData" required></div>
+        <div class="campo"><label for="olSituacao">Situação</label><select class="input" id="olSituacao">
+          <option value="aberto">Em aberto</option><option value="aprovado">Aprovado</option><option value="concluido">Concluído</option><option value="recusado">Recusado</option><option value="cancelado">Cancelado</option></select></div>
+      </div>
+      <h3 class="sub-titulo">Procedimentos</h3>
+      <ul class="lista-edicao orcamento" id="olItens"></ul>
+      <button type="button" class="link-btn" id="olAddItem">+ Procedimento</button>
+      <div class="campo"><label for="olNotas">Notas</label><input class="input" id="olNotas" maxlength="2000"></div>
+      <p class="erro-form" id="olErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="submit" class="btn btn-primary">Salvar orçamento</button>
+    </div>
+  </form>
+</dialog>
+
 <datalist id="listaCatalogo"></datalist>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

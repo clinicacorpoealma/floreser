@@ -1,7 +1,8 @@
 /* =====================================================================
    FloreSer · Corpo e Alma — comportamento do Financeiro
    ---------------------------------------------------------------------
-   Visão geral, Despesas, Planejamento e Precificação. Tudo conversa com o
+   Visão geral, Despesas, Estoque (com vendas), Orçamentos e execução,
+   Planejamento e Precificação. Tudo conversa com o
    servidor por FloreSerRede, e a sessão vem de FloreSerSessao (só conta
    individual: o Financeiro não tem senha compartilhada).
 
@@ -175,9 +176,10 @@
       b.tabIndex = ativa ? 0 : -1;
       if (ativa && foco) b.focus();
     });
-    ["visao", "despesas", "estoque", "planejamento", "precificacao"].forEach(function (a) { el("painel-" + a).hidden = a !== aba; });
+    ["visao", "despesas", "estoque", "execucao", "planejamento", "precificacao"].forEach(function (a) { el("painel-" + a).hidden = a !== aba; });
     if (aba === "visao") atualizarResumo();
     if (aba === "estoque") carregarEstoque();
+    if (aba === "execucao") carregarExecucao();
   }
 
   function ligarAbas() {
@@ -936,6 +938,7 @@
     });
     el("dlgFicha").showModal();
     calcularAoVivo();
+    carregarPraticado(f);
   }
 
   function tipoDaFicha() {
@@ -1062,7 +1065,7 @@
   }
 
   function qtdBR(t) { return t === null || t === undefined || t === "" ? "" : String(t).replace(".", ","); }
-  var SITUACAO_EST = { esgotado: "Esgotado", abaixo: "Abaixo do mínimo", desconhecido: "Saldo desconhecido", ok: "Em dia" };
+  var SITUACAO_EST = { negativo: "Saldo negativo", esgotado: "Esgotado", abaixo: "Abaixo do mínimo", desconhecido: "Saldo desconhecido", ok: "Em dia" };
 
   function renderEstoque() {
     if (!estoque) return;
@@ -1084,6 +1087,7 @@
     ind.appendChild(cartao("Esgotados", String(conta(function (i) { return i.situacao === "esgotado"; })), "saldo zero no último retrato", { classe: conta(function (i) { return i.situacao === "esgotado"; }) ? "alerta" : "" }));
     ind.appendChild(cartao("Abaixo do mínimo", String(conta(function (i) { return i.situacao === "abaixo"; })), "precisam de reposição"));
     ind.appendChild(cartao("Validade próxima", String(conta(function (i) { return i.validadeProxima; })), "até 30 dias (" + conta(function (i) { return i.vencido; }) + " vencido(s))"));
+    if (conta(function (i) { return i.situacao === "negativo"; })) ind.appendChild(cartao("Saldo negativo", String(conta(function (i) { return i.situacao === "negativo"; })), "saiu mais do que foi registrado: falta entrada ou contagem", { classe: "alerta" }));
     ind.appendChild(cartao("Saldo desconhecido", String(conta(function (i) { return i.situacao === "desconhecido"; })), "sem quantidade informada — não é zero"));
 
     var rep = estoque.reposicao;
@@ -1110,9 +1114,13 @@
         h("td", null, i.nome, h("span", { class: "sub" }, [i.codigo, i.categoria, i.origem === "local" ? "só no Alveare" : ""].filter(Boolean).join(" · "))),
         h("td", { class: "dir" }, i.saldo === null ? h("span", { class: "qtd-desconhecida" }, "desconhecido") : h("span", { class: "qtd" }, qtdBR(i.saldo) + " " + unidade)),
         h("td", null, h("span", { class: "selo selo-" + i.situacao }, SITUACAO_EST[i.situacao]), i.validadeProxima ? h("span", { class: "sub desatualizado" }, "validade " + dataBR(i.validadeMaisProxima)) : null),
-        h("td", null, i.saldoObservadoEm ? h("span", { class: i.desatualizado ? "desatualizado" : "" }, new Date(i.saldoObservadoEm).toLocaleDateString("pt-BR") + (i.desatualizado ? " · antigo" : "")) : "—")));
+        h("td", null, h("span", { class: "selo selo-origem" }, i.modoSaldo === "livro" ? "Alveare" : i.origem === "clinicorp" ? "Clinicorp" : "Arquivo"),
+          h("span", { class: "sub" + (i.desatualizado ? " desatualizado" : "") }, i.modoSaldo === "livro"
+            ? (i.corteEm ? "contagem de " + dataBR(String(i.corteEm).slice(0, 10)) : "sem contagem")
+            : (i.saldoObservadoEm ? new Date(i.saldoObservadoEm).toLocaleDateString("pt-BR") + (i.desatualizado ? " · antigo" : "") : "—")))));
     });
     el("vazioEstoque").hidden = lista.length > 0;
+    renderVendas();
   }
 
   var itemAberto = null;
@@ -1124,14 +1132,16 @@
     el("itemTitulo").textContent = i.nome;
     var sd = limpar(el("itemSaldo"));
     sd.appendChild(document.createTextNode(i.saldo === null ? "Saldo desconhecido" : qtdBR(i.saldo) + " " + unidade));
-    sd.appendChild(h("small", null, i.saldoObservadoEm ? (i.origem === "local" ? "Calculado no Alveare em " : "Retrato de ") + new Date(i.saldoObservadoEm).toLocaleString("pt-BR") + (i.desatualizado ? " — antigo, pode não ser o atual" : "") : "Nenhuma quantidade informada pela fonte."));
+    sd.appendChild(h("small", null, i.origemSaldo + (i.saldoObservadoEm ? " Atualizado em " + new Date(i.saldoObservadoEm).toLocaleString("pt-BR") + "." : "") +
+      (i.desatualizado && i.modoSaldo !== "livro" ? " Retrato antigo: pode não ser o atual." : "")));
     var dl = limpar(el("itemDados"));
     var par = function (k, v) { if (v === null || v === undefined || v === "") return; dl.appendChild(h("dt", null, k)); dl.appendChild(h("dd", null, v)); };
     par("Fonte", { importacao: "Importação de arquivo (manual)", clinicorp: "Clinicorp", local: "Só no Alveare" }[i.origem] || i.origem);
     par("Código", i.codigo); par("Categoria", i.categoria);
     par("Unidade", (i.unidadeCompra && i.unidadeCompra !== i.unidadeConsumo ? "compra em " + i.unidadeCompra + (i.fator ? " (" + qtdBR(i.fator) + " " + (i.unidadeConsumo || "") + " cada)" : " — falta o fator") + "; consumo em " : "") + (i.unidadeConsumo || "—"));
     par("Estoque mínimo", i.minimo ? qtdBR(i.minimo) + " " + unidade : "");
-    par("Custo unitário", i.custoUnitario !== null && i.custoUnitario !== undefined ? brl(i.custoUnitario) + " por " + (unidade || "unidade") + (i.custoFonte === "estimativa" ? " (estimativa local)" : i.custoFonte ? " (informado pela fonte)" : "") : "");
+    par("Custo unitário", i.custoUnitario !== null && i.custoUnitario !== undefined ? brl(i.custoUnitario) + " por " + (unidade || "unidade") + " (" + (NOMES_CUSTO[i.custoFonte] || NOMES_CUSTO.estimativa) + ")" : "não informado");
+    if (i.modoSaldo === "livro" && i.custoMedio !== null && i.custoMedio !== undefined) par("Custo médio das compras", brl(i.custoMedio) + " por " + (unidade || "unidade"));
     par("Precificação", i.insumoId ? "já usado nas fichas de custo" : "");
     var ul = limpar(el("itemLocais"));
     if (!(i.locais || []).length) ul.appendChild(h("li", { class: "det" }, "Sem retrato por local."));
@@ -1140,15 +1150,31 @@
         h("span", { class: "det" }, (l.quantidade === "" ? "desconhecido" : qtdBR(l.quantidade) + " " + unidade) + (l.validade ? " · validade " + dataBR(l.validade) : "") + " · " + new Date(l.observadoEm).toLocaleDateString("pt-BR"))));
     });
     var hist = limpar(el("itemHistorico"));
-    el("itemHistTitulo").textContent = i.origem === "local" ? "Movimentos registrados no Alveare" : "Variações observadas entre retratos";
-    if (i.origem === "local") {
-      if (!i.movimentos.length) hist.appendChild(h("li", { class: "det" }, "Nenhum movimento."));
-      i.movimentos.slice().reverse().forEach(function (m) { hist.appendChild(h("li", null, h("span", { class: "nome" }, (m.tipo === "saida" ? "− " : "+ ") + qtdBR(m.quantidade) + " " + unidade), h("span", { class: "det" }, dataBR(m.data) + (m.motivo ? " · " + m.motivo : "") + (m.autorNome ? " · " + m.autorNome : "")))); });
+    var livro = i.modoSaldo === "livro";
+    el("itemHistTitulo").textContent = livro ? "Entradas, vendas, devoluções, perdas e ajustes" : "Variações observadas entre retratos";
+    if (livro) {
+      if (!i.movimentos.length) hist.appendChild(h("li", { class: "det" }, "Nenhum movimento depois da contagem."));
+      i.movimentos.slice().reverse().forEach(function (m) {
+        var sinal = m.tipo === "estorno" ? "↺ " : ({ entrada: 1, devolucao: 1, ajuste: Number(m.quantidade) < 0 ? -1 : 1 }[m.tipo] || -1) > 0 ? "+ " : "− ";
+        hist.appendChild(h("li", null, h("span", { class: "nome" }, sinal + qtdBR(String(m.quantidade).replace("-", "")) + " " + unidade + " · " + m.nomeTipo),
+          h("span", { class: "det" }, dataBR(m.data) + (m.custoUnitario !== null && m.custoUnitario !== undefined && m.tipo === "entrada" ? " · " + brl(m.custoUnitario) + " cada" : "") +
+            (m.motivo ? " · " + m.motivo : "") + (m.autorNome ? " · " + m.autorNome : "") + (!m.conta && m.tipo !== "estorno" ? " · antes da contagem (não mexe no saldo)" : ""))));
+      });
     } else {
       if (!i.variacoes.length) hist.appendChild(h("li", { class: "det" }, "Só um retrato até agora. A fonte informa saldos, não movimentos: as diferenças entre retratos aparecem aqui, sem explicação inventada."));
       i.variacoes.slice().reverse().forEach(function (v2) { hist.appendChild(h("li", null, h("span", { class: "nome" }, (Number(v2.variacao) > 0 ? "+" : "") + qtdBR(v2.variacao) + " " + unidade), h("span", { class: "det" }, "entre " + new Date(v2.de).toLocaleDateString("pt-BR") + " e " + new Date(v2.ate).toLocaleDateString("pt-BR")))); });
     }
-    el("itemMovimentar").hidden = i.origem !== "local";
+    renderVendasDoItem(i, unidade);
+    el("itemMovimentar").hidden = !livro;
+    el("itemAssumir").hidden = livro;
+    el("itemVoltarFonte").hidden = !livro || i.origem === "local";
+    el("asQtd").value = ""; el("asCusto").value = "";
+    el("mvData").value = hoje(); el("mvCusto").value = "";
+    atualizarTipoMovimento();
+    var selF = limpar(el("itFicha"));
+    selF.appendChild(h("option", { value: "" }, "Nenhuma"));
+    estado.dados.fichas.filter(function (f) { return !f.arquivada && f.tipo !== "pacote"; }).forEach(function (f) { selF.appendChild(h("option", { value: f.id }, f.nome)); });
+    selF.value = i.fichaId || "";
     var selU = limpar(el("itUnidade"));
     ["", "un", "ml", "l", "g", "kg", "mg", "cm", "m", "uso"].forEach(function (u) { selU.appendChild(h("option", { value: u }, u || "—")); });
     selU.value = i.unidadeConsumo || "";
@@ -1190,19 +1216,591 @@
       var unidade = window.prompt("Unidade de consumo (un, ml, g...):", "un") || "un";
       opEstoque({ tipo: "estoque.item.salvar", id: novoId("est"), revBase: 0, dados: { nome: nome.trim(), unidadeConsumo: unidade.trim(), unidadeCompra: unidade.trim() } }, "Item criado.");
     });
+    el("mvTipo").addEventListener("change", atualizarTipoMovimento);
     el("mvRegistrar").addEventListener("click", function () {
       if (!itemAberto) return;
-      opEstoque({ tipo: "estoque.movimento", itemId: itemAberto.id, dados: { id: novoId("mv"), tipo: el("mvTipo").value, quantidade: el("mvQtd").value.trim(), data: hoje(), motivo: el("mvMotivo").value.trim() } }, "Registrado.");
+      var tipo = el("mvTipo").value, custo = centavosDe(el("mvCusto").value);
+      if (custo !== null && isNaN(custo)) { el("itemErro").textContent = "Custo inválido."; return; }
+      opEstoque({ tipo: "estoque.movimento", itemId: itemAberto.id, dados: { id: novoId("mv"), tipo: tipo, quantidade: el("mvQtd").value.trim(),
+        data: el("mvData").value || hoje(), motivo: el("mvMotivo").value.trim(), custoUnitario: tipo === "entrada" || tipo === "contagem" ? custo : null } }, "Registrado.");
     });
+    el("asConfirmar").addEventListener("click", function () {
+      if (!itemAberto) return;
+      var q = el("asQtd").value.trim();
+      if (!q) { el("itemErro").textContent = "Informe a quantidade contada."; return; }
+      var custo = centavosDe(el("asCusto").value);
+      if (!window.confirm("A partir de agora o saldo de " + itemAberto.nome + " passa a ser calculado no Alveare, começando em " + q + ". Os próximos arquivos importados ficam só como registro. Confirmar?")) return;
+      opEstoque({ tipo: "estoque.movimento", itemId: itemAberto.id, dados: { id: novoId("ct"), tipo: "contagem", quantidade: q, custoUnitario: custo !== null && !isNaN(custo) ? custo : null,
+        motivo: "assumir o saldo no Alveare" } }, "O saldo agora é calculado no Alveare.");
+    });
+    el("btnVoltarFonte").addEventListener("click", function () {
+      if (!itemAberto || !window.confirm("Voltar a usar o saldo do último arquivo importado? O que foi registrado aqui continua no histórico, mas deixa de definir o saldo.")) return;
+      opEstoque({ tipo: "estoque.voltarAoRetrato", itemId: itemAberto.id }, "O saldo volta a ser o do arquivo.");
+    });
+    ligarVendas();
     el("itSalvar").addEventListener("click", function () {
       if (!itemAberto) return;
       opEstoque({ tipo: "estoque.item.salvar", id: itemAberto.id, revBase: itemAberto._rev, dados: { unidadeConsumo: el("itUnidade").value, fator: el("itFator").value.trim(),
-        minimo: el("itMinimo").value.trim(), notas: el("itNotas").value } }, "Ajustes salvos.");
+        minimo: el("itMinimo").value.trim(), notas: el("itNotas").value, fichaId: el("itFicha").value } }, "Ajustes salvos.");
     });
     el("itPrecificar").addEventListener("click", async function () {
       if (!itemAberto) return;
       try { await aplicar({ tipo: "estoque.usarNaPrecificacao", itemId: itemAberto.id }); toast("Material disponível nas fichas de custo, com o custo do estoque."); await recarregar(); await carregarEstoque(); abrirItem(itemAberto.id); }
       catch (e) { el("itemErro").textContent = e.message; }
+    });
+  }
+
+  /* ---------------------------------------------------------------
+     Vendas de produtos
+     ---------------------------------------------------------------
+     Uma venda, vários produtos. O estoque só baixa com a saída
+     confirmada (entregue/retirado), e só em item com saldo calculado no
+     Alveare; item com saldo de arquivo não desconta (o arquivo já traz a
+     saída). O custo é gravado pelo servidor no momento da venda. */
+
+  var NOMES_CUSTO = { compra: "comprovado pelas compras", importacao: "informado pela fonte", estimativa: "estimado" };
+  var vendaAberta = null;
+
+  function atualizarTipoMovimento() {
+    var t = el("mvTipo").value;
+    el("mvCustoCampo").hidden = t !== "entrada" && t !== "contagem";
+    el("mvNota").textContent = {
+      entrada: "Compra recebida. Com o custo informado, o custo médio do produto passa a ser comprovado pelas compras.",
+      perda: "Produto perdido, vencido ou danificado: sai do estoque e não é venda.",
+      consumo: "Material usado nos atendimentos, registrado por quem usou. Nunca é deduzido de um agendamento.",
+      ajuste: "Correção de diferença. Use número negativo para tirar.",
+      contagem: "O saldo passa a ser o contado, a partir de agora (com data e hora). Movimentos com data anterior deixam de mexer no saldo."
+    }[t] || "";
+  }
+
+  function situacaoDaVenda(v) {
+    if (v.estado === "cancelada") return h("span", { class: "selo selo-cancelada" }, "cancelada");
+    if (!v.entregueEm) return h("span", { class: "selo selo-pendente" }, "a confirmar");
+    return h("span", { class: "selo selo-paga" }, dataBR(v.entregueEm));
+  }
+
+  function nomeDoProduto(itemId) {
+    var i = estoque && estoque.itens.filter(function (x) { return x.id === itemId; })[0];
+    return i ? i.nome : "(produto removido)";
+  }
+
+  function renderVendas() {
+    if (!estoque) return;
+    var f = el("fvdSituacao").value;
+    var lista = (estoque.vendas || []).filter(function (v) {
+      if (f === "aconfirmar") return v.estado === "ativa" && !v.entregueEm;
+      if (f === "entregue") return v.estado === "ativa" && !!v.entregueEm;
+      if (f === "cancelada") return v.estado === "cancelada";
+      return true;
+    });
+    var corpo = limpar(el("tabelaVendas").querySelector("tbody"));
+    lista.forEach(function (v) {
+      var t = v._totais;
+      corpo.appendChild(h("tr", { class: "clicavel", tabindex: "0", onclick: function () { abrirVenda(v.id); }, onkeydown: function (ev) { if (ev.key === "Enter") abrirVenda(v.id); } },
+        h("td", null, dataBR(v.data), v.origem === "importacao" ? h("span", { class: "sub" }, "relatório importado") : null),
+        h("td", null, v.pacienteNome || "—"),
+        h("td", null, v.itens.map(function (i) { return nomeDoProduto(i.itemId) + " × " + qtdBR(i.quantidade); }).join("; ")),
+        h("td", { class: "dir" }, brl(t.vendido)),
+        h("td", { class: "dir" }, t.custo === null ? h("span", { class: "sub" }, "não informado") : brl(t.custo)),
+        h("td", { class: "dir" }, t.diferenca === null ? "—" : brl(t.diferenca)),
+        h("td", null, situacaoDaVenda(v))));
+    });
+    el("vazioVendas").hidden = lista.length > 0;
+  }
+
+  function renderVendasDoItem(i, unidade) {
+    var alvo = limpar(el("itemVendas"));
+    var r = i.vendas;
+    if (!r) { alvo.appendChild(h("p", { class: "nota" }, "Nenhuma venda deste produto.")); return; }
+    alvo.appendChild(h("p", { class: "nota" }, "Vendidos " + qtdBR(r.quantidade) + " " + unidade + " · " + brl(r.vendido) +
+      (r.custoTotal === null ? " · custo de " + qtdBR(r.custoDesconhecido) + " " + unidade + " não informado" : " · custo " + brl(r.custoTotal) + " · diferença " + brl(r.diferenca)) +
+      (i.modoSaldo === "livro" ? "" : " · o saldo deste item é o do arquivo: as vendas aparecem aqui, mas não descontam.")));
+    var tab = h("table", { class: "tabela tabela-compacta" },
+      h("thead", null, h("tr", null, h("th", null, "Data"), h("th", { class: "dir" }, "Qtd"), h("th", { class: "dir" }, "Preço"), h("th", { class: "dir" }, "Desconto"),
+        h("th", { class: "dir" }, "Vendido"), h("th", { class: "dir" }, "Custo"), h("th", { class: "dir" }, "Diferença"))));
+    var tb = h("tbody");
+    r.vendas.forEach(function (x) {
+      tb.appendChild(h("tr", { class: "clicavel", onclick: function () { el("dlgItem").close(); abrirVenda(x.vendaId); } },
+        h("td", null, dataBR(x.data), x.entregueEm ? null : h("span", { class: "sub desatualizado" }, "saída a confirmar")),
+        h("td", { class: "dir" }, qtdBR(x.quantidade)), h("td", { class: "dir" }, brl(x.precoUnitario)),
+        h("td", { class: "dir" }, x.desconto ? brl(x.desconto) : "—"), h("td", { class: "dir" }, brl(x.vendido)),
+        h("td", { class: "dir" }, x.custoTotal === null ? h("span", { class: "sub" }, "não informado") : h("span", { title: NOMES_CUSTO[x.custoFonte] || "" }, brl(x.custoTotal) + (x.custoFonte === "estimativa" ? " (estimado)" : ""))),
+        h("td", { class: "dir" }, x.diferenca === null ? "—" : brl(x.diferenca))));
+    });
+    tab.appendChild(tb);
+    alvo.appendChild(h("div", { class: "tabela-rolagem" }, tab));
+  }
+
+  function linhaVenda(x) {
+    var sel = h("select", { class: "input", "aria-label": "Produto" });
+    sel.appendChild(h("option", { value: "" }, "Escolha o produto"));
+    (estoque ? estoque.itens : []).slice().sort(function (a, b) { return String(a.nome).localeCompare(b.nome); }).forEach(function (i) {
+      sel.appendChild(h("option", { value: i.id }, i.nome + (i.codigo ? " · " + i.codigo : "") + (i.saldo !== null ? " (tem " + qtdBR(i.saldo) + ")" : "")));
+    });
+    sel.value = x.itemId || "";
+    var qtd = h("input", { class: "input", inputmode: "decimal", placeholder: "qtd", "aria-label": "Quantidade", value: x.quantidade ? qtdBR(x.quantidade) : "" });
+    var preco = h("input", { class: "input", inputmode: "decimal", placeholder: "preço cobrado", "aria-label": "Preço unitário cobrado", value: x.precoUnitario !== undefined && x.precoUnitario !== null ? numBR(x.precoUnitario) : "" });
+    var desc = h("input", { class: "input", inputmode: "decimal", placeholder: "desconto", "aria-label": "Desconto neste produto", value: x.desconto ? numBR(x.desconto) : "" });
+    var li = h("li", null, sel, qtd, preco, desc, h("button", { type: "button", class: "icone-btn", "aria-label": "Tirar", onclick: function () { li.remove(); previaVenda(); } }, "×"));
+    li._id = x.id || "";
+    li._ler = function () {
+      return { id: li._id || undefined, itemId: sel.value, quantidade: qtd.value.trim(), precoUnitario: centavosDe(preco.value), desconto: centavosDe(desc.value) || 0 };
+    };
+    if (vendaAberta && vendaAberta.estado === "cancelada") [sel, qtd, preco, desc].forEach(function (c) { c.disabled = true; });
+    return li;
+  }
+
+  /* "1,5" ou "1.5" → 1.5; "1.234,5" → 1234.5 (a mesma regra do servidor) */
+  function numeroDigitado(t) {
+    var x = String(t || "").trim();
+    if (x.indexOf(",") >= 0) x = x.replace(/\./g, "").replace(",", ".");
+    return Number(x) || 0;
+  }
+
+  /* prévia na tela (o servidor confere e grava os valores de verdade) */
+  function previaVenda() {
+    var itens = Array.prototype.map.call(el("vdItens").children, function (li) { return li._ler(); });
+    var bruto = 0;
+    itens.forEach(function (i) { var q = numeroDigitado(i.quantidade); if (i.precoUnitario !== null && !isNaN(i.precoUnitario)) bruto += Math.round(q * i.precoUnitario) - (i.desconto || 0); });
+    var geral = centavosDe(el("vdDesconto").value) || 0;
+    var alvo = limpar(el("vdTotais"));
+    var dl = h("dl");
+    linhaDl(dl, "Produtos", String(itens.filter(function (i) { return i.itemId; }).length));
+    linhaDl(dl, "Valor vendido", brl(bruto - geral));
+    if (vendaAberta && vendaAberta._totais) {
+      var t = vendaAberta._totais;
+      linhaDl(dl, "Custo gravado", t.custo === null ? "não informado" : brl(t.custo));
+      if (t.diferenca !== null) linhaDl(dl, "Diferença (não é lucro)", brl(t.diferenca));
+    } else dl.appendChild(h("dd", { class: "sub" }, "O custo de cada produto é gravado ao salvar."));
+    alvo.appendChild(dl);
+  }
+
+  async function abrirVenda(id, itemId) {
+    if (!estoque) await carregarEstoque();
+    var v = id ? (estoque.vendas || []).filter(function (x) { return x.id === id; })[0] : null;
+    vendaAberta = v || null;
+    el("vendaTitulo").textContent = v ? "Venda de " + dataBR(v.data) + (v.estado === "cancelada" ? " (cancelada)" : "") : "Registrar venda";
+    el("vdData").value = v ? v.data : hoje();
+    el("vdPaciente").value = v ? v.pacienteNome || "" : "";
+    el("vdEntregueEm").value = v ? v.entregueEm || "" : hoje();
+    el("vdDesconto").value = v && v.descontoGeral ? numBR(v.descontoGeral) : "";
+    el("vdTaxas").value = v && v.taxas !== null && v.taxas !== undefined ? numBR(v.taxas) : "";
+    el("vdNotas").value = v ? v.notas || "" : "";
+    var ul = limpar(el("vdItens"));
+    (v ? v.itens : [{ itemId: itemId || "" }]).forEach(function (x) { ul.appendChild(linhaVenda(x)); });
+    var cancelada = v && v.estado === "cancelada";
+    el("vdAviso").hidden = !(v && (cancelada || v.origem === "importacao"));
+    el("vdAviso").textContent = cancelada ? "Venda cancelada: o que tinha saído do estoque voltou, com o registro no histórico." :
+      v && v.origem === "importacao" ? "Venda vinda de relatório importado. Importar o mesmo relatório de novo não duplica; um relatório corrigido corrige a venda." : "";
+    el("vdAddItem").hidden = !!cancelada;
+    el("vdSalvar").hidden = !!cancelada;
+    el("vdCancelar").hidden = !v || cancelada;
+    el("vdConfirmarSaida").hidden = !v || cancelada || !!v.entregueEm;
+    el("vdAcoes").hidden = !v || cancelada;
+    var dv = limpar(el("dvItem"));
+    (v ? v.itens : []).forEach(function (i) { dv.appendChild(h("option", { value: i.id }, nomeDoProduto(i.itemId) + " (vendidos " + qtdBR(i.quantidade) + (i.devolvido ? ", devolvidos " + qtdBR(i.devolvido) : "") + ")")); });
+    el("dvQtd").value = ""; el("dvMotivo").value = ""; el("dvRetorno").checked = false;
+    el("vdErro").textContent = "";
+    previaVenda();
+    if (!el("dlgVenda").open) el("dlgVenda").showModal();
+  }
+
+  async function opVenda(op, msg, fechar) {
+    try {
+      await aplicar(op);
+      toast(msg);
+      await carregarEstoque();
+      if (fechar) el("dlgVenda").close(); else if (vendaAberta) abrirVenda(vendaAberta.id);
+    } catch (e) { el("vdErro").textContent = e.message; }
+  }
+
+  function ligarVendas() {
+    el("btnNovaVenda").addEventListener("click", function () { abrirVenda(null); });
+    el("vdAddItem").addEventListener("click", function () { el("vdItens").appendChild(linhaVenda({})); });
+    el("fvdSituacao").addEventListener("change", renderVendas);
+    el("formVenda").addEventListener("input", previaVenda);
+    el("formVenda").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var itens = Array.prototype.map.call(el("vdItens").children, function (li) { return li._ler(); }).filter(function (i) { return i.itemId || i.quantidade; });
+      if (!itens.length) { el("vdErro").textContent = "Inclua ao menos um produto."; return; }
+      if (itens.some(function (i) { return i.precoUnitario === null || isNaN(i.precoUnitario); })) { el("vdErro").textContent = "Informe o preço cobrado de cada produto (0 se foi brinde)."; return; }
+      var taxas = centavosDe(el("vdTaxas").value);
+      opVenda({ tipo: "venda.salvar", id: vendaAberta ? vendaAberta.id : novoId("vd"), revBase: vendaAberta ? vendaAberta._rev : 0,
+        dados: { data: el("vdData").value, pacienteNome: el("vdPaciente").value.trim(), entregueEm: el("vdEntregueEm").value || "",
+          descontoGeral: centavosDe(el("vdDesconto").value) || 0, taxas: taxas === null || isNaN(taxas) ? null : taxas, notas: el("vdNotas").value, itens: itens } },
+        el("vdEntregueEm").value ? "Venda salva. O estoque acompanha a saída." : "Venda salva. O estoque muda quando a saída for confirmada.", true);
+    });
+    el("vdConfirmarSaida").addEventListener("click", function () {
+      if (!vendaAberta) return;
+      opVenda({ tipo: "venda.confirmarSaida", id: vendaAberta.id, revBase: vendaAberta._rev, data: hoje() }, "Saída confirmada.");
+    });
+    el("vdCancelar").addEventListener("click", function () {
+      if (!vendaAberta) return;
+      var motivo = window.prompt("Cancelar esta venda? O que saiu do estoque volta, e tudo fica no histórico. Motivo:", "");
+      if (motivo === null) return;
+      opVenda({ tipo: "venda.cancelar", id: vendaAberta.id, revBase: vendaAberta._rev, motivo: motivo }, "Venda cancelada.");
+    });
+    el("dvRegistrar").addEventListener("click", function () {
+      if (!vendaAberta) return;
+      var q = el("dvQtd").value.trim();
+      if (!q) { el("vdErro").textContent = "Informe a quantidade devolvida."; return; }
+      opVenda({ tipo: "venda.devolver", id: vendaAberta.id, revBase: vendaAberta._rev, vendaItemId: el("dvItem").value, quantidade: q,
+        retornoFisico: el("dvRetorno").checked, motivo: el("dvMotivo").value.trim(), data: hoje() },
+        el("dvRetorno").checked ? "Devolução registrada; o produto voltou ao estoque." : "Devolução registrada, sem retorno ao estoque.");
+    });
+    el("btnImportarVendas").addEventListener("click", function () {
+      FloreSerImportacao.abrir({ modulo: MOD, tipo: "vendas", titulo: "Importar relatório de vendas", token: token,
+        aviso: "Cada linha é um produto vendido. Linhas com o mesmo número de venda (ou mesma data e paciente) formam uma venda só. O produto precisa existir no Estoque (pelo código ou pelo nome exato). Sem a coluna de saída/entrega, a venda entra sem baixar o estoque. Importar de novo não duplica. Os produtos do relatório não viram recebimento.",
+        campos: [
+          { id: "data", nome: "Data da venda", obrigatorio: true, tipo: "data", apelidos: ["data", "data da venda", "emissao", "emissão"] },
+          { id: "venda", nome: "Número da venda", tipo: "texto", apelidos: ["venda", "numero", "número", "pedido", "id da venda"] },
+          { id: "codigo", nome: "Código do produto", tipo: "texto", apelidos: ["codigo", "código", "cod", "sku"] },
+          { id: "produto", nome: "Produto", tipo: "texto", apelidos: ["produto", "item", "descricao", "descrição"] },
+          { id: "quantidade", nome: "Quantidade", obrigatorio: true, tipo: "decimal", apelidos: ["quantidade", "qtd", "qtde"] },
+          { id: "unidade", nome: "Unidade", tipo: "texto", apelidos: ["unidade", "un"] },
+          { id: "precoUnitario", nome: "Preço unitário cobrado", obrigatorio: true, tipo: "dinheiro", apelidos: ["preco", "preço", "valor unitario", "valor unitário", "preco unitario", "preço unitário"] },
+          { id: "desconto", nome: "Desconto", tipo: "dinheiro", apelidos: ["desconto"] },
+          { id: "paciente", nome: "Paciente", tipo: "texto", apelidos: ["paciente", "cliente", "nome"] },
+          { id: "entregue", nome: "Saída/entrega (sim ou data)", tipo: "texto", apelidos: ["entregue", "entrega", "retirado", "saida", "saída"] }
+        ],
+        aoConcluir: function () { carregarEstoque(); } });
+    });
+  }
+
+  /* ---------------------------------------------------------------
+     Preço praticado (dentro da ficha)
+     --------------------------------------------------------------- */
+
+  async function carregarPraticado(f) {
+    var bloco = el("fPraticadoBloco");
+    bloco.hidden = !f;
+    if (!f) return;
+    var res = limpar(el("fPraticadoResumo")), tab = limpar(el("fPraticado"));
+    res.appendChild(h("p", { class: "sub" }, "Carregando..."));
+    var r = await ler("financeiro.precosPraticados", { fichaId: f.id });
+    limpar(res);
+    if (!r.ok) { res.appendChild(h("p", { class: "sub" }, "Não foi possível carregar agora. " + FloreSerAuth.recado(r))); return; }
+    var d = r.dados, s = d.resumo;
+    if (!d.linhas.length) {
+      res.appendChild(h("p", { class: "sub" }, f.tipo === "produto" ? "Nenhuma venda de produto ligado a esta ficha. Ligue o produto no Estoque (Ajustes do Alveare → Ficha de custo)." :
+        "Nenhum procedimento realizado com esta ficha. A ligação vem do código do procedimento no Clinicorp ou da ficha escolhida no orçamento."));
+      return;
+    }
+    var dl = h("dl");
+    linhaDl(dl, "Quantidade", qtdBR(s.quantidade));
+    linhaDl(dl, "Valor vendido", brl(s.vendido) + (s.linhasSemValor ? " (" + s.linhasSemValor + " sem valor)" : ""));
+    linhaDl(dl, "Custo", s.custo === null ? "não informado em " + s.linhasSemCusto + " registro(s)" : brl(s.custo));
+    linhaDl(dl, "Diferença", s.diferenca === null ? "—" : brl(s.diferenca));
+    if (s.menorPreco !== null) linhaDl(dl, "Preço praticado", s.menorPreco === s.maiorPreco ? brl(s.menorPreco) : brl(s.menorPreco) + " a " + brl(s.maiorPreco));
+    if (d.precoPadrao !== null && d.precoPadrao !== undefined) linhaDl(dl, "Preço atual da ficha", brl(d.precoPadrao));
+    res.appendChild(dl);
+    res.appendChild(h("p", { class: "sub" }, d.aviso));
+    tab.appendChild(h("thead", null, h("tr", null, h("th", null, "Data"), h("th", { class: "dir" }, "Qtd"), h("th", { class: "dir" }, "Custo un."),
+      h("th", { class: "dir" }, "Custo total"), h("th", { class: "dir" }, "Preço"), h("th", { class: "dir" }, "Desconto"), h("th", { class: "dir" }, "Vendido"), h("th", { class: "dir" }, "Diferença"))));
+    var tb = h("tbody");
+    d.linhas.forEach(function (l) {
+      tb.appendChild(h("tr", null, h("td", null, dataBR(l.data), h("span", { class: "sub" }, l.tipo === "venda" ? "venda" : "procedimento")),
+        h("td", { class: "dir" }, qtdBR(l.quantidade)),
+        h("td", { class: "dir" }, l.custoUnitario === null || l.custoUnitario === undefined ? h("span", { class: "sub" }, "não informado") : brl(l.custoUnitario) + (l.custoFonte === "estimativa" ? " (estimado)" : "")),
+        h("td", { class: "dir" }, l.custoTotal === null ? "—" : brl(l.custoTotal)),
+        h("td", { class: "dir" }, l.precoUnitario === null || l.precoUnitario === undefined ? "—" : brl(l.precoUnitario)),
+        h("td", { class: "dir" }, l.desconto ? brl(l.desconto) : "—"),
+        h("td", { class: "dir" }, l.vendido === null ? "—" : brl(l.vendido)),
+        h("td", { class: "dir" }, l.diferenca === null ? "—" : brl(l.diferenca))));
+    });
+    tab.appendChild(tb);
+  }
+
+  /* ---------------------------------------------------------------
+     Orçamentos e execução
+     ---------------------------------------------------------------
+     Realizado = procedimento registrado num agendamento identificado. Nada
+     vira realizado por data, presença, pagamento, aprovação ou contador
+     de sessões. Orçado, realizado e recebido ficam separados. */
+
+  var exec = null, orcAberto = null, exAssociar = null, olAberto = null;
+  var NOMES_ASSOC = { informada: "escolhida no registro", confirmada: "escolhida por você", automatica: "pelo código (um só orçamento possível)",
+    reaproveitada: "repetindo a escolha anterior", ambigua: "mais de um orçamento possível", sugerida: "só o nome parecido", sem_orcamento: "sem orçamento" };
+
+  function filtrosExecucao() {
+    return { busca: el("fxBusca").value.trim(), situacao: el("fxSituacao").value, base: el("fxBase").value, de: el("fxDe").value, ate: el("fxAte").value };
+  }
+
+  async function carregarExecucao() {
+    var r = await ler("financeiro.orcamentosExecucao", { filtros: filtrosExecucao() });
+    if (!r.ok) { el("fonteExecucao").textContent = "Não foi possível carregar agora. " + FloreSerAuth.recado(r) + (exec ? " Mostrando o último carregado." : ""); if (!exec) return; }
+    else exec = r.dados;
+    renderExecucao();
+  }
+
+  function qtdTxt(t) { return qtdBR(t) || "0"; }
+  /* o selo mostra a descrição de verdade (status do Clinicorp, "sessão da
+     Agenda"...); a categoria só pinta o selo e decide o que conta */
+  function textoStatus(st) { return st ? (st.descricao || exec.statusAgenda[st.categoria] || st.categoria) : ""; }
+  function statusAg(st) { return st ? h("span", { class: "selo selo-ag-" + st.categoria, title: exec.statusAgenda[st.categoria] || "" }, textoStatus(st)) : null; }
+  function rotuloAgendamento(a) {
+    return dataBR(a.data) + (a.hora ? " " + a.hora : "") + " · " + ({ clinicorp: "Clinicorp", agenda: "Agenda", "agenda-hist": "Agenda" }[a.tipo] || a.tipo) +
+      (a.area ? " · " + a.area : "") + " · " + textoStatus(a.status);
+  }
+
+  function renderExecucao() {
+    if (!exec) return;
+    var f = limpar(el("fonteExecucao"));
+    var i = estado.dados.integracao || {};
+    f.appendChild(h("details", null, h("summary", null, h("span", { class: "sem-acesso" }, "Execução registrada no Alveare"), " — por quê?"),
+      h("p", { class: "sub" }, exec.fonte.falta),
+      h("p", { class: "sub" }, "Orçamentos e agendamentos do Clinicorp chegam pela sincronização automática" +
+        (i.atualizadoEm ? " (última em " + new Date(i.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + ")" : "") +
+        ". Cada linha de procedimento do orçamento do Clinicorp conta como uma unidade (a API não informa quantidade). O \"executado\" que o Clinicorp mostra no orçamento aparece só como conferência.")));
+    f.appendChild(h("div", null, "O período considera " + (el("fxBase").value === "execucao" ? "a data em que o procedimento foi realizado." : "a data do orçamento.") +
+      " Valor acordado e valor realizado vêm do orçamento; o recebido fica nas Entradas."));
+
+    var pend = exec.pendentes || [];
+    el("blocoPendentesExec").hidden = !pend.length;
+    var lp = limpar(el("listaPendentesExec"));
+    pend.forEach(function (e) {
+      lp.appendChild(h("li", null, h("span", { class: "nome" }, e.pacienteNome + " · " + e.procedimento + " × " + qtdTxt(e.quantidade)),
+        h("span", { class: "det" }, dataBR(e.agendamentoData) + " · " + (NOMES_ASSOC[e.associacao] || e.associacao)),
+        h("span", { class: "acoes" }, h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAssociar(e); } }, "Escolher orçamento"))));
+    });
+
+    var corpo = limpar(el("tabelaOrcamentos").querySelector("tbody"));
+    exec.orcamentos.forEach(function (o) {
+      var t = o.totais;
+      corpo.appendChild(h("tr", { class: "clicavel", tabindex: "0", onclick: function () { abrirOrcamento(o.ref); }, onkeydown: function (ev) { if (ev.key === "Enter") abrirOrcamento(o.ref); } },
+        h("td", null, o.pacienteNome || "—"),
+        h("td", null, (o.origem === "clinicorp" ? "Clinicorp " : "Alveare ") + o.id, o.procedimentosIncompletos ? h("span", { class: "sub desatualizado" }, "procedimentos incompletos") : null),
+        h("td", null, dataBR(o.data)),
+        h("td", null, o.situacao || "—"),
+        h("td", { class: "dir" }, qtdTxt(t.orcada)),
+        h("td", { class: "dir" }, qtdTxt(t.agendada)),
+        h("td", { class: "dir" }, qtdTxt(t.realizada), Number(t.excedente) > 0 ? h("span", { class: "sub desatualizado" }, "+" + qtdTxt(t.excedente) + " excedente") : null),
+        h("td", { class: "dir" }, qtdTxt(t.restante)),
+        h("td", { class: "dir" }, t.valorAcordado === null ? h("span", { class: "sub" }, "não informado") : brl(t.valorAcordado))));
+    });
+    el("vazioOrcamentos").hidden = exec.orcamentos.length > 0;
+
+    var ls = limpar(el("listaSemOrcamento"));
+    var sem = (exec.semOrcamento || []).filter(function (e) { return e.associacao !== "ambigua" && e.associacao !== "sugerida"; });
+    if (!sem.length) ls.appendChild(h("li", { class: "det" }, "Nenhum."));
+    sem.forEach(function (e) {
+      ls.appendChild(h("li", null, h("span", { class: "nome" }, e.pacienteNome + " · " + e.procedimento + " × " + qtdTxt(e.quantidade)),
+        h("span", { class: "det" }, dataBR(e.agendamentoData) + " · " + (e.estado === "previsto" ? "previsto" : "realizado") + (e.conta ? "" : " · não conta (agendamento cancelado/falta)")),
+        h("span", { class: "acoes" }, h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAssociar(e); } }, "Ligar a um orçamento"))));
+    });
+    var dl = limpar(el("listaProcedimentos"));
+    var vistos = {};
+    exec.orcamentos.forEach(function (o) { o.itens.forEach(function (it) { if (!vistos[it.procedimento]) { vistos[it.procedimento] = true; dl.appendChild(h("option", { value: it.procedimento })); } }); });
+  }
+
+  function abrirOrcamento(ref) {
+    var o = exec.orcamentos.filter(function (x) { return x.ref === ref; })[0];
+    if (!o) return;
+    orcAberto = o;
+    el("orcTitulo").textContent = (o.pacienteNome || "Paciente") + " · orçamento " + o.id;
+    var dl = limpar(el("orcDados"));
+    var par = function (k, v) { if (v === null || v === undefined || v === "") return; dl.appendChild(h("dt", null, k)); dl.appendChild(h("dd", null, v)); };
+    par("Origem", o.origem === "clinicorp" ? "Clinicorp (só leitura aqui)" : "Orçamento do Alveare");
+    par("Data", dataBR(o.data)); par("Situação", o.situacao); par("Profissional", o.profissional);
+    par("Desconto", o.desconto ? brl(o.desconto) : ""); par("Notas", o.notas);
+    var t = o.totais;
+    var c = limpar(el("orcCartoes"));
+    c.appendChild(cartao("Orçado", qtdTxt(t.orcada), t.valorAcordado === null ? "valor não informado" : brl(t.valorAcordado) + " acordado"));
+    c.appendChild(cartao("Realizado", qtdTxt(t.realizada), t.valorRealizado === null ? "" : brl(t.valorRealizado) + " pelo valor acordado"));
+    c.appendChild(cartao("Agendado", qtdTxt(t.agendada), "previsto em agendamentos futuros"));
+    c.appendChild(cartao("Restante", qtdTxt(t.restante), Number(t.excedente) > 0 ? qtdTxt(t.excedente) + " além do orçado" : "", { classe: Number(t.excedente) > 0 ? "alerta" : "" }));
+    var tb = limpar(el("orcItens").querySelector("tbody"));
+    o.itens.forEach(function (it) {
+      tb.appendChild(h("tr", null,
+        h("td", null, it.procedimento, h("span", { class: "sub" }, [it.procedimentoRef ? "código " + it.procedimentoRef : "", it.naoAprovado ? "não aprovado" : "",
+          it.executadoNoClinicorp ? "Clinicorp marca executado" + (it.executadoEm ? " em " + dataBR(it.executadoEm) : "") + " (só conferência)" : ""].filter(Boolean).join(" · "))),
+        h("td", { class: "dir" }, qtdTxt(it.orcada)), h("td", { class: "dir" }, qtdTxt(it.agendada)),
+        h("td", { class: "dir" }, qtdTxt(it.realizada), Number(it.excedente) > 0 ? h("span", { class: "sub desatualizado" }, "+" + qtdTxt(it.excedente) + " excedente") : null),
+        h("td", { class: "dir" }, qtdTxt(it.restante)),
+        h("td", { class: "dir" }, it.valorAcordado === null || it.valorAcordado === undefined ? "—" : brl(it.valorAcordado))));
+    });
+    var ul = limpar(el("orcExecucoes"));
+    var todas = [];
+    o.itens.forEach(function (it) { it.execucoes.forEach(function (e) { todas.push({ e: e, it: it }); }); });
+    todas.sort(function (a, b) { return String(b.e.agendamentoData).localeCompare(String(a.e.agendamentoData)); });
+    if (!todas.length) ul.appendChild(h("li", { class: "det" }, "Nenhum procedimento registrado em agendamento ainda."));
+    todas.forEach(function (x) { ul.appendChild(linhaExecucao(x.e, x.it.procedimento)); });
+    el("orcNota").textContent = o.origem === "clinicorp" ? "Itens e valores vêm do Clinicorp; o que foi realizado vem dos registros feitos aqui." : "";
+    el("orcEditar").hidden = o.origem !== "local";
+    el("orcErro").textContent = "";
+    if (!el("dlgOrcamento").open) el("dlgOrcamento").showModal();
+  }
+
+  function linhaExecucao(e, nomeItem) {
+    var acoes = [];
+    if (e.estado === "previsto") acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { alterarExecucao(e, { estado: "realizado" }, "Marcado como realizado."); } }, "Realizado"));
+    if (e.estado !== "desfeito") {
+      acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () {
+        var q = window.prompt("Quantidade realizada neste agendamento:", qtdBR(e.quantidade));
+        if (q) alterarExecucao(e, { quantidade: q }, "Quantidade corrigida.");
+      } }, "Quantidade"));
+      acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAssociar(e); } }, "Orçamento"));
+      acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () {
+        var m = window.prompt("Desfazer este registro? Ele continua no histórico e deixa de contar. Motivo:", "");
+        if (m !== null) alterarExecucao(e, { estado: "desfeito", motivo: m }, "Registro desfeito.");
+      } }, "Desfazer"));
+    }
+    return h("li", null,
+      h("span", { class: "nome" }, (nomeItem || e.procedimento) + " × " + qtdTxt(e.quantidade) + " · " + ({ previsto: "previsto", realizado: "realizado", desfeito: "desfeito" }[e.estado])),
+      h("span", { class: "det" }, dataBR(e.agendamentoData) + " · ", statusAg(e.agendamentoStatus), e.conta || e.estado !== "realizado" ? "" : " não conta (agendamento " + (e.agendamentoStatus ? e.agendamentoStatus.categoria : "desconhecido") + ")",
+        " · " + (NOMES_ASSOC[e.associacao] || "") + (e.origem === "importacao" ? " · relatório importado" : "")),
+      h("span", { class: "acoes" }, acoes));
+  }
+
+  async function alterarExecucao(e, campos, msg) {
+    try {
+      await aplicar({ tipo: "exe.alterar", id: e.id, revBase: e._rev, campos: campos });
+      toast(msg);
+      await carregarExecucao();
+      if (orcAberto && el("dlgOrcamento").open) abrirOrcamento(orcAberto.ref);
+    } catch (err) { (el("dlgOrcamento").open ? el("orcErro") : el("fonteExecucao")).textContent = err.message; }
+  }
+
+  function preencherPacientes(sel, valor) {
+    limpar(sel);
+    sel.appendChild(h("option", { value: "" }, "Escolha a paciente"));
+    (exec.pacientes || []).forEach(function (p) { sel.appendChild(h("option", { value: p.ref }, p.nome)); });
+    sel.value = valor || "";
+  }
+
+  function itensDaPaciente(ref) {
+    var lista = [];
+    exec.orcamentos.forEach(function (o) {
+      if (o.pacienteRef !== ref) return;
+      o.itens.forEach(function (it) { lista.push({ ref: it.ref, nome: it.procedimento + " · orçamento " + o.id + " de " + dataBR(o.data) + " (faltam " + qtdTxt(it.restante) + ")", it: it }); });
+    });
+    return lista;
+  }
+
+  function atualizarAgendamentos() {
+    var ref = el("exPaciente").value;
+    var sel = limpar(el("exAgendamento"));
+    sel.appendChild(h("option", { value: "" }, ref ? "Escolha o agendamento" : "Escolha a paciente antes"));
+    exec.agendamentos.filter(function (a) { return a.pacienteRef === ref; }).forEach(function (a) {
+      sel.appendChild(h("option", { value: a.ref, disabled: a.status.categoria === "cancelado" || a.status.categoria === "falta" ? true : null }, rotuloAgendamento(a) + (a.execucoes.length ? " · " + a.execucoes.length + " procedimento(s)" : "")));
+    });
+    var it = limpar(el("exItem"));
+    it.appendChild(h("option", { value: "" }, "Decidir pelo código / sem orçamento"));
+    itensDaPaciente(ref).forEach(function (x) { it.appendChild(h("option", { value: x.ref }, x.nome)); });
+  }
+
+  async function abrirRegistrar(pre) {
+    if (!exec) await carregarExecucao();
+    var p = pre || {};
+    preencherPacientes(el("exPaciente"), p.pacienteRef || "");
+    atualizarAgendamentos();
+    el("exProcedimento").value = ""; el("exQtd").value = "1"; el("exEstado").value = "realizado"; el("exNotas").value = ""; el("exErro").textContent = "";
+    el("dlgExecucao").showModal();
+  }
+
+  function abrirAssociar(e) {
+    exAssociar = e;
+    el("assocResumo").textContent = e.pacienteNome + " · " + e.procedimento + " × " + qtdTxt(e.quantidade) + " em " + dataBR(e.agendamentoData) + ". " + (NOMES_ASSOC[e.associacao] ? "Hoje: " + NOMES_ASSOC[e.associacao] + "." : "");
+    var sel = limpar(el("assocItem"));
+    sel.appendChild(h("option", { value: "" }, "Sem orçamento"));
+    itensDaPaciente(e.pacienteRef).forEach(function (x) { sel.appendChild(h("option", { value: x.ref }, x.nome)); });
+    sel.value = e.itemRef || "";
+    el("assocErro").textContent = "";
+    el("dlgAssociar").showModal();
+  }
+
+  function linhaOrcLocal(x) {
+    var proc = h("input", { class: "input", placeholder: "procedimento", "aria-label": "Procedimento", value: x.procedimento || "", list: "listaProcedimentos", maxlength: "160" });
+    var cod = h("input", { class: "input", placeholder: "código", "aria-label": "Código do procedimento", value: x.procedimentoRef || "", maxlength: "60" });
+    var q = h("input", { class: "input", inputmode: "decimal", placeholder: "qtd", "aria-label": "Quantidade orçada", value: x.quantidade ? qtdBR(x.quantidade) : "1" });
+    var vu = h("input", { class: "input", inputmode: "decimal", placeholder: "valor unitário", "aria-label": "Valor unitário acordado", value: x.valorTabela !== null && x.valorTabela !== undefined ? numBR(x.valorTabela) : "" });
+    var ficha = h("select", { class: "input", "aria-label": "Ficha de custo" });
+    ficha.appendChild(h("option", { value: "" }, "sem ficha"));
+    estado.dados.fichas.filter(function (f) { return !f.arquivada && f.tipo === "procedimento"; }).forEach(function (f) { ficha.appendChild(h("option", { value: f.id }, f.nome)); });
+    ficha.value = x.fichaId || "";
+    var li = h("li", null, proc, cod, q, vu, ficha, h("button", { type: "button", class: "icone-btn", "aria-label": "Tirar", onclick: function () { li.remove(); } }, "×"));
+    li._ler = function () { return { id: x.id || undefined, procedimento: proc.value.trim(), procedimentoRef: cod.value.trim(), quantidade: q.value.trim(), valorUnitario: centavosDe(vu.value), fichaId: ficha.value }; };
+    return li;
+  }
+
+  async function abrirOrcLocal(o) {
+    if (!exec) await carregarExecucao();
+    olAberto = o || null;
+    el("olTitulo").textContent = o ? "Orçamento " + o.id : "Orçamento do Alveare";
+    preencherPacientes(el("olPaciente"), o ? o.pacienteRef : "");
+    el("olData").value = o ? o.data : hoje();
+    el("olSituacao").value = o ? o.situacao || "aberto" : "aprovado";
+    el("olNotas").value = o ? o.notas || "" : "";
+    var ul = limpar(el("olItens"));
+    (o ? o.itens : [{}]).forEach(function (x) { ul.appendChild(linhaOrcLocal(x)); });
+    el("olErro").textContent = "";
+    el("dlgOrcLocal").showModal();
+  }
+
+  function ligarExecucao() {
+    var reler = function () { carregarExecucao(); };
+    el("fxBusca").addEventListener("change", reler);
+    ["fxSituacao", "fxBase", "fxDe", "fxAte"].forEach(function (id) { el(id).addEventListener("change", reler); });
+    el("btnNovaExecucao").addEventListener("click", function () { abrirRegistrar(null); });
+    el("btnNovoOrcamento").addEventListener("click", function () { abrirOrcLocal(null); });
+    el("orcRegistrar").addEventListener("click", function () { var o = orcAberto; el("dlgOrcamento").close(); abrirRegistrar({ pacienteRef: o ? o.pacienteRef : "" }); });
+    el("orcEditar").addEventListener("click", function () { var o = orcAberto; el("dlgOrcamento").close(); abrirOrcLocal(o); });
+    el("exPaciente").addEventListener("change", atualizarAgendamentos);
+    el("exItem").addEventListener("change", function () {
+      var x = itensDaPaciente(el("exPaciente").value).filter(function (i) { return i.ref === el("exItem").value; })[0];
+      if (x && !el("exProcedimento").value) el("exProcedimento").value = x.it.procedimento;
+    });
+    el("formExecucao").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      var ag = el("exAgendamento").value;
+      if (!ag) { el("exErro").textContent = "Escolha o agendamento: o procedimento sempre fica ligado a um."; return; }
+      var partes = ag.split(":");
+      var item = itensDaPaciente(el("exPaciente").value).filter(function (i) { return i.ref === el("exItem").value; })[0];
+      try {
+        var r = await aplicar({ tipo: "exe.registrar", id: novoId("ex"), dados: { agendamentoTipo: partes[0], agendamentoId: partes.slice(1).join(":"),
+          procedimento: el("exProcedimento").value.trim(), procedimentoRef: item ? item.it.procedimentoRef : "", fichaId: item ? item.it.fichaId || "" : "",
+          quantidade: el("exQtd").value.trim(), estado: el("exEstado").value, itemRef: el("exItem").value, notas: el("exNotas").value.trim() } });
+        el("dlgExecucao").close();
+        toast(r.associacao === "ambigua" || r.associacao === "sugerida" ? "Registrado. Falta escolher o orçamento (aparece em \"Para decidir\")." :
+          r.associacao === "sem_orcamento" ? "Registrado, sem orçamento." : "Registrado.");
+        await carregarExecucao();
+      } catch (e) { el("exErro").textContent = e.message; }
+    });
+    el("formAssociar").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      if (!exAssociar) return;
+      try {
+        await aplicar({ tipo: "exe.alterar", id: exAssociar.id, revBase: exAssociar._rev, campos: { itemRef: el("assocItem").value } });
+        el("dlgAssociar").close();
+        toast("Orçamento escolhido.");
+        await carregarExecucao();
+        if (orcAberto && el("dlgOrcamento").open) abrirOrcamento(orcAberto.ref);
+      } catch (e) { el("assocErro").textContent = e.message; }
+    });
+    el("olAddItem").addEventListener("click", function () { el("olItens").appendChild(linhaOrcLocal({})); });
+    el("formOrcLocal").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      var itens = Array.prototype.map.call(el("olItens").children, function (li) { return li._ler(); }).filter(function (i) { return i.procedimento; });
+      if (!el("olPaciente").value) { el("olErro").textContent = "Escolha a paciente."; return; }
+      if (!itens.length) { el("olErro").textContent = "Inclua ao menos um procedimento."; return; }
+      try {
+        await aplicar({ tipo: "exe.orcamento.salvar", id: olAberto ? olAberto.id : novoId("orc"), revBase: olAberto ? olAberto._rev : 0,
+          dados: { pacienteRef: el("olPaciente").value, data: el("olData").value, situacao: el("olSituacao").value, notas: el("olNotas").value, itens: itens } });
+        el("dlgOrcLocal").close();
+        toast("Orçamento salvo.");
+        await carregarExecucao();
+      } catch (e) { el("olErro").textContent = e.message; }
+    });
+    el("btnImportarExecucoes").addEventListener("click", function () {
+      FloreSerImportacao.abrir({ modulo: MOD, tipo: "execucoes", titulo: "Importar procedimentos realizados", token: token,
+        aviso: "Cada linha é um procedimento realizado num agendamento. A coluna do agendamento precisa ter o identificador dele (do Clinicorp ou da Agenda): sem agendamento conhecido, a linha é recusada. Agendamento futuro, cancelado ou com falta também é recusado. Importar de novo não duplica.",
+        campos: [
+          { id: "agendamento", nome: "Identificador do agendamento", obrigatorio: true, tipo: "texto", apelidos: ["agendamento", "id do agendamento", "atendimento", "id agendamento"] },
+          { id: "procedimento", nome: "Procedimento", obrigatorio: true, tipo: "texto", apelidos: ["procedimento", "descricao", "descrição", "servico", "serviço"] },
+          { id: "codigo", nome: "Código do procedimento", tipo: "texto", apelidos: ["codigo", "código", "cod"] },
+          { id: "quantidade", nome: "Quantidade (vazio = 1)", tipo: "decimal", apelidos: ["quantidade", "qtd", "qtde"] }
+        ],
+        aoConcluir: function () { carregarExecucao(); } });
     });
   }
 
@@ -1286,6 +1884,7 @@
   function ligar() {
     ligarAbas();
     ligarEstoque();
+    ligarExecucao();
     el("portao-btn").addEventListener("click", abrirLogin);
     el("btnNovaDespesa").addEventListener("click", function () { abrirDespesa(null); });
     el("formDespesa").addEventListener("submit", salvarDespesa);

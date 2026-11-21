@@ -22,7 +22,7 @@ var CLINICORP_REPETIR_LEITURA = [1000, 3000];
 var _CLINICORP_CHAMADAS = 0;
 var _CLINICORP_ULTIMA = 0;
 
-function reiniciarClinicorp() { _CLINICORP_CHAMADAS = 0; _CLINICORP_ULTIMA = 0; }
+function reiniciarClinicorp() { _CLINICORP_CHAMADAS = 0; _CLINICORP_ULTIMA = 0; if (typeof _STATUS_LIDO !== "undefined") _STATUS_LIDO = false; }
 
 /* Falha do Clinicorp, com o tipo que decide o que fazer:
    autenticacao · limite · recusado · indisponivel · desconhecido */
@@ -41,7 +41,7 @@ var CONFIG_CLINICORP_PADRAO = {
   eventosOrcamento: {}, campanhaPadrao: "", valorSemTaxas: false,
   suspensa: null, verificacao: null, ultimas: {}, desconectadaEm: null,
   criarEntradas: true, areaPorProfissional: {}, frequenciaMin: 0, ativadaEm: null, fontePrincipal: false,
-  ultimaRotina: null, envioAgenda: false, recebimentosPor: ""
+  ultimaRotina: null, envioAgenda: false, recebimentosPor: "", statusAgenda: {}, categoriaStatus: {}
 };
 
 function configClinicorp() {

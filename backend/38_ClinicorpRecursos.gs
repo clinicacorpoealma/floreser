@@ -13,6 +13,21 @@
    comparecimento → venda, sessão vencida → pagamento.
    ===================================================================== */
 
+/* A lista de status de agendamento (com a chave estável Type), no máximo
+   uma vez por execução, guardada na configuração para classificar
+   agendado · confirmado · compareceu · falta · cancelado. */
+var _STATUS_LIDO = false;
+function atualizarStatusDeAgenda() {
+  if (_STATUS_LIDO) return;
+  _STATUS_LIDO = true;
+  try {
+    var r = chamarClinicorp("agendamentos.status", {});
+    var mapa = {};
+    (Array.isArray(r) ? r : []).forEach(function (x) { var n = normalizarSimples("status", x); if (n && n.externoId) mapa[n.externoId] = { nome: n.nome, chave: n.chave }; });
+    if (Object.keys(mapa).length) alterarConfigClinicorp(function (c) { c.statusAgenda = mapa; });
+  } catch (e) { if (!(e instanceof ErroClinicorp) || e.tipo === "autenticacao") throw e; }
+}
+
 /* Agendamentos de UMA paciente vinculada na janela: os itens voltam com
    pacienteExternoId preenchido (a consulta foi filtrada por ela). */
 function buscarAgendamentosDaPaciente(pid, de, ate, c) {
@@ -25,9 +40,10 @@ function buscarJanelaClinicorp(recurso, de, ate, c, cx) {
   var unidade = c.unidade ? String(c.unidade) : "";
   if (recurso === "orcamentos") {
     var o = chamarClinicorp("orcamentos.listar", { from: de, to: ate, clinic_id: unidade });
-    return (Array.isArray(o) ? o : []).map(normalizarOrcamento).filter(Boolean);
+    return (Array.isArray(o) ? o : []).map(normalizarOrcamento).filter(Boolean).map(orcamentoQueCabe);
   }
   if (recurso === "agendamentos") {
+    atualizarStatusDeAgenda();
     var a = chamarClinicorp("agendamentos.listar", { from: de, to: ate, businessId: unidade, includeCanceled: "X", includeDeleted: "X" });
     /* a consulta do período não traz a paciente; a atribuição sai de
        buscarAgendamentosDaPaciente, por paciente vinculada, com cursor

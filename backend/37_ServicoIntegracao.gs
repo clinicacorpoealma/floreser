@@ -69,7 +69,7 @@ function integracaoEstado() {
       janelaReconsultaDias: c.janelaReconsultaDias, eventosOrcamento: c.eventosOrcamento, campanhaPadrao: c.campanhaPadrao,
       valorSemTaxas: !!c.valorSemTaxas, recebimentosPor: c.recebimentosPor || "", criarEntradas: c.criarEntradas !== false,
       areaPorProfissional: c.areaPorProfissional || {}, fontePrincipal: !!c.fontePrincipal, frequenciaMin: c.frequenciaMin || 0,
-      envioAgenda: !!c.envioAgenda },
+      envioAgenda: !!c.envioAgenda, statusAgenda: c.statusAgenda || {}, categoriaStatus: c.categoriaStatus || {} },
     ativadaEm: c.ativadaEm, ultimaRotina: c.ultimaRotina, intervaloMin: intervaloDaRotina(c),
     filaDeAplicacao: c.assinante ? filaDeAplicacao(c, tiposAutomaticos(c)).length : 0,
     areas: AREAS_AGENDA.map(function (a) { return { id: a, nome: AREAS_NOME[a] || a }; }),
@@ -129,6 +129,15 @@ function integracaoConfigurar(ctx) {
     }
     if (d.criarEntradas !== undefined) c.criarEntradas = d.criarEntradas === true;
     if (d.envioAgenda !== undefined) c.envioAgenda = d.envioAgenda === true;
+    if (d.categoriaStatus && typeof d.categoriaStatus === "object") {
+      var cats = {};
+      Object.keys(d.categoriaStatus).forEach(function (k) {
+        var v = String(d.categoriaStatus[k] || "");
+        if (v && ["agendado", "confirmado", "compareceu", "falta", "cancelado"].indexOf(v) < 0) falhar("dados_invalidos", "Categoria de status desconhecida.");
+        if (v) cats[k] = v;
+      });
+      c.categoriaStatus = cats;
+    }
     if (d.areaPorProfissional && typeof d.areaPorProfissional === "object") {
       var mapa = {};
       Object.keys(d.areaPorProfissional).forEach(function (k) {

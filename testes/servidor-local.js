@@ -110,6 +110,36 @@ function semear() {
       { codigo: "SER-VC", nome: "Sérum vitamina C", unidade: "ML", quantidade: "30.125", validade: dia(12), custoUnitario: 120, categoria: "Ativos" },
       { codigo: "AGU-30", nome: "Agulha 30G", unidade: "UN", quantidade: "", categoria: "Descartáveis" }] }, tf);
   amb.pedir("financeiro.aplicar", ops([{ tipo: "estoque.item.salvar", id: "est-amostras", revBase: 0, dados: { nome: "Amostras de brinde", unidadeConsumo: "un", unidadeCompra: "un", minimo: "10" } }]), tf);
+
+  /* Vendas (4.3.0): o exemplo de 10 a R$ 30, duas vendas entregues e uma a confirmar */
+  amb.pedir("financeiro.aplicar", ops([
+    { tipo: "ficha.salvar", id: "fc-serum", revBase: 0, dados: { tipo: "produto", nome: "Sérum sintético (revenda)", precoAtual: 5000, dados: {} } },
+    { tipo: "estoque.item.salvar", id: "est-serum", revBase: 0, dados: { nome: "Sérum sintético (revenda)", codigo: "SER-REV", unidadeConsumo: "un", unidadeCompra: "un", minimo: "3", fichaId: "fc-serum" } }
+  ]), tf);
+  amb.pedir("financeiro.aplicar", ops([{ tipo: "estoque.movimento", itemId: "est-serum", dados: { id: "mv-semente-serum", tipo: "entrada", quantidade: "10", custoUnitario: 3000, data: dia(-6) } }]), tf);
+  amb.pedir("financeiro.aplicar", ops([
+    { tipo: "venda.salvar", id: "vd-semente-1", revBase: 0, dados: { data: dia(-3), entregueEm: dia(-3), pacienteNome: "Dora Exemplo", itens: [{ itemId: "est-serum", quantidade: "2", precoUnitario: 5000 }] } },
+    { tipo: "venda.salvar", id: "vd-semente-2", revBase: 0, dados: { data: dia(-1), entregueEm: dia(-1), pacienteNome: "Eva Exemplo", itens: [{ itemId: "est-serum", quantidade: "1", precoUnitario: 4500 }] } },
+    { tipo: "venda.salvar", id: "vd-semente-3", revBase: 0, dados: { data: dia(0), pacienteNome: "Dora Exemplo", itens: [{ itemId: "est-serum", quantidade: "1", precoUnitario: 5000 }, { itemId: "est-amostras", quantidade: "2", precoUnitario: 0 }] } }
+  ]), tf);
+
+  /* Orçamentos e execução: sessões já vividas na Agenda, um orçamento do Alveare e registros */
+  amb.gs.reiniciarExecucao();
+  amb.gs.inserir("agenda_historico", [
+    { id: "hist-semente-s1", pacienteId: "pac-dora", tipo: "sessao", area: "facial", data: dia(-26) },
+    { id: "hist-semente-s2", pacienteId: "pac-dora", tipo: "sessao", area: "facial", data: dia(-12) },
+    { id: "hist-semente-s3", pacienteId: "pac-dora", tipo: "sessao", area: "corporal", data: dia(-12) }]);
+  amb.gs.reiniciarExecucao();
+  amb.pedir("financeiro.aplicar", ops([{ tipo: "exe.orcamento.salvar", id: "orc-semente-dora", revBase: 0, dados: { pacienteRef: "loc:pac-dora", data: dia(-30), situacao: "aprovado",
+    itens: [{ id: "it-limpeza", procedimento: "Limpeza de pele", procedimentoRef: "LIMP", fichaId: "fc-limpeza", quantidade: "4", valorUnitario: 18000 },
+      { id: "it-drenagem", procedimento: "Drenagem", procedimentoRef: "DREN", quantidade: "2", valorUnitario: 15000 }] } }]), tf);
+  const agFuturo = amb.gs.lerTudo("agenda_agendamentos").filter((g) => g.pacienteId === "pac-dora").sort((a, b) => a.data.localeCompare(b.data))[0];
+  amb.pedir("financeiro.aplicar", ops([
+    { tipo: "exe.registrar", id: "ex-semente-1", dados: { agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s1", procedimento: "Limpeza de pele", procedimentoRef: "LIMP" } },
+    { tipo: "exe.registrar", id: "ex-semente-2", dados: { agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s2", procedimento: "Limpeza de pele", procedimentoRef: "LIMP" } },
+    { tipo: "exe.registrar", id: "ex-semente-3", dados: { agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s3", procedimento: "Drenagem", procedimentoRef: "DREN" } },
+    { tipo: "exe.registrar", id: "ex-semente-4", dados: { agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s2", procedimento: "Peeling químico" } }
+  ].concat(agFuturo ? [{ tipo: "exe.registrar", id: "ex-semente-5", dados: { agendamentoTipo: "agenda", agendamentoId: agFuturo.id, procedimento: "Limpeza de pele", procedimentoRef: "LIMP", estado: "previsto" } }] : [])), tf);
   amb.pedir("sessao.sair", {}, tf);
 }
 

@@ -277,7 +277,7 @@ dialog::backdrop{background:rgba(20,32,30,.45)}
 .cartoes-estoque{margin-bottom:14px}
 .qtd{font-variant-numeric:tabular-nums;font-weight:600;color:var(--text)}
 .qtd-desconhecida{color:var(--text-3);font-style:italic;font-weight:400}
-.selo-esgotado{background:var(--danger-soft);color:var(--danger)}
+.selo-esgotado,.selo-negativo{background:var(--danger-soft);color:var(--danger)}
 .selo-abaixo{background:var(--alerta-bg);color:var(--alerta)}
 .selo-desconhecido{background:var(--surface-3);color:var(--text-3)}
 .selo-ok{background:var(--accent-soft);color:var(--accent)}
@@ -286,3 +286,29 @@ dialog::backdrop{background:rgba(20,32,30,.45)}
 .saldo-destaque{font-family:var(--serif);font-size:32px;font-weight:600;color:var(--accent);margin-bottom:8px}
 .saldo-destaque small{display:block;font-family:var(--sans);font-size:12px;font-weight:400;color:var(--text-3)}
 .aviso-revisar{background:var(--alerta-bg);color:var(--alerta);border-radius:8px;padding:8px 12px;font-size:12.5px;margin:0 0 12px}
+
+/* ---------- vendas, preço praticado, orçamentos e execução (4.3.0) ---------- */
+.lista-edicao.venda li{grid-template-columns:2.4fr .8fr 1fr 1fr auto}
+.lista-edicao.orcamento li{grid-template-columns:2fr 1fr .7fr 1fr 1.4fr auto}
+.tabela-compacta th,.tabela-compacta td{padding:6px 8px;font-size:12.5px}
+.tabela td .selo + .sub{display:block}
+.aviso-bloco{border-left:3px solid var(--alerta)}
+.selo-ag-agendado{background:var(--surface-3);color:var(--text-2)}
+.selo-ag-confirmado{background:var(--accent-soft);color:var(--accent)}
+.selo-ag-compareceu{background:var(--accent-soft);color:var(--accent)}
+.selo-ag-falta{background:var(--alerta-bg);color:var(--alerta)}
+.selo-ag-cancelado{background:var(--surface-3);color:var(--text-4);text-decoration:line-through}
+#itemVendas .tabela-rolagem{margin-bottom:8px}
+#orcExecucoes .acoes,#listaPendentesExec .acoes,#listaSemOrcamento .acoes{display:flex;flex-wrap:wrap;gap:4px}
+@media (max-width:820px){
+  .lista-edicao.orcamento li{grid-template-columns:1fr 1fr 1fr}
+}
+@media (max-width:560px){
+  .lista-edicao.venda li{grid-template-columns:1fr 1fr}
+  .lista-edicao.venda li select{grid-column:1 / -1}
+  .lista-edicao.orcamento li{grid-template-columns:1fr 1fr}
+  .lista-edicao.orcamento li input:first-child{grid-column:1 / -1}
+  #tabelaOrcamentos th:nth-child(2),#tabelaOrcamentos td:nth-child(2),
+  #tabelaOrcamentos th:nth-child(6),#tabelaOrcamentos td:nth-child(6),
+  #tabelaVendas th:nth-child(3),#tabelaVendas td:nth-child(3){display:none}
+}

@@ -38,7 +38,7 @@ var CAMPOS_MOVIMENTO = {
   data: { tipo: "data" }, valor: { tipo: "dinheiro" }, meio: { tipo: "texto", max: 60 }, conta: { tipo: "texto", max: 80 },
   evidencia: { tipo: "texto", max: 500 }, notas: { tipo: "texto", max: 2000 }
 };
-var CAMPOS_CATEGORIA = { nome: { tipo: "texto", max: 80 }, paiId: { tipo: "texto", max: 80 }, ativa: { tipo: "booleano" }, ordem: { tipo: "inteiro" } };
+var CAMPOS_CATEGORIA_FIN = { nome: { tipo: "texto", max: 80 }, paiId: { tipo: "texto", max: 80 }, ativa: { tipo: "booleano" }, ordem: { tipo: "inteiro" } };
 var CAMPOS_FORNECEDOR = { nome: { tipo: "texto", max: 160 }, documento: { tipo: "texto", max: 40 }, contato: { tipo: "texto", max: 200 },
   notas: { tipo: "texto", max: 2000 }, ativo: { tipo: "booleano" } };
 var CAMPOS_INSUMO = { nome: { tipo: "texto", max: 160 }, unidadeCompra: { tipo: "texto", max: 40 }, conteudo: { tipo: "decimal" },
@@ -225,7 +225,7 @@ function financeiroAplicar(ctx) {
 
 function planejarFinanceiro(ctx, op) {
   switch (op.tipo) {
-    case "categoria.salvar": return planejarCadastro(ctx, op, "fin_categorias", CAMPOS_CATEGORIA, "categoria", function (r) {
+    case "categoria.salvar": return planejarCadastro(ctx, op, "fin_categorias", CAMPOS_CATEGORIA_FIN, "categoria", function (r) {
       if (!String(r.nome || "").trim()) falhar("dados_invalidos", "A categoria precisa de um nome.", { campo: "nome" });
       if (r.paiId && r.paiId === r.id) falhar("dados_invalidos", "Uma categoria não pode ser subcategoria dela mesma.");
       if (r.ativa === null || r.ativa === undefined) r.ativa = true;
@@ -260,6 +260,14 @@ function planejarFinanceiro(ctx, op) {
     case "estoque.item.salvar": return planejarItemEstoque(ctx, op);
     case "estoque.movimento": return planejarMovimentoEstoque(ctx, op);
     case "estoque.usarNaPrecificacao": return planejarUsarNaPrecificacao(ctx, op);
+    case "estoque.voltarAoRetrato": return planejarVoltarAoRetrato(ctx, op);
+    case "venda.salvar": return planejarVenda(ctx, op);
+    case "venda.confirmarSaida": return planejarConfirmarSaida(ctx, op);
+    case "venda.cancelar": return planejarCancelarVenda(ctx, op);
+    case "venda.devolver": return planejarDevolucao(ctx, op);
+    case "exe.orcamento.salvar": return planejarOrcamentoLocal(ctx, op);
+    case "exe.registrar": return planejarExecucao(ctx, op);
+    case "exe.alterar": return planejarAlterarExecucao(ctx, op);
   }
   falhar("dados_invalidos", "Operação desconhecida no Financeiro: " + op.tipo + ".");
 }

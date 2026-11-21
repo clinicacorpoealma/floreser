@@ -1,4 +1,4 @@
-# Esquema de dados (schema 4)
+# Esquema de dados (schema 5)
 
 A fonte é `backend/10_Esquema.gs`. Cada tabela é uma aba com o mesmo nome; a
 linha 1 é o cabeçalho, e **o cabeçalho manda** — a posição de cada campo sai
@@ -101,6 +101,31 @@ Desde o schema 3: movimentos → `fin_despesas` e versões → `fin_fichas`
 | `fin_fichas.revisar` | aviso de que um custo usado mudou depois da aprovação |
 
 Identidade dos registros externos: `clinicorp:<assinante>:<tipo>:<id>`.
+
+### Vendas e execução (schema 5)
+
+| Aba | Chave | Campos |
+|---|---|---|
+| `est_vendas` (raiz) | id | data, pacienteNome, pacienteRef, origem (manual/importacao), externoId, estado (ativa/cancelada), entregueEm, entradaId, descontoGeral, taxas, notas, loteId, criadoEm |
+| `est_venda_itens` | id | vendaId (forte), itemId (fraca), quantidade, unidade, precoUnitario, desconto, custoUnitario, custoFonte, fichaId, devolvido, devolvidoRetorno |
+| `exe_orcamentos` (raiz) | id | pacienteRef, pacienteNome, data, situacao, descontoGeral, notas, criadoEm |
+| `exe_orcamento_itens` | id | orcamentoId (forte), procedimento, procedimentoRef, fichaId, quantidade, valorUnitario, desconto, ordem |
+| `exe_execucoes` (raiz) | id | agendamentoTipo, agendamentoId, agendamentoData, pacienteRef, pacienteNome, procedimento, procedimentoRef, fichaId, quantidade, estado, orcamentoRef, itemRef, associacao, custoUnitario, custoFonte, valorUnitario, origem, loteId, criadoEm, autorNome, notas |
+
+Colunas novas no fim (`COLUNAS_DESDE`, 5): `est_itens` modoSaldo, corteEm,
+fichaId; `est_movimentos` origemTipo, origemId, custoUnitario, estornaId.
+`pacienteRef` é `loc:<id da Agenda>` ou `clc:<id do Clinicorp>` (o vínculo
+de paciente junta os dois). Quantidades em texto decimal, dinheiro em
+centavos, como no resto.
+
+## Do schema 4 para o schema 5 (`backend/44_MigracaoV5.gs`)
+
+Cria as cinco abas e as colunas; `modoSaldo` = `livro` para item local
+(corte = última contagem existente) e `retrato` para importado; movimentos
+antigos ganham `origemTipo: manual`; orçamentos do Clinicorp voltam à fila
+(assinatura `reler:`) para serem relidos completos. Confere contagem de
+linhas, somas de dinheiro e **o saldo de cada item** antes e depois. Retorno:
+`migracaoV5Retornar()` (abas novas ficam).
 
 ## Do schema 3 para o schema 4 (`backend/43_MigracaoV4.gs`)
 

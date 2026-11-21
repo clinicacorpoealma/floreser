@@ -1,4 +1,4 @@
-# Integração com o Clinicorp (4.2.0)
+# Integração com o Clinicorp (4.3.0)
 
 A integração é **central**: mora no backend (`backend/35`–`38`) e é
 administrada no painel → **Integrações**. CRM, Agenda e Entradas só mostram
@@ -333,3 +333,50 @@ existir. Não há sincronização fictícia.
 > periódica (arquivo), qual o formato?
 
 Nada foi enviado ao suporte nem alterado na conta: isso fica com a clínica.
+
+## 12. Vendas de produtos e execução de procedimentos (4.3.0)
+
+Conferido na especificação oficial (OpenAPI 3.0.1, 49 caminhos, as duas URLs
+idênticas) em 20/11/2026:
+
+| Precisava | Existe na API? | O que há |
+|---|---|---|
+| vendas de produtos discriminadas (produto, quantidade, preço, desconto, entrega) | **não** | `/payment/list` é parcela de pagamento; `/financial/list_invoices` é nota fiscal; `POST /products/orders` cria pedido de compra (não lê vendas nem estoque) |
+| saldo de estoque / movimentos | **não** | — (ver §11) |
+| procedimentos realizados em cada agendamento | **não** | `/appointment/list` traz só `Session` (contagem de sessões, não é fonte) |
+| vínculo agendamento ↔ orçamento | **não** | — |
+| itens do orçamento | sim | `ProcedureList` com id, `Procedure_CharacteristicId`, valores, `Executed`/`ExecutedDate` (sem dizer em que agendamento), sem quantidade |
+| status de agendamento com chave estável | sim | `/appointment/status_list` (`Type`, ex.: CONFIRMED) |
+
+Na matriz: `vendas.produtos` e `execucao.procedimentos` com
+`implementado: false` e a alternativa. Nada foi inventado nem lido da tela.
+
+**Alternativas que funcionam hoje (não apresentadas como automáticas):**
+venda registrada no Estoque ou relatório de vendas importado (mapeamento
+salvo); procedimento registrado no agendamento ou relatório de execuções
+importado (precisa do identificador do agendamento). Orçamentos e
+agendamentos continuam vindo sozinhos pela sincronização, com retomada sem
+duplicar, janela de reconsulta para correções e o limite de chamadas.
+
+**O que pedir ao Clinicorp** (suporte/API), com essas palavras:
+1. Endpoint de leitura de **vendas de produtos** com itens: produto (id e
+   código), quantidade, unidade, preço unitário cobrado, desconto, data da
+   venda, situação de entrega/retirada, paciente, e data de alteração (para
+   buscar correções e cancelamentos).
+2. Endpoint de **estoque**: produtos com código e unidade, saldo por unidade
+   da clínica, lote/validade, movimentos com tipo e data, custo unitário.
+3. Em `/appointment/list` (ou endpoint próprio): os **procedimentos
+   realizados no agendamento**, com o id da linha do orçamento
+   (`ProcedureList.id`/`TreatmentId`) e a quantidade.
+4. Quantidade por linha de procedimento no orçamento.
+
+Quando algo disso existir: conferir na especificação, acrescentar em
+`CLINICORP_OPERACOES` (leitura, `implementado: true`), mapear para
+`est_vendas`/`exe_execucoes` com origem `clinicorp` e identidade
+`idDoExterno`, e testar contra o simulador antes da conta real.
+
+**Testado vs. confirmado.** Vendas, livro do estoque, execução, associação e
+as importações estão cobertos por testes com dados sintéticos e no servidor
+local. Nada disso foi exercitado numa conta real do Clinicorp: a leitura dos
+procedimentos completos do orçamento e da lista de status usa campos da
+especificação, ainda não vistos numa resposta real (§8).

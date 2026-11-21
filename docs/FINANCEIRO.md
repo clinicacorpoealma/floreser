@@ -1,4 +1,4 @@
-# Financeiro (4.2.0)
+# Financeiro (4.3.0)
 
 Módulo em `financeiro/` (estrutura, aparência e comportamento separados),
 regras puras em `backend/30_RegrasFinanceiro.gs`, serviço em
@@ -77,9 +77,10 @@ quanto, desde quando se sabe, o que falta.
   **desconhecido** (não é zero); zero = esgotado; retrato com mais de 7 dias
   aparece como antigo. Entre retratos só se mostra a **variação observada** —
   nada de inventar compra, consumo ou perda.
-- **Sem estoque duplo.** Item de fonte externa não recebe movimento nem tem
-  nome/código/custo/saldo editáveis no Alveare (só unidade de consumo, fator,
-  mínimo e notas). Item só do Alveare tem entrada, saída e contagem. Nada dá
+- **Sem estoque duplo.** Item de fonte externa não tem nome/código/custo/saldo
+  editáveis no Alveare (só unidade de consumo, fator, mínimo, ficha e notas) e
+  só recebe movimento depois de "Assumir o saldo no Alveare" (ver abaixo).
+  Nada dá
   baixa por agendamento; ordem de compra não é mercadoria; compra recebida não
   é conta paga (a despesa continua em Despesas, separada).
 - **Quantidades** em milésimos inteiros (até 3 casas), sem ponto flutuante.
@@ -96,6 +97,104 @@ quanto, desde quando se sabe, o que falta.
   **revisar**, e versões aprovadas e preços não mudam. Composição (consumo
   estimado) ≠ consumo registrado ≠ compra ≠ pagamento: nada disso vira
   despesa.
+
+## Vendas, saldo único e custo histórico (4.3.0)
+
+**Um saldo por item, com a origem à vista** (`est_itens.modoSaldo`):
+
+| Modo | De onde vem o saldo | Venda registrada no Alveare |
+|---|---|---|
+| `retrato` | último arquivo importado (ou o Clinicorp, quando houver acesso) | **não** desconta: a fonte já reflete a saída; fica para valor vendido e custo |
+| `livro` | contagem com **corte** (`corteEm`, data e hora) + movimentos efetivos depois dele | desconta na **saída confirmada** |
+
+- Item só do Alveare é `livro`. Passar de `retrato` para `livro` é explícito
+  ("Assumir o saldo no Alveare"), **sempre por uma contagem**; arquivos
+  importados depois viram só registro. "Voltar ao saldo do arquivo" faz o
+  caminho inverso, com o livro guardado como histórico. Nunca há dois saldos
+  concorrentes.
+- **Corte.** Movimento datado antes do dia do corte não conta; no próprio dia,
+  só o registrado depois da contagem. Assim, venda histórica importada depois
+  da contagem entra no histórico e no resultado **sem descontar de novo**.
+- **Movimentos** (`est_movimentos`): entrada (compra recebida, com custo),
+  venda, devolução com retorno físico, perda, consumo de material, ajuste
+  (+/−), e **estorno** (`estornaId`) para corrigir sem apagar. Consumo nunca
+  sai de agendamento. Saldo negativo aparece como "Saldo negativo" (falta
+  entrada ou contagem), nunca como esgotado.
+
+**Venda** (`est_vendas` + `est_venda_itens`): data, paciente, origem
+(manual/importação), itens discriminados (produto, quantidade, unidade, preço
+realmente cobrado, desconto), desconto geral, taxas (se conhecidas), notas.
+
+- A **baixa acompanha a saída efetiva**: só venda ativa com `entregueEm`, e só
+  item em `livro`. Orçamento, agendamento ou pagamento não são prova de saída;
+  recebimento nunca vira venda. Parcelas e formas de pagamento são das
+  Entradas: **uma venda = uma saída por item**.
+- **Reprocessar não desconta duas vezes**: cada item da venda tem um
+  movimento ativo (`origemId = venda|item`). Salvar de novo igual não muda
+  nada; mudar quantidade, produto ou data de saída gera **estorno + movimento
+  novo**; cancelar estorna tudo (inclusive a devolução já contada).
+- **Devolução** diminui o vendido; só **repõe** o estoque com
+  `retornoFisico` (e item em `livro`).
+- **Desconto geral** é rateado pelos itens na proporção do valor líquido de
+  cada um (critério explícito), para dar o vendido por produto.
+- **Custo gravado no item da venda** (`custoUnitario` + `custoFonte`), na
+  primeira gravação:
+  1. `compra` — custo médio ponderado móvel das entradas do livro até o dia
+     da venda (comprovado);
+  2. `importacao` — custo informado pela fonte;
+  3. `estimativa` — custo digitado no cadastro;
+  4. vazio — **não informado** (nunca zero; a diferença fica em branco).
+  Mudar o custo depois não reescreve o resultado de vendas passadas.
+- **Diferença = vendido − custo gravado**, antes de taxas (quando não
+  informadas) e de despesas fixas. Não é lucro, e a tela diz isso.
+- Exemplo conferido em teste: 10 unidades a R$ 30; 2 vendidas a R$ 50 e 1 a
+  R$ 45 → saldo 7, vendido R$ 145, custo R$ 90, diferença R$ 55.
+- **Relatório de vendas** (importação `tipo: vendas`): produto pelo código
+  ou nome exato (sem produto cadastrado, a linha é recusada); linhas da mesma
+  venda (coluna "venda", ou data + paciente) viram uma venda; a coluna
+  "entregue" (sim/x/data) confirma a saída — sem ela, a venda entra sem baixa.
+  Reimportar igual não muda nada; diferente, corrige com estorno.
+
+**Preço praticado** (`financeiro.precosPraticados`, dentro da ficha): vendas
+do produto ligado (`est_itens.fichaId`) e execuções realizadas com a ficha,
+cada linha com data, quantidade, custo unitário e total, preço, desconto,
+vendido, diferença; resumo com menor/maior preço e linhas sem custo ou valor.
+
+## Orçamentos e execução (4.3.0)
+
+Aba **Orçamentos e execução** (`backend/34_ServicoExecucao.gs`). Por
+paciente e orçamento: orçado, agendado, realizado, restante, excedente, valor
+acordado e valor realizado (valor acordado por unidade × realizado até o
+orçado; excedente sem preço inventado). O recebido fica nas Entradas.
+
+- **Realizado = registro de execução (`exe_execucoes`) ligado a um
+  agendamento identificado**: `clinicorp:<id>` (agendamento sincronizado),
+  `agenda:<id>` (agenda_agendamentos) ou `agenda-hist:<id>` (sessão do
+  histórico da Agenda, tipo `sessao`). Nunca é fonte: contador de sessões,
+  sessões contratadas, aprovação do orçamento, pagamento, data que passou, nem
+  o "Executado" do orçamento no Clinicorp (aparece só como conferência).
+- Estados da execução: `previsto` · `realizado` · `desfeito` (fica no
+  histórico, não conta). Status do agendamento: agendado · confirmado ·
+  compareceu · falta · cancelado (do `Type` da lista de status do Clinicorp,
+  corrigível por `categoriaStatus`). Presença não prova procedimento.
+  Realizado é recusado em agendamento futuro, cancelado ou com falta; se o
+  status mudar depois para falta/cancelado, a execução deixa de contar.
+- Um agendamento pode ter vários procedimentos; um item pode ser feito em
+  vários agendamentos; dois agendamentos no mesmo dia são distintos.
+- **Orçamentos**: do Clinicorp (cada linha de procedimento = 1 unidade, a API
+  não traz quantidade; linhas iguais do mesmo orçamento formam um conjunto) e
+  do Alveare (`exe_orcamentos`, com quantidade e valor unitário).
+- **Associação**: item informado → `automatica` (código do procedimento com
+  saldo em um só orçamento) → `reaproveitada` (escolha anterior confirmada da
+  mesma paciente e procedimento) → senão `ambigua` / `sugerida` (só nome) /
+  `sem_orcamento`. Nunca se escolhe entre dois orçamentos pelo nome.
+  Pendências aparecem em "Para decidir".
+- O filtro de período diz a base: data do orçamento ou data de execução.
+- Custo e valor acordado ficam **gravados** na execução (custo da ficha:
+  estimativa).
+- **Relatório de execuções** (importação `tipo: execucoes`): exige o
+  identificador do agendamento; recusa agendamento desconhecido, futuro,
+  cancelado, com falta ou sem paciente identificada.
 
 ## Precificação
 
@@ -149,3 +248,12 @@ repetição, parcelas e centavos, recorrência com fim de mês e geração
 repetida, "esta e as seguintes", caixa/competência/previsão, orçamento,
 saldo, precificação completa e incompleta, pacote, importação de despesas e
 de entradas.
+`node testes/vendas.js`: o exemplo 10 × R$ 30, venda com vários produtos e
+desconto rateado, reprocessamento e parcelas sem baixa dupla, saída a
+confirmar, contagem com corte e histórico, retrato × livro, correção,
+devolução e cancelamento, custo desconhecido e custo que muda, preço
+praticado.
+`node testes/execucao.js`: nada vira realizado sozinho, parcial em vários
+agendamentos, vários procedimentos num agendamento e dois no mesmo dia,
+cancelamento/falta/correção, sem orçamento e excedente, associação ambígua e
+reaproveitada, filtro por base, relatório importado.

@@ -100,6 +100,15 @@ var CLINICORP_OPERACOES = {
     parametros: ["clinic* (CNPJ)", "orderCode*", "orderDate*", "products*[code, name, quantity, unitPrice, unitOfMeasurement, expirationDate]"],
     granularidade: "cria uma ordem de compra",
     limitacoes: "Não usado: criar ordem de compra não lê estoque, e ordem não é recebimento nem pagamento. As unidades do enum (UN, CX, ML, G...) servem de referência para o Estoque do Alveare." },
+  /* Vendas por produto e execução por agendamento: conferidos na
+     especificação em 20/11/2026 — não existem. Os adaptadores do Alveare
+     (est_vendas, exe_execucoes) recebem por tela ou relatório importado. */
+  "vendas.produtos": { metodo: "get", caminho: "(não documentado)", efeito: "leitura", direcao: "consulta", implementado: false,
+    parametros: [], granularidade: "venda com produtos discriminados (produto, quantidade, unidade, preço, desconto, situação de entrega)",
+    limitacoes: "Não existe na API pública. /payment/list é pagamento (parcela), não lista de produtos vendidos; /financial/list_invoices é nota fiscal. Alternativa no Alveare: venda registrada na tela ou relatório de vendas importado." },
+  "execucao.procedimentos": { metodo: "get", caminho: "(não documentado)", efeito: "leitura", direcao: "consulta", implementado: false,
+    parametros: [], granularidade: "procedimentos realizados em cada agendamento, com vínculo ao item do orçamento",
+    limitacoes: "Não existe na API pública: /appointment/list não traz procedimentos (só Session, contagem de sessões, que não é fonte), e o \"Executed\" do orçamento não diz em que agendamento foi. Alternativa no Alveare: registro na tela ou relatório importado." },
   "procedimentos.listar": { metodo: "get", caminho: "/procedures/list", efeito: "leitura", direcao: "consulta", implementado: true,
     parametros: [], granularidade: "procedimentos das tabelas de preço (nome, especialidade, tabela)",
     limitacoes: "Sem preço no retorno documentado. Ajuda opcional na Precificação; o Alveare nunca altera preço no Clinicorp." }
@@ -201,12 +210,33 @@ function normalizarOrcamento(e) {
     unidade: idExterno(e.BusinessId), profissionalId: idExterno(e.ProfessionalId), profissional: String(e.ProfessionalName || "").slice(0, 120),
     pacienteExternoId: idExterno(e.PatientId), pacienteNome: String(e.PatientName || "").slice(0, 200),
     pacienteTelefone: String(e.PatientMobilePhone || "").slice(0, 40),
-    procedimentos: procs.slice(0, 40).map(function (p) {
-      return { descricao: String(p.OperationDescription || "").slice(0, 160), valor: centavosDoClinicorp(p.FinalAmount !== undefined ? p.FinalAmount : p.Amount),
-        executado: marcadoX(p.Executed), naoAprovado: marcadoX(p.NotApproved), excluido: marcadoX(p.Deleted) };
+    /* TODOS os procedimentos, cada um com a sua identidade — nada de corte
+       fixo nem de juntar em texto: a apuração da execução precisa deles um a
+       um. Cada linha é uma unidade (a API não traz quantidade). StepsList
+       (sessões) não é guardado: sessão não é fonte de execução. */
+    procedimentos: procs.map(function (p) {
+      return { id: idExterno(p.id), ref: idExterno(p.Procedure_CharacteristicId), descricao: String(p.OperationDescription || "").slice(0, 160),
+        valorTabela: centavosDoClinicorp(p.Amount), valor: centavosDoClinicorp(p.FinalAmount !== undefined ? p.FinalAmount : p.Amount),
+        statusId: idExterno(p.StatusId), status: String(p.StatusDescription || "").slice(0, 60), profissionalId: idExterno(p.Dentist_PersonId),
+        executado: marcadoX(p.Executed), executadoEm: diaDoClinicorp(p.ExecutedDate), naoAprovado: marcadoX(p.NotApproved), excluido: marcadoX(p.Deleted),
+        cobranca: String(p.BillType || "") };
     }),
     cacheado: e.Cached === true, alteradoExterno: e.LastChange_Date ? String(e.LastChange_Date) : ""
   };
+}
+
+/* Um orçamento cabe numa célula (~45 mil caracteres)? Se não, os
+   procedimentos são compactados (sem os campos de conferência) — e se nem
+   assim couber, o registro diz que ficou incompleto, em vez de cortar calado. */
+function orcamentoQueCabe(o) {
+  if (JSON.stringify(o).length < 40000) return o;
+  o.procedimentos = o.procedimentos.map(function (p) { return { id: p.id, ref: p.ref, descricao: p.descricao.slice(0, 60), valor: p.valor, valorTabela: p.valorTabela,
+    excluido: p.excluido, naoAprovado: p.naoAprovado }; });
+  if (JSON.stringify(o).length < 40000) return o;
+  var total = o.procedimentos.length;
+  while (o.procedimentos.length && JSON.stringify(o).length >= 39000) o.procedimentos.pop();
+  o.procedimentosIncompletos = { guardados: o.procedimentos.length, total: total };
+  return o;
 }
 
 function normalizarRecebimento(p, comLiquido) {

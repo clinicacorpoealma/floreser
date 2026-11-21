@@ -1,5 +1,5 @@
 /* =====================================================================
-   10_Esquema — o desenho do banco (schema 4)
+   10_Esquema — o desenho do banco (schema 5)
    ---------------------------------------------------------------------
    A fonte única das tabelas: nome da aba, chave, campos e tipos. A camada
    de tabelas (02) valida o cabeçalho real contra isto; a migração (40)
@@ -134,12 +134,38 @@ var ESQUEMA = {
   est_itens: { chave: ["id"], desde: 4, campos: ["id:texto", "nome:texto", "codigo:texto", "categoria:texto",
     "unidadeCompra:texto", "unidadeConsumo:texto", "fator:texto", "minimo:texto", "custoUnitario:dinheiro",
     "custoFonte:texto", "origem:texto", "externoId:texto", "local:texto", "ativo:booleano", "notas:texto",
-    "criadoEm:instante"], raiz: true },
+    "criadoEm:instante", "modoSaldo:texto", "corteEm:instante", "fichaId:texto"], raiz: true },
   est_saldos: { chave: ["id"], desde: 4, grande: true, campos: ["id:texto", "itemId:texto", "local:texto",
     "quantidade:texto", "lote:texto", "validade:data", "custoUnitario:dinheiro", "fonte:texto", "loteImportacao:texto",
     "observadoEm:instante"] },
   est_movimentos: { chave: ["id"], desde: 4, grande: true, campos: ["id:texto", "itemId:texto", "tipo:texto",
-    "quantidade:texto", "data:data", "motivo:texto", "criadoEm:instante", "autorNome:texto", "opId:texto"] },
+    "quantidade:texto", "data:data", "motivo:texto", "criadoEm:instante", "autorNome:texto", "opId:texto",
+    "origemTipo:texto", "origemId:texto", "custoUnitario:dinheiro", "estornaId:texto"] },
+
+  /* ---- Vendas de produtos (schema 5) ----
+     Uma venda = uma saída de produtos, com itens discriminados. Dinheiro
+     recebido (Entradas) é outra coisa: a venda pode apontar para a entrada,
+     nunca ser deduzida dela. */
+  est_vendas: { chave: ["id"], desde: 5, campos: ["id:texto", "data:data", "pacienteNome:texto", "pacienteRef:texto",
+    "origem:texto", "externoId:texto", "estado:texto", "entregueEm:data", "entradaId:texto", "descontoGeral:dinheiro",
+    "taxas:dinheiro", "notas:texto", "loteId:texto", "criadoEm:instante"], raiz: true },
+  est_venda_itens: { chave: ["id"], desde: 5, campos: ["id:texto", "vendaId:texto", "itemId:texto", "quantidade:texto",
+    "unidade:texto", "precoUnitario:dinheiro", "desconto:dinheiro", "custoUnitario:dinheiro", "custoFonte:texto",
+    "fichaId:texto", "devolvido:texto", "devolvidoRetorno:texto"] },
+
+  /* ---- Orçamentos e execução (schema 5) ----
+     Orçamento local (para o que não vem do Clinicorp) com itens; a
+     EXECUÇÃO é sempre um registro ligado a um agendamento (da Agenda ou do
+     Clinicorp) — nunca sessão, aprovação, pagamento ou data que passou. */
+  exe_orcamentos: { chave: ["id"], desde: 5, campos: ["id:texto", "pacienteRef:texto", "pacienteNome:texto", "data:data",
+    "situacao:texto", "descontoGeral:dinheiro", "notas:texto", "criadoEm:instante"], raiz: true },
+  exe_orcamento_itens: { chave: ["id"], desde: 5, campos: ["id:texto", "orcamentoId:texto", "procedimento:texto",
+    "procedimentoRef:texto", "fichaId:texto", "quantidade:texto", "valorUnitario:dinheiro", "desconto:dinheiro", "ordem:inteiro"] },
+  exe_execucoes: { chave: ["id"], desde: 5, campos: ["id:texto", "agendamentoTipo:texto", "agendamentoId:texto",
+    "agendamentoData:data", "pacienteRef:texto", "pacienteNome:texto", "procedimento:texto", "procedimentoRef:texto",
+    "fichaId:texto", "quantidade:texto", "estado:texto", "orcamentoRef:texto", "itemRef:texto", "associacao:texto",
+    "custoUnitario:dinheiro", "custoFonte:texto", "valorUnitario:dinheiro", "origem:texto", "loteId:texto",
+    "criadoEm:instante", "autorNome:texto", "notas:texto"], raiz: true },
 
   int_passos: { chave: ["id"], desde: 3, campos: ["id:texto", "operacaoId:texto", "tipo:texto", "estado:texto",
     "tentativas:inteiro", "pedido:json", "resposta:json", "localTipo:texto", "localId:texto", "externoId:texto",
@@ -153,7 +179,9 @@ var COLUNAS_DESDE = {
   sis_usuarios: { financeiro: 3 },
   fin_insumos: { itemEstoqueId: 4, custoFonte: 4 },
   fin_fichas: { revisar: 4 },
-  int_externos: { aplicado: 4, aplicadoEm: 4, aplicacao: 4 }
+  int_externos: { aplicado: 4, aplicadoEm: 4, aplicacao: 4 },
+  est_itens: { modoSaldo: 5, corteEm: 5, fichaId: 5 },
+  est_movimentos: { origemTipo: 5, origemId: 5, custoUnitario: 5, estornaId: 5 }
 };
 
 /* Relações, conferidas pela migração e por conferirIntegridade().
@@ -185,7 +213,10 @@ var RELACOES_V2 = [
   { de: "fin_fichas_versoes", campo: "fichaId", para: "fin_fichas", forca: "forte" },
   { de: "est_saldos", campo: "itemId", para: "est_itens", forca: "forte" },
   { de: "est_movimentos", campo: "itemId", para: "est_itens", forca: "forte" },
-  { de: "fin_insumos", campo: "itemEstoqueId", para: "est_itens", forca: "fraca" }
+  { de: "fin_insumos", campo: "itemEstoqueId", para: "est_itens", forca: "fraca" },
+  { de: "est_venda_itens", campo: "vendaId", para: "est_vendas", forca: "forte" },
+  { de: "est_venda_itens", campo: "itemId", para: "est_itens", forca: "fraca" },
+  { de: "exe_orcamento_itens", campo: "orcamentoId", para: "exe_orcamentos", forca: "forte" }
 ];
 
 var _DEFS = null;
