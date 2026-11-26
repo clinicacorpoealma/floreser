@@ -268,6 +268,13 @@ function planejarFinanceiro(ctx, op) {
     case "exe.orcamento.salvar": return planejarOrcamentoLocal(ctx, op);
     case "exe.registrar": return planejarExecucao(ctx, op);
     case "exe.alterar": return planejarAlterarExecucao(ctx, op);
+    case "exe.atendimento.confirmar": return planejarConfirmarAtendimento(ctx, op);
+    case "exe.atendimento.salvar": return planejarAtendimento(ctx, op);
+    case "exe.troca.registrar": return planejarTroca(ctx, op);
+    case "exe.troca.desfazer": return planejarDesfazerTroca(ctx, op);
+    case "exe.credito.usar": return planejarUsarCredito(ctx, op);
+    case "exe.credito.estornar": return planejarEstornarCredito(ctx, op);
+    case "exe.conferencia": return planejarConferencia(ctx, op);
   }
   falhar("dados_invalidos", "Operação desconhecida no Financeiro: " + op.tipo + ".");
 }

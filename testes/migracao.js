@@ -180,6 +180,8 @@ teste("depois de ativar: a conta antiga entra com a senha antiga, e a sessão ab
   a.gs.migracaoV4Ativar();
   a.gs.migracaoV5Ensaiar();
   a.gs.migracaoV5Ativar();
+  a.gs.migracaoV6Ensaiar();
+  a.gs.migracaoV6Ativar();
   const r = a.pedir("crm.ler", {}, a.tokenAntigo);
   const d = v.ok(r, "token da 3.5.0 aceito");
   v.igual(d.leads.length, 2);
@@ -205,6 +207,8 @@ teste("retorno: exportar para a 3.5.0 reescreve as abas antigas (com o cabeçalh
   a.gs.migracaoV4Ativar();
   a.gs.migracaoV5Ensaiar();
   a.gs.migracaoV5Ativar();
+  a.gs.migracaoV6Ensaiar();
+  a.gs.migracaoV6Ativar();
   const tk = a.entrar("pessoa1", "senha-da-conta-antiga");
   a.pedir("entradas.aplicar", { operacoes: [a.op("entrada.criar", { id: "e3", dados: { nome: "Depois", data: "2026-11-20", pagamentos: [{ metodo: "pix", valor: 1000, parcelas: 1 }] } })] }, tk);
   a.sim.props.FLORESER_MANUTENCAO = "sim";
@@ -274,6 +278,9 @@ teste("v2 → v3: preserva dados, dinheiro e sessões; quem estava conectado con
   a.gs.migracaoV5Backup();
   a.gs.migracaoV5Executar();
   a.gs.migracaoV5Ativar();
+  a.gs.migracaoV6Backup();
+  a.gs.migracaoV6Executar();
+  a.gs.migracaoV6Ativar();
   delete a.sim.props.FLORESER_MANUTENCAO;
   a.gs.reiniciarExecucao();
   const ent = v.ok(a.pedir("entradas.ler", {}, tk), "a sessão aberta no schema 2 continua valendo");
@@ -317,7 +324,7 @@ function ambienteV3ComIntegracao() {
   return a;
 }
 
-teste("v3 → v4 → v5: chaves ganham o assinante, a reconciliação evita recriar, e o estoque ganha o modo de saldo sem mudar saldo", () => {
+teste("v3 → v4 → v5 → v6: chaves ganham o assinante, a reconciliação evita recriar, o estoque ganha o modo de saldo, e as execuções a natureza", () => {
   const a = ambienteV3ComIntegracao();
   const d = a.gs.migracaoV4Diagnosticar();
   v.igual(d.erros, []);
@@ -351,6 +358,23 @@ teste("v3 → v4 → v5: chaves ganham o assinante, a reconciliação evita recr
   v.igual(itens5.find((i) => i.id === "loc1").corteEm, "2026-11-10T12:00:00.000Z", "o corte é a contagem que já existia");
   v.igual(itens5.find((i) => i.id === "imp1").modoSaldo, "retrato");
   v.igual(a.linhas("int_externos").find((x) => x.tipo === "orcamento").assinatura.indexOf("reler:"), 0, "orçamento volta à fila para ser relido completo");
+  /* v5 → v6: execuções ganham a natureza que já tinham na prática; nada vira bônus sozinho */
+  a.gs.reiniciarExecucao();
+  a.gs.inserir("exe_orcamentos", [{ id: "o1", pacienteRef: "loc:p1", data: "2026-11-01", situacao: "aprovado", rev: 1 }]);
+  a.gs.inserir("exe_orcamento_itens", [{ id: "i1", orcamentoId: "o1", procedimento: "Limpeza", quantidade: "2", ordem: 0 }]);
+  a.gs.inserir("exe_execucoes", [
+    { id: "e1", agendamentoTipo: "agenda", agendamentoId: "g1", agendamentoData: "2026-11-05", pacienteRef: "loc:p1", procedimento: "Limpeza", quantidade: "1", estado: "realizado", itemRef: "local:o1:i1", associacao: "informada", rev: 1 },
+    { id: "e2", agendamentoTipo: "agenda", agendamentoId: "g2", agendamentoData: "2026-11-06", pacienteRef: "loc:p1", procedimento: "Drenagem", quantidade: "1", estado: "realizado", itemRef: "", associacao: "sem_orcamento", rev: 1 }]);
+  a.gs.reiniciarExecucao();
+  const r6 = a.gs.migracaoV6Ensaiar();
+  v.verdade(r6.ok, JSON.stringify(r6));
+  a.gs.migracaoV6Ativar();
+  const exes6 = a.linhas("exe_execucoes");
+  v.igual(exes6.find((e) => e.id === "e1").natureza, "contratado");
+  v.igual(exes6.find((e) => e.id === "e2").natureza, "", "sem item: a decidir, nunca bônus ou avulso sozinho");
+  v.igual(a.linhas("exe_orcamento_itens")[0].classe, "tratamento");
+  a.gs.reiniciarExecucao();
+  a.gs.migracaoV6Retornar();
   a.gs.reiniciarExecucao();
   a.gs.migracaoV5Retornar();
   a.gs.reiniciarExecucao();

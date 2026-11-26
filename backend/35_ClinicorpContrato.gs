@@ -191,11 +191,31 @@ function normalizarAgendamento(it) {
     precisao: hora ? "hora" : "dia", profissionalId: idExterno(it.Dentist_PersonId), unidade: idExterno(it.Clinic_BusinessId),
     statusId: idExterno(it.StatusId), cancelado: marcadoX(it.Canceled), excluido: marcadoX(it.Deleted),
     pacienteNome: String(it.PatientName || "").slice(0, 200),
+    /* Notes: documentado em /appointment/list — a observação original,
+       guardada inteira (bônus, substituição e complemento são lidos por uma
+       pessoa, nunca deduzidos do texto) */
+    observacao: String(it.Notes || "").slice(0, 1000),
+    previstos: previstosDoAgendamento(it.Procedures),
     /* não documentado na resposta: usado só se vier */
     pacienteExternoId: idExterno(it.PatientId || it.Patient_PersonId),
-    procedimento: String(it.Procedures || "").slice(0, 300), sessoes: it.Session === undefined ? null : Number(it.Session),
+    procedimento: (Array.isArray(it.Procedures) ? previstosDoAgendamento(it.Procedures).map(function (x) { return x.descricao; }).join(", ") : String(it.Procedures || "")).slice(0, 300),
+    /* Session: guardado só como dado da origem — nunca é evidência de execução */
+    sessoes: it.Session === undefined ? null : Number(it.Session),
     alteradoExterno: it.z_LastChange_Date ? String(it.z_LastChange_Date) : ""
   };
+}
+
+/* Procedures NÃO aparece na especificação de /appointment/list: se vier,
+   guarda cada procedimento previsto separado (lista ou texto com vírgula).
+   Previsto não é realização. */
+function previstosDoAgendamento(p) {
+  if (Array.isArray(p)) {
+    return p.slice(0, 20).map(function (x) {
+      if (x && typeof x === "object") return { descricao: String(x.Description || x.OperationDescription || x.Name || "").slice(0, 160), ref: idExterno(x.Procedure_CharacteristicId || x.ProcedureId || x.id) };
+      return { descricao: String(x || "").slice(0, 160), ref: "" };
+    }).filter(function (x) { return x.descricao; });
+  }
+  return String(p || "").split(/\s*[,;]\s*/).filter(Boolean).slice(0, 20).map(function (d) { return { descricao: d.slice(0, 160), ref: "" }; });
 }
 
 function normalizarOrcamento(e) {

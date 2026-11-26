@@ -491,7 +491,7 @@ teste("toda resposta diz versão do servidor, API e schema; nenhuma traz token o
   const tk = a.entrar("bia", "segredo-bia");
   const r = a.pedir("crm.ler", {}, tk);
   v.igual(r.servidor.api, 2);
-  v.igual(r.servidor.schema, 5);
+  v.igual(r.servidor.schema, 6);
   const texto = JSON.stringify(r);
   v.falso(texto.indexOf(tk) >= 0, "o token não volta");
   v.falso(/senhaHash|"salt"/.test(texto));

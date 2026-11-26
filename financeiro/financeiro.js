@@ -1514,13 +1514,22 @@
   /* ---------------------------------------------------------------
      Orçamentos e execução
      ---------------------------------------------------------------
+     Duas vistas sobre a MESMA apuração do servidor:
+       · todas as pacientes: a lista de orçamentos, com as pendências;
+       · uma paciente: os planos (em andamento primeiro), compras e
+         avulsos, os atendimentos a conferir e, dentro de cada plano,
+         resumo, contratado × realizado, histórico por atendimento e
+         bônus/créditos.
      Realizado = procedimento registrado num agendamento identificado. Nada
      vira realizado por data, presença, pagamento, aprovação ou contador
-     de sessões. Orçado, realizado e recebido ficam separados. */
+     de sessões. Orçado, realizado, recebido e crédito ficam separados. */
 
-  var exec = null, orcAberto = null, exAssociar = null, olAberto = null;
-  var NOMES_ASSOC = { informada: "escolhida no registro", confirmada: "escolhida por você", automatica: "pelo código (um só orçamento possível)",
-    reaproveitada: "repetindo a escolha anterior", ambigua: "mais de um orçamento possível", sugerida: "só o nome parecido", sem_orcamento: "sem orçamento" };
+  var exec = null, pac = null, pacRef = "", planoAberto = null, areaPlano = "";
+  var exAssociar = null, olAberto = null, trocaCtx = null, atendCtx = null, credCtx = null;
+  var NOMES_ASSOC = { informada: "escolhida no registro", confirmada: "escolhida por você", automatica: "automática (um só plano possível)",
+    reaproveitada: "escolha anterior (4.3.0)", ambigua: "mais de um plano possível", sugerida: "só o nome parecido", sem_orcamento: "sem plano", avulso: "avulso confirmado" };
+  var NOMES_TIPO_DOC = { plano: "Plano de tratamento", compra: "Compra de produtos", avulso: "Atendimento avulso", vazio: "Sem itens" };
+  var NOMES_SITUACAO = { andamento: "Em andamento", concluido: "Concluído", cancelado: "Cancelado na origem" };
 
   function filtrosExecucao() {
     return { busca: el("fxBusca").value.trim(), situacao: el("fxSituacao").value, base: el("fxBase").value, de: el("fxDe").value, ate: el("fxAte").value };
@@ -1530,18 +1539,24 @@
     var r = await ler("financeiro.orcamentosExecucao", { filtros: filtrosExecucao() });
     if (!r.ok) { el("fonteExecucao").textContent = "Não foi possível carregar agora. " + FloreSerAuth.recado(r) + (exec ? " Mostrando o último carregado." : ""); if (!exec) return; }
     else exec = r.dados;
+    var sel = el("fxPaciente");
+    limpar(sel);
+    sel.appendChild(h("option", { value: "" }, "Todas as pacientes"));
+    (exec.pacientes || []).forEach(function (p) { sel.appendChild(h("option", { value: p.ref }, p.nome)); });
+    sel.value = pacRef;
     renderExecucao();
+    if (pacRef) await carregarPaciente();
   }
 
   function qtdTxt(t) { return qtdBR(t) || "0"; }
-  /* o selo mostra a descrição de verdade (status do Clinicorp, "sessão da
-     Agenda"...); a categoria só pinta o selo e decide o que conta */
-  function textoStatus(st) { return st ? (st.descricao || exec.statusAgenda[st.categoria] || st.categoria) : ""; }
-  function statusAg(st) { return st ? h("span", { class: "selo selo-ag-" + st.categoria, title: exec.statusAgenda[st.categoria] || "" }, textoStatus(st)) : null; }
+  function nomesStatus() { return (pac && pac.statusAgenda) || (exec && exec.statusAgenda) || {}; }
+  function textoStatus(st) { return st ? (st.descricao || nomesStatus()[st.categoria] || st.categoria) : ""; }
+  function statusAg(st) { return st ? h("span", { class: "selo selo-ag-" + st.categoria, title: nomesStatus()[st.categoria] || "" }, textoStatus(st)) : null; }
   function rotuloAgendamento(a) {
     return dataBR(a.data) + (a.hora ? " " + a.hora : "") + " · " + ({ clinicorp: "Clinicorp", agenda: "Agenda", "agenda-hist": "Agenda" }[a.tipo] || a.tipo) +
-      (a.area ? " · " + a.area : "") + " · " + textoStatus(a.status);
+      (a.area ? " · " + a.area : "") + (a.profissional ? " · " + a.profissional : "") + " · " + textoStatus(a.status);
   }
+  function barra(pct) { return h("span", { class: "barra-uso barra-plano", role: "img", "aria-label": pct + "% concluído" }, h("i", { style: "width:" + Math.max(0, Math.min(100, pct)) + "%" })); }
 
   function renderExecucao() {
     if (!exec) return;
@@ -1549,9 +1564,9 @@
     var i = estado.dados.integracao || {};
     f.appendChild(h("details", null, h("summary", null, h("span", { class: "sem-acesso" }, "Execução registrada no Alveare"), " — por quê?"),
       h("p", { class: "sub" }, exec.fonte.falta),
-      h("p", { class: "sub" }, "Orçamentos e agendamentos do Clinicorp chegam pela sincronização automática" +
+      h("p", { class: "sub" }, "Orçamentos, agendamentos (data, horário, profissional, situação e observação) chegam pela sincronização automática do Clinicorp" +
         (i.atualizadoEm ? " (última em " + new Date(i.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + ")" : "") +
-        ". Cada linha de procedimento do orçamento do Clinicorp conta como uma unidade (a API não informa quantidade). O \"executado\" que o Clinicorp mostra no orçamento aparece só como conferência.")));
+        ". Os procedimentos de cada agendamento e o marcador não vêm pela API: entram pelo relatório de agendamentos ou na própria tela. O contador do Controle de Sessões, o campo Session e o \"executado\" do orçamento não contam como execução.")));
     f.appendChild(h("div", null, "O período considera " + (el("fxBase").value === "execucao" ? "a data em que o procedimento foi realizado." : "a data do orçamento.") +
       " Valor acordado e valor realizado vêm do orçamento; o recebido fica nas Entradas."));
 
@@ -1561,20 +1576,22 @@
     pend.forEach(function (e) {
       lp.appendChild(h("li", null, h("span", { class: "nome" }, e.pacienteNome + " · " + e.procedimento + " × " + qtdTxt(e.quantidade)),
         h("span", { class: "det" }, dataBR(e.agendamentoData) + " · " + (NOMES_ASSOC[e.associacao] || e.associacao)),
-        h("span", { class: "acoes" }, h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAssociar(e); } }, "Escolher orçamento"))));
+        h("span", { class: "acoes" }, h("button", { type: "button", class: "btn btn-quiet", onclick: function () { selecionarPaciente(e.pacienteRef); } }, "Abrir a paciente"))));
     });
 
     var corpo = limpar(el("tabelaOrcamentos").querySelector("tbody"));
     exec.orcamentos.forEach(function (o) {
       var t = o.totais;
-      corpo.appendChild(h("tr", { class: "clicavel", tabindex: "0", onclick: function () { abrirOrcamento(o.ref); }, onkeydown: function (ev) { if (ev.key === "Enter") abrirOrcamento(o.ref); } },
+      var abrir = function () { selecionarPaciente(o.pacienteRef).then(function () { abrirPlano(o.ref); }); };
+      corpo.appendChild(h("tr", { class: "clicavel", tabindex: "0", onclick: abrir, onkeydown: function (ev) { if (ev.key === "Enter") abrir(); } },
         h("td", null, o.pacienteNome || "—"),
-        h("td", null, (o.origem === "clinicorp" ? "Clinicorp " : "Alveare ") + o.id, o.procedimentosIncompletos ? h("span", { class: "sub desatualizado" }, "procedimentos incompletos") : null),
+        h("td", null, (o.origem === "clinicorp" ? "Clinicorp " : "Alveare ") + o.id, h("span", { class: "sub" }, (NOMES_TIPO_DOC[o.tipo] || "") + (o.misto ? " · documento misto" : "") +
+          (o.aClassificar ? " · itens a classificar" : "") + (o.procedimentosIncompletos ? " · procedimentos incompletos" : ""))),
         h("td", null, dataBR(o.data)),
-        h("td", null, o.situacao || "—"),
+        h("td", null, NOMES_SITUACAO[o.situacaoPlano] || o.situacao || "—", o.pendencias ? h("span", { class: "sub desatualizado" }, o.pendencias + " pendência(s)") : null),
         h("td", { class: "dir" }, qtdTxt(t.orcada)),
         h("td", { class: "dir" }, qtdTxt(t.agendada)),
-        h("td", { class: "dir" }, qtdTxt(t.realizada), Number(t.excedente) > 0 ? h("span", { class: "sub desatualizado" }, "+" + qtdTxt(t.excedente) + " excedente") : null),
+        h("td", { class: "dir" }, qtdTxt(t.cumprida), Number(t.excedente) > 0 ? h("span", { class: "sub desatualizado" }, "+" + qtdTxt(t.excedente) + " excedente") : null),
         h("td", { class: "dir" }, qtdTxt(t.restante)),
         h("td", { class: "dir" }, t.valorAcordado === null ? h("span", { class: "sub" }, "não informado") : brl(t.valorAcordado))));
     });
@@ -1585,70 +1602,362 @@
     if (!sem.length) ls.appendChild(h("li", { class: "det" }, "Nenhum."));
     sem.forEach(function (e) {
       ls.appendChild(h("li", null, h("span", { class: "nome" }, e.pacienteNome + " · " + e.procedimento + " × " + qtdTxt(e.quantidade)),
-        h("span", { class: "det" }, dataBR(e.agendamentoData) + " · " + (e.estado === "previsto" ? "previsto" : "realizado") + (e.conta ? "" : " · não conta (agendamento cancelado/falta)")),
-        h("span", { class: "acoes" }, h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAssociar(e); } }, "Ligar a um orçamento"))));
+        h("span", { class: "det" }, dataBR(e.agendamentoData) + " · " + (e.natureza === "avulso" ? "avulso confirmado" : e.natureza === "gratuito" ? "bônus sem plano" : "a decidir") +
+          (e.conta ? "" : " · não conta (agendamento cancelado/falta)")),
+        h("span", { class: "acoes" }, h("button", { type: "button", class: "btn btn-quiet", onclick: function () { selecionarPaciente(e.pacienteRef); } }, "Abrir a paciente"))));
     });
     var dl = limpar(el("listaProcedimentos"));
     var vistos = {};
     exec.orcamentos.forEach(function (o) { o.itens.forEach(function (it) { if (!vistos[it.procedimento]) { vistos[it.procedimento] = true; dl.appendChild(h("option", { value: it.procedimento })); } }); });
   }
 
-  function abrirOrcamento(ref) {
-    var o = exec.orcamentos.filter(function (x) { return x.ref === ref; })[0];
-    if (!o) return;
-    orcAberto = o;
-    el("orcTitulo").textContent = (o.pacienteNome || "Paciente") + " · orçamento " + o.id;
-    var dl = limpar(el("orcDados"));
-    var par = function (k, v) { if (v === null || v === undefined || v === "") return; dl.appendChild(h("dt", null, k)); dl.appendChild(h("dd", null, v)); };
-    par("Origem", o.origem === "clinicorp" ? "Clinicorp (só leitura aqui)" : "Orçamento do Alveare");
-    par("Data", dataBR(o.data)); par("Situação", o.situacao); par("Profissional", o.profissional);
-    par("Desconto", o.desconto ? brl(o.desconto) : ""); par("Notas", o.notas);
-    var t = o.totais;
-    var c = limpar(el("orcCartoes"));
-    c.appendChild(cartao("Orçado", qtdTxt(t.orcada), t.valorAcordado === null ? "valor não informado" : brl(t.valorAcordado) + " acordado"));
-    c.appendChild(cartao("Realizado", qtdTxt(t.realizada), t.valorRealizado === null ? "" : brl(t.valorRealizado) + " pelo valor acordado"));
-    c.appendChild(cartao("Agendado", qtdTxt(t.agendada), "previsto em agendamentos futuros"));
-    c.appendChild(cartao("Restante", qtdTxt(t.restante), Number(t.excedente) > 0 ? qtdTxt(t.excedente) + " além do orçado" : "", { classe: Number(t.excedente) > 0 ? "alerta" : "" }));
-    var tb = limpar(el("orcItens").querySelector("tbody"));
-    o.itens.forEach(function (it) {
-      tb.appendChild(h("tr", null,
-        h("td", null, it.procedimento, h("span", { class: "sub" }, [it.procedimentoRef ? "código " + it.procedimentoRef : "", it.naoAprovado ? "não aprovado" : "",
-          it.executadoNoClinicorp ? "Clinicorp marca executado" + (it.executadoEm ? " em " + dataBR(it.executadoEm) : "") + " (só conferência)" : ""].filter(Boolean).join(" · "))),
-        h("td", { class: "dir" }, qtdTxt(it.orcada)), h("td", { class: "dir" }, qtdTxt(it.agendada)),
-        h("td", { class: "dir" }, qtdTxt(it.realizada), Number(it.excedente) > 0 ? h("span", { class: "sub desatualizado" }, "+" + qtdTxt(it.excedente) + " excedente") : null),
-        h("td", { class: "dir" }, qtdTxt(it.restante)),
-        h("td", { class: "dir" }, it.valorAcordado === null || it.valorAcordado === undefined ? "—" : brl(it.valorAcordado))));
+  /* ---------- a paciente ---------- */
+
+  async function selecionarPaciente(ref) {
+    pacRef = ref || "";
+    el("fxPaciente").value = pacRef;
+    if (!pacRef) { pac = null; renderPaciente(); return; }
+    await carregarPaciente();
+  }
+
+  async function carregarPaciente() {
+    if (!pacRef) return;
+    var r = await ler("financeiro.pacientePlanos", { pacienteRef: pacRef });
+    if (!r.ok) { el("fxPacienteNota").textContent = "Não foi possível carregar a paciente. " + FloreSerAuth.recado(r); return; }
+    pac = r.dados;
+    renderPaciente();
+    if (planoAberto && el("dlgOrcamento").open) abrirPlano(planoAberto.ref);
+  }
+
+  function itemDocumento(d) {
+    var abrir = function () { abrirPlano(d.ref); };
+    var detalhe = [NOMES_TIPO_DOC[d.tipo] || d.tipo, (d.origem === "clinicorp" ? "Clinicorp " : "Alveare ") + d.id, "início " + dataBR(d.inicio)];
+    if (d.misto) detalhe.push("documento misto");
+    if (d.aClassificar) detalhe.push("itens a classificar");
+    return h("li", { class: "item-plano clicavel", tabindex: "0", onclick: abrir, onkeydown: function (ev) { if (ev.key === "Enter") abrir(); } },
+      h("span", { class: "nome" }, d.resumoItens.join(" · ") || "Sem itens"),
+      h("span", { class: "det" }, detalhe.join(" · ")),
+      d.tipo === "plano" ? h("span", { class: "progresso-plano" }, barra(d.progresso),
+        h("span", { class: "det" }, qtdTxt(d.cumpridas) + " de " + qtdTxt(d.contratadas) + " (" + d.progresso + "%) · " + (NOMES_SITUACAO[d.situacao] || d.situacao) +
+          (Number(d.restante) > 0 ? " · " + qtdTxt(d.restante) + " a realizar" : ""))) : null,
+      d.pendencias ? h("span", { class: "selo selo-vencida" }, d.pendencias + " pendência(s)") : null);
+  }
+
+  function renderPaciente() {
+    var mostrar = !!(pac && pacRef);
+    el("fichaPaciente").hidden = !mostrar;
+    el("visaoGeralExec").hidden = mostrar;
+    el("fxPacienteNota").textContent = mostrar ? "" : "Escolha uma paciente para ver os planos, o que ela já recebeu e o que ainda pode agendar.";
+    if (!mostrar) return;
+    el("fpNome").textContent = pac.paciente.nome || "Paciente";
+    var planos = pac.documentos.filter(function (d) { return d.tipo === "plano"; });
+    var andamento = planos.filter(function (d) { return d.situacao === "andamento"; });
+    var finalizados = planos.filter(function (d) { return d.situacao !== "andamento"; });
+    var outros = pac.documentos.filter(function (d) { return d.tipo !== "plano"; });
+    var conferir = pac.atendimentos.filter(function (a) { return a.aConfirmar || a.observacaoPendente || a.divergencia; });
+    var b = pac.beneficios;
+    var c = limpar(el("fpCartoes"));
+    c.appendChild(cartao("Planos em andamento", String(andamento.length), finalizados.length ? finalizados.length + " finalizado(s)" : ""));
+    c.appendChild(cartao("Atendimentos a conferir", String(conferir.length), "sem registro do que foi feito ou com observação a ler", { classe: conferir.length ? "alerta" : "" }));
+    c.appendChild(cartao("Bônus concedidos", brl(b.bonus), b.bonusPendente ? b.bonusPendente + " com valor a conferir" : "valor de venda de referência"));
+    c.appendChild(cartao("Crédito disponível", brl(Math.max(0, b.creditoSaldo)), b.credito ? brl(b.credito) + " gerado · " + brl(b.creditoUsado) + " usado" : "nenhum crédito gerado",
+      { classe: b.creditoSaldo < 0 ? "alerta" : "" }));
+
+    el("fpBlocoConferir").hidden = !conferir.length;
+    var lc = limpar(el("fpConferir"));
+    conferir.forEach(function (a) { lc.appendChild(itemAtendimento(a, null)); });
+
+    var decidir = pac.pendentes;
+    el("fpBlocoDecidir").hidden = !decidir.length;
+    var ld = limpar(el("fpDecidir"));
+    decidir.forEach(function (e) {
+      ld.appendChild(h("li", null, h("span", { class: "nome" }, e.procedimento + " × " + qtdTxt(e.quantidade) + " · " + dataBR(e.agendamentoData)),
+        h("span", { class: "det" }, (NOMES_ASSOC[e.associacao] || "a decidir") + (e.candidatos && e.candidatos.length ? " · " + e.candidatos.map(function (x) {
+          return "plano de " + dataBR(x.planoData) + " (disponível " + qtdTxt(x.disponivel) + ")"; }).join(" ou ") : "")),
+        h("span", { class: "acoes" }, h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAssociar(e); } }, "Decidir"))));
     });
-    var ul = limpar(el("orcExecucoes"));
-    var todas = [];
-    o.itens.forEach(function (it) { it.execucoes.forEach(function (e) { todas.push({ e: e, it: it }); }); });
-    todas.sort(function (a, b) { return String(b.e.agendamentoData).localeCompare(String(a.e.agendamentoData)); });
-    if (!todas.length) ul.appendChild(h("li", { class: "det" }, "Nenhum procedimento registrado em agendamento ainda."));
-    todas.forEach(function (x) { ul.appendChild(linhaExecucao(x.e, x.it.procedimento)); });
-    el("orcNota").textContent = o.origem === "clinicorp" ? "Itens e valores vêm do Clinicorp; o que foi realizado vem dos registros feitos aqui." : "";
-    el("orcEditar").hidden = o.origem !== "local";
+
+    var la = limpar(el("fpAndamento"));
+    if (!andamento.length) la.appendChild(h("li", { class: "det" }, "Nenhum plano em andamento."));
+    andamento.forEach(function (d) { la.appendChild(itemDocumento(d)); });
+    el("fpBlocoOutros").hidden = !outros.length;
+    var lo = limpar(el("fpOutros"));
+    outros.forEach(function (d) { lo.appendChild(itemDocumento(d)); });
+    el("fpBlocoFinalizados").hidden = !finalizados.length;
+    var lf = limpar(el("fpFinalizados"));
+    finalizados.forEach(function (d) { lf.appendChild(itemDocumento(d)); });
+  }
+
+  /* um atendimento: previsto, realizado, observação original e leitura */
+  function itemAtendimento(a, plano) {
+    var acoes = [];
+    var validas = a.execucoes.filter(function (e) { return e.estado !== "desfeito"; });
+    if (a.aConfirmar && a.previstos.length) acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { confirmarAtendimento(a); } }, "Confirmar como previsto"));
+    if (a.status.categoria !== "cancelado" && a.status.categoria !== "falta") {
+      acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirRegistrar({ pacienteRef: a.pacienteRef, agendamentoRef: a.ref }); } }, "Registrar o que foi feito"));
+      if (plano || pac.documentos.some(function (d) { return d.tipo === "plano" && d.situacao === "andamento"; })) {
+        acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirTroca({ planoRef: plano ? plano.ref : "", atendimento: a }); } }, "Troca"));
+      }
+    }
+    acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAtendimento(a); } }, a.observacao ? "Ler observação" : "Completar"));
+    var marcas = [];
+    if (a.marcador) marcas.push(h("span", { class: "selo selo-origem" }, a.marcador));
+    if (a.divergencia) marcas.push(h("span", { class: "selo selo-vencida", title: "Os procedimentos da origem mudaram depois da confirmação" }, "origem mudou"));
+    return h("li", { class: "atendimento", "data-ref": a.ref },
+      h("span", { class: "nome" }, dataBR(a.data) + (a.hora ? " · " + a.hora : "") + (a.profissional ? " · " + a.profissional : "") + (a.area ? " · " + a.area : "")),
+      h("span", { class: "det" }, statusAg(a.status), marcas,
+        a.previstos.length ? " Previsto: " + a.previstos.map(function (p) { return p.descricao; }).join(", ") + (a.previstosFonte === "relatorio" ? " (relatório)" : a.previstosFonte === "alveare" ? " (completado no Alveare)" : "") : " Sem previstos da origem"),
+      validas.length ? h("ul", { class: "lista-execucoes" }, validas.map(function (e) { return linhaExecucao(e, plano); })) : null,
+      a.observacao ? h("span", { class: "observacao-linha" }, h("b", null, "Observação: "), "“" + a.observacao + "”",
+        a.interpretacao ? h("span", { class: "selo selo-paga" }, (pac.interpretacoes || {})[a.interpretacao] || a.interpretacao) : h("span", { class: "selo selo-pendente" }, "leitura a confirmar")) : null,
+      h("span", { class: "acoes" }, acoes));
+  }
+
+  async function confirmarAtendimento(a) {
+    try {
+      var r = await aplicar({ tipo: "exe.atendimento.confirmar", agendamentoTipo: a.tipo, agendamentoId: a.id });
+      var amb = (r.execucoes || []).filter(function (x) { return x.associacao === "ambigua" || x.associacao === "sugerida" || x.associacao === "sem_orcamento"; }).length;
+      toast(amb ? "Confirmado. " + amb + " procedimento(s) precisam da escolha do plano." : "Confirmado como previsto.");
+      await recarregarExecucao();
+    } catch (e) { erroExecucao(e); }
+  }
+
+  function erroExecucao(e) { (el("dlgOrcamento").open ? el("orcErro") : el("fxPacienteNota")).textContent = e.message; }
+
+  async function recarregarExecucao() { await carregarExecucao(); }
+
+  /* ---------- o plano ---------- */
+
+  function cartaoPequeno(rot, val, det, classe) { return cartao(rot, val, det, { classe: classe || "" }); }
+
+  function abrirPlano(ref) {
+    if (!pac) return;
+    var p = pac.planos.filter(function (x) { return x.ref === ref; })[0];
+    if (!p) return;
+    planoAberto = p;
+    var r = p.resumo;
+    el("orcTitulo").textContent = (NOMES_TIPO_DOC[p.tipo.tipo] || "Plano") + " · " + (p.pacienteNome || pac.paciente.nome) + " · " + (p.origem === "clinicorp" ? "Clinicorp " : "Alveare ") + p.id;
+    el("orcOrigem").textContent = (p.origem === "clinicorp" ? "Itens e valores vêm do Clinicorp (só leitura aqui); o que foi realizado vem dos registros por atendimento." : "Orçamento do Alveare.") +
+      (p.situacaoOrigem ? " Situação na origem: " + p.situacaoOrigem + "." : "") + (p.tipo.misto ? " Documento misto: só os itens de tratamento entram no progresso." : "") +
+      " Pagamento, passagem do tempo ou um orçamento novo não encerram este plano.";
+    var c = limpar(el("orcCartoes"));
+    c.appendChild(cartaoPequeno("Início", dataBR(r.inicio), "primeiro atendimento " + (r.primeiroAtendimento ? dataBR(r.primeiroAtendimento) : "ainda não houve")));
+    c.appendChild(cartaoPequeno("Situação", NOMES_SITUACAO[r.situacao] || r.situacao, r.pendencias ? r.pendencias + " pendência(s)" : "sem pendências", r.pendencias ? "alerta" : ""));
+    c.appendChild(cartaoPequeno("Atendimentos", String(r.atendimentos), qtdTxt(r.procedimentos) + " procedimento(s) entregue(s)"));
+    c.appendChild(cartao("Progresso", qtdTxt(r.cumpridas) + "/" + qtdTxt(r.contratadas), r.progresso + "% das unidades contratadas · " + qtdTxt(r.restante) + " restante(s)" +
+      (Number(r.excedente) > 0 ? " · " + qtdTxt(r.excedente) + " excedente" : ""), { extra: barra(r.progresso) }));
+    var lp = limpar(el("orcPendencias"));
+    p.pendencias.forEach(function (x) {
+      var acao = null;
+      if (x.tipo === "associacao") {
+        var e = pac.pendentes.filter(function (y) { return y.id === x.execucaoId; })[0];
+        if (e) acao = h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAssociar(e); } }, "Decidir");
+      }
+      if (x.tipo === "observacao") {
+        var a = p.historico.filter(function (y) { return y.ref === x.agendamentoRef; })[0];
+        if (a) acao = h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAtendimento(a); } }, "Ler observação");
+      }
+      lp.appendChild(h("li", null, h("span", { class: "det" }, x.texto), acao ? h("span", { class: "acoes" }, acao) : null));
+    });
+
+    var ld = limpar(el("orcDisponiveis"));
+    if (!p.disponiveis.length) ld.appendChild(h("li", { class: "det" }, r.situacao === "concluido" ? "Plano concluído: nada a agendar." : "Nada livre para agendar agora."));
+    p.disponiveis.forEach(function (x) {
+      ld.appendChild(h("li", null, h("b", null, qtdTxt(x.quantidade) + "× " + x.procedimento),
+        x.porTroca ? h("span", { class: "det" }, " — por troca de " + x.origem) : null, x.aConferir ? h("span", { class: "det desatualizado" }, " — quantidade a conferir") : null));
+    });
+
+    var tb = limpar(el("orcItens").querySelector("tbody"));
+    p.linhas.forEach(function (l) { tb.appendChild(linhaContratada(p, l)); });
+    var dr = limpar(el("orcDireitos"));
+    var trocasAtivas = p.trocas.filter(function (t) { return t.ativa; });
+    if (trocasAtivas.length) {
+      dr.appendChild(h("h4", { class: "sub-titulo" }, "Direitos por troca"));
+      dr.appendChild(h("div", { class: "tabela-rolagem" }, h("table", { class: "tabela tabela-compacta" },
+        h("thead", null, h("tr", null, h("th", null, "Troca"), h("th", { class: "dir" }, "Prometido"), h("th", { class: "dir" }, "Entregue"), h("th", { class: "dir" }, "Disponível"))),
+        h("tbody", null, trocasAtivas.map(function (t) {
+          return h("tr", null, h("td", null, qtdTxt(t.quantidadeOrigem) + " " + t.procedimentoOrigem + " → " + t.procedimentoSubstituto, h("span", { class: "sub" }, "registrada em " + dataBR(t.data))),
+            h("td", { class: "dir" }, qtdTxt(t.quantidadePrometida)), h("td", { class: "dir" }, qtdTxt(t.entregue)), h("td", { class: "dir" }, h("b", null, qtdTxt(t.restante))));
+        })))));
+    }
+    var dout = limpar(el("orcOutros"));
+    if (p.outrosItens.length || p.foraDaAprovacao.length) {
+      dout.appendChild(h("h4", { class: "sub-titulo" }, "Outros itens do documento (fora do progresso)"));
+      var ul = h("ul", { class: "lista lista-compacta" });
+      p.outrosItens.forEach(function (l) {
+        ul.appendChild(h("li", null, h("span", { class: "nome" }, qtdTxt(l.contratado) + "× " + l.procedimento), h("span", { class: "det" }, (pac.classes[l.classe] || "a classificar")), seletorClasse(p, l)));
+      });
+      p.foraDaAprovacao.forEach(function (x) { ul.appendChild(h("li", null, h("span", { class: "nome" }, x.procedimento), h("span", { class: "det" }, x.motivo))); });
+      dout.appendChild(ul);
+    }
+
+    var areas = {};
+    p.historico.forEach(function (a) { if (a.area) areas[a.area] = true; });
+    var segs = limpar(el("orcAreas"));
+    var lista = Object.keys(areas);
+    if (lista.length > 1) {
+      [""].concat(lista).forEach(function (ar) {
+        segs.appendChild(h("button", { type: "button", "aria-pressed": areaPlano === ar ? "true" : "false", onclick: function () { areaPlano = ar; abrirPlano(p.ref); } }, ar || "Todas"));
+      });
+    } else areaPlano = "";
+    var hist = limpar(el("orcHistorico"));
+    var vis = p.historico.filter(function (a) { return !areaPlano || a.area === areaPlano; });
+    if (!vis.length) hist.appendChild(h("li", { class: "det" }, "Nenhum atendimento ligado a este plano ainda."));
+    vis.forEach(function (a) { hist.appendChild(itemAtendimento(a, p)); });
+
+    renderBeneficios(p);
+    el("orcEditar").hidden = p.origem !== "local";
+    el("orcTroca").hidden = !p.linhas.some(function (l) { return Number(l.disponivel) > 0; });
     el("orcErro").textContent = "";
     if (!el("dlgOrcamento").open) el("dlgOrcamento").showModal();
   }
 
-  function linhaExecucao(e, nomeItem) {
+  function seletorClasse(p, l) {
+    var s = h("select", { class: "input input-mini", "aria-label": "Classe de " + l.procedimento });
+    s.appendChild(h("option", { value: "" }, "classificar…"));
+    Object.keys(pac.classes).forEach(function (k) { s.appendChild(h("option", { value: k }, pac.classes[k])); });
+    s.value = l.classe || "";
+    s.addEventListener("change", async function () {
+      if (!s.value) return;
+      var todos = !!l.procedimentoRef && window.confirm("Usar esta classe para todos os itens com o procedimento " + l.procedimento + " (código " + l.procedimentoRef + ")?\n\nOK: todos · Cancelar: só este item");
+      try {
+        await aplicar({ tipo: "exe.conferencia", dados: { tipo: "classe", alvo: todos ? "ref:" + l.procedimentoRef : "item:" + l.ref, valor: s.value } });
+        toast("Classificado.");
+        await recarregarExecucao();
+      } catch (e) { erroExecucao(e); }
+    });
+    return s;
+  }
+
+  function linhaContratada(p, l) {
+    var subs = [];
+    if (l.procedimentoRef) subs.push("código " + l.procedimentoRef);
+    subs.push({ orcamento: "quantidade do orçamento", linhas: l.linhasNaOrigem + " linha(s) na origem", conferida: "quantidade conferida" }[l.contratadoFonte] || "");
+    if (!l.classe) subs.push("classe a confirmar");
+    if (l.executadoNoClinicorp) subs.push("Clinicorp marca executado (só conferência)");
+    var acoes = [h("button", { type: "button", class: "btn btn-quiet", onclick: function () { conferirQuantidade(p, l); } }, l.aConferir ? "Conferir quantidade" : "Quantidade")];
+    if (Number(l.disponivel) > 0) acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirTroca({ planoRef: p.ref, linhaChave: l.chave }); } }, "Trocar"));
+    return h("tr", null,
+      h("td", null, l.procedimento, h("span", { class: "sub" }, subs.filter(Boolean).join(" · ")), !l.classe ? seletorClasse(p, l) : null),
+      h("td", { class: "dir" }, qtdTxt(l.contratado), l.aConferir ? h("span", { class: "sub desatualizado" }, "a conferir (texto diz " + qtdTxt(l.sugestao) + ")") : null),
+      h("td", { class: "dir" }, qtdTxt(l.realizada)),
+      h("td", { class: "dir" }, Number(l.substituida) ? qtdTxt(l.substituida) : "—"),
+      h("td", { class: "dir" }, Number(l.comprometida) ? qtdTxt(l.comprometida) : "—"),
+      h("td", { class: "dir" }, h("b", null, qtdTxt(l.disponivel))),
+      h("td", { class: "dir" }, Number(l.excedente) ? h("span", { class: "desatualizado" }, "+" + qtdTxt(l.excedente)) : "—"),
+      h("td", null, h("span", { class: "acoes" }, acoes)));
+  }
+
+  async function conferirQuantidade(p, l) {
+    var q = window.prompt("Quantidade contratada de " + l.procedimento + " neste plano" + (l.sugestao ? " (o texto da origem sugere " + qtdTxt(l.sugestao) + ")" : "") + ":",
+      qtdTxt(l.sugestao || l.contratado));
+    if (!q) return;
+    var m = window.prompt("Como foi conferido? (fica no histórico)", "");
+    if (m === null) return;
+    try {
+      await aplicar({ tipo: "exe.conferencia", dados: { tipo: "quantidade", alvo: p.ref + "|" + l.chave, valor: q.trim(), motivo: m } });
+      toast("Quantidade conferida.");
+      await recarregarExecucao();
+    } catch (e) { erroExecucao(e); }
+  }
+
+  function custoTxt(v, parcial) { return v === null || v === undefined ? h("span", { class: "sub" }, "não informado") : brl(v) + (parcial ? " (parcial)" : ""); }
+
+  function irParaAtendimento(ref) {
+    var li = el("orcHistorico").querySelector('[data-ref="' + ref + '"]');
+    if (li) { li.scrollIntoView({ behavior: "smooth", block: "center" }); li.classList.add("realce"); setTimeout(function () { li.classList.remove("realce"); }, 1800); }
+  }
+
+  function renderBeneficios(p) {
+    var b = p.beneficios;
+    var c = limpar(el("orcBenefCartoes"));
+    c.appendChild(cartao("Bônus (valor de venda)", brl(b.bonus), b.bonusPendente ? b.bonusPendente + " a conferir" : "dispensado pela clínica"));
+    c.appendChild(cartao("Custo das entregas", !b.custoEntregueConhecido ? (b.custoParcial ? "não informado" : brl(0)) : brl(b.custoEntregue) + (b.custoParcial ? "*" : ""),
+      b.custoParcial ? (b.custoEntregueConhecido ? "* parcial: há custo não informado" : "sem ficha de custo") : "custo interno"));
+    c.appendChild(cartao("Custo adicional das trocas", !b.custoAdicionalConhecido && b.custoParcial ? "não informado" : brl(b.custoAdicional) + (b.custoParcial && b.custoAdicionalConhecido ? "*" : ""),
+      "em relação ao que seria feito"));
+    c.appendChild(cartao("Crédito", brl(Math.max(0, b.creditoSaldo)), brl(b.credito) + " gerado · " + brl(b.creditoUsado) + " usado", { classe: b.creditoSaldo < 0 ? "alerta" : "" }));
+    var dt = limpar(el("orcTrocas"));
+    if (p.trocas.length) {
+      dt.appendChild(h("h4", { class: "sub-titulo" }, "Trocas"));
+      var ul = h("ul", { class: "lista" });
+      p.trocas.forEach(function (t) {
+        var v = t.valores;
+        var acoes = [];
+        if (t.agendamentoRef) acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { irParaAtendimento(t.agendamentoRef); } }, "Ver atendimento"));
+        if (t.ativa && t.creditoSaldo > 0) acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirCredito(p, t); } }, "Usar crédito"));
+        if (t.ativa) acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { desfazerTroca(t); } }, "Desfazer"));
+        ul.appendChild(h("li", { class: t.ativa ? "" : "desfeita" },
+          h("span", { class: "nome" }, qtdTxt(t.quantidadeOrigem) + " " + t.procedimentoOrigem + " → " + qtdTxt(t.quantidadePrometida) + " " + t.procedimentoSubstituto +
+            (t.ativa ? "" : " (desfeita: " + (t.motivo || "") + ")")),
+          h("span", { class: "det" }, dataBR(t.data) + " · entregue " + qtdTxt(t.entregue) + " de " + qtdTxt(t.quantidadePrometida) +
+            " · referência " + (v.valorOrigem === null ? "a conferir" : brl(v.valorOrigem)) + " → " + (v.valorSubstituto === null ? "a conferir" : brl(v.valorSubstituto)) +
+            (v.cobrado ? " · cobrado " + brl(v.cobrado) : "")),
+          h("span", { class: "det" }, v.pendente ? h("b", { class: "desatualizado" }, "Bônus/crédito a conferir (falta valor de referência)") :
+            [v.bonus ? "Bônus " + brl(v.bonus) : null, v.credito ? "Crédito " + brl(v.credito) + " (usado " + brl(t.creditoUsado) + ", saldo " + brl(t.creditoSaldo) + ")" : null,
+              !v.bonus && !v.credito ? "Sem diferença de valor" : null].filter(Boolean).join(" · "),
+            " · custo da entrega ", custoTxt(v.custoEntregue), " · custo adicional ", custoTxt(v.custoAdicional)),
+          h("span", { class: "sub" }, t.basePreco + (t.baseCusto ? " · custos: " + t.baseCusto : "")),
+          t.usos.length ? h("ul", { class: "lista lista-compacta" }, t.usos.map(function (u) {
+            return h("li", { class: u.estado === "estornado" ? "desfeita" : "" }, h("span", { class: "det" }, dataBR(u.data) + " · " + brl(u.valor) + " → " +
+              (u.destinoRef ? "plano " + u.destinoRef.split(":").pop() : u.destinoDescricao) + (u.estado === "estornado" ? " · estornado: " + u.motivo : "") + " · " + u.autorNome),
+              u.estado !== "estornado" ? h("span", { class: "acoes" }, h("button", { type: "button", class: "btn btn-quiet", onclick: function () { estornarCredito(u); } }, "Estornar")) : null);
+          })) : null,
+          h("span", { class: "acoes" }, acoes)));
+      });
+      dt.appendChild(ul);
+    }
+    var dg = limpar(el("orcGratuitos"));
+    if (p.gratuitos.length) {
+      dg.appendChild(h("h4", { class: "sub-titulo" }, "Bônus: adicionais gratuitos"));
+      dg.appendChild(h("ul", { class: "lista" }, p.gratuitos.map(function (g) {
+        return h("li", null, h("span", { class: "nome" }, qtdTxt(g.quantidade) + "× " + g.procedimento + " · " + dataBR(g.data)),
+          h("span", { class: "det" }, "Bônus " + (g.bonus === null ? "a conferir" : brl(g.bonus)) + " · custo ", custoTxt(g.custo), g.baseReferencia ? " · " + g.baseReferencia : ""),
+          h("span", { class: "acoes" }, h("button", { type: "button", class: "btn btn-quiet", onclick: function () { irParaAtendimento(g.agendamentoRef); } }, "Ver atendimento")));
+      })));
+    }
+  }
+
+  async function desfazerTroca(t) {
+    var m = window.prompt("Desfazer a troca " + t.procedimentoOrigem + " → " + t.procedimentoSubstituto + "? A unidade original volta ao saldo, o bônus/crédito sai da apuração e as entregas voltam a pedir decisão. Motivo:", "");
+    if (!m) return;
+    try { await aplicar({ tipo: "exe.troca.desfazer", id: t.id, revBase: t._rev, motivo: m }); toast("Troca desfeita."); await recarregarExecucao(); }
+    catch (e) { erroExecucao(e); }
+  }
+
+  async function estornarCredito(u) {
+    var m = window.prompt("Estornar este uso de crédito? O valor volta ao saldo. Motivo:", "");
+    if (!m) return;
+    try { await aplicar({ tipo: "exe.credito.estornar", id: u.id, revBase: u._rev, motivo: m }); toast("Uso estornado."); await recarregarExecucao(); }
+    catch (e) { erroExecucao(e); }
+  }
+
+  /* ---------- execuções ---------- */
+
+  function linhaExecucao(e, plano) {
     var acoes = [];
     if (e.estado === "previsto") acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { alterarExecucao(e, { estado: "realizado" }, "Marcado como realizado."); } }, "Realizado"));
     if (e.estado !== "desfeito") {
       acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () {
-        var q = window.prompt("Quantidade realizada neste agendamento:", qtdBR(e.quantidade));
-        if (q) alterarExecucao(e, { quantidade: q }, "Quantidade corrigida.");
+        var q = window.prompt("Quantidade realizada neste atendimento:", qtdBR(e.quantidade));
+        if (!q) return;
+        var m = e.estado === "realizado" ? window.prompt("Motivo da correção (fica no histórico):", "") : "";
+        if (m === null) return;
+        alterarExecucao(e, { quantidade: q, motivo: m }, "Quantidade corrigida.");
       } }, "Quantidade"));
-      acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAssociar(e); } }, "Orçamento"));
+      acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () { abrirAssociar(e); } }, "Plano / natureza"));
       acoes.push(h("button", { type: "button", class: "btn btn-quiet", onclick: function () {
         var m = window.prompt("Desfazer este registro? Ele continua no histórico e deixa de contar. Motivo:", "");
-        if (m !== null) alterarExecucao(e, { estado: "desfeito", motivo: m }, "Registro desfeito.");
+        if (m) alterarExecucao(e, { estado: "desfeito", motivo: m }, "Registro desfeito.");
       } }, "Desfazer"));
     }
-    return h("li", null,
-      h("span", { class: "nome" }, (nomeItem || e.procedimento) + " × " + qtdTxt(e.quantidade) + " · " + ({ previsto: "previsto", realizado: "realizado", desfeito: "desfeito" }[e.estado])),
-      h("span", { class: "det" }, dataBR(e.agendamentoData) + " · ", statusAg(e.agendamentoStatus), e.conta || e.estado !== "realizado" ? "" : " não conta (agendamento " + (e.agendamentoStatus ? e.agendamentoStatus.categoria : "desconhecido") + ")",
-        " · " + (NOMES_ASSOC[e.associacao] || "") + (e.origem === "importacao" ? " · relatório importado" : "")),
+    var nat = { contratado: "conforme o plano", substituicao: "em substituição", gratuito: "bônus", avulso: "avulso" }[e.natureza] || "a decidir";
+    var troca = e.trocaId && plano ? plano.trocas.filter(function (t) { return t.id === e.trocaId; })[0] : null;
+    return h("li", { class: e.estado === "desfeito" ? "desfeita" : "" },
+      h("span", { class: "nome" }, e.procedimento + " × " + qtdTxt(e.quantidade) + (troca ? " — em substituição a " + qtdTxt(troca.quantidadeOrigem) + " " + troca.procedimentoOrigem : "")),
+      h("span", { class: "det" }, h("span", { class: "selo selo-nat-" + (e.natureza || "pendente") }, nat), " ", { previsto: "previsto", realizado: "realizado", desfeito: "desfeito" }[e.estado],
+        e.conta || e.estado !== "realizado" ? "" : " · não conta (agendamento " + (e.agendamentoStatus ? textoStatus(e.agendamentoStatus) : "desconhecido") + ")",
+        e.natureza === "contratado" || !e.natureza ? " · " + (NOMES_ASSOC[e.associacao] || "") : "", e.origem === "importacao" ? " · relatório importado" : e.origem === "confirmacao" ? " · confirmado como previsto" : ""),
       h("span", { class: "acoes" }, acoes));
   }
 
@@ -1656,9 +1965,8 @@
     try {
       await aplicar({ tipo: "exe.alterar", id: e.id, revBase: e._rev, campos: campos });
       toast(msg);
-      await carregarExecucao();
-      if (orcAberto && el("dlgOrcamento").open) abrirOrcamento(orcAberto.ref);
-    } catch (err) { (el("dlgOrcamento").open ? el("orcErro") : el("fonteExecucao")).textContent = err.message; }
+      await recarregarExecucao();
+    } catch (err) { erroExecucao(err); }
   }
 
   function preencherPacientes(sel, valor) {
@@ -1668,58 +1976,270 @@
     sel.value = valor || "";
   }
 
+  /* linhas de tratamento dos planos da paciente (da ficha, se aberta) */
   function itensDaPaciente(ref) {
     var lista = [];
+    if (pac && pac.paciente.ref === ref) {
+      pac.planos.forEach(function (p) {
+        if (p.tipo.tipo !== "plano") return;
+        p.linhas.forEach(function (l) { lista.push({ ref: l.ref, nome: l.procedimento + " · plano " + p.id + " de " + dataBR(p.data) + " (disponível " + qtdTxt(l.disponivel) + ")" +
+          (p.resumo.situacao !== "andamento" ? " · " + (NOMES_SITUACAO[p.resumo.situacao] || "") : ""), it: l, plano: p }); });
+      });
+      return lista;
+    }
     exec.orcamentos.forEach(function (o) {
       if (o.pacienteRef !== ref) return;
-      o.itens.forEach(function (it) { lista.push({ ref: it.ref, nome: it.procedimento + " · orçamento " + o.id + " de " + dataBR(o.data) + " (faltam " + qtdTxt(it.restante) + ")", it: it }); });
+      o.itens.forEach(function (it) { lista.push({ ref: it.ref, nome: it.procedimento + " · orçamento " + o.id + " de " + dataBR(o.data) + " (disponível " + qtdTxt(it.disponivel) + ")", it: it }); });
     });
     return lista;
   }
 
-  function atualizarAgendamentos() {
+  function agendamentosDaPaciente(ref) {
+    var mapa = {};
+    exec.agendamentos.filter(function (a) { return a.pacienteRef === ref; }).forEach(function (a) { mapa[a.ref] = a; });
+    if (pac && pac.paciente.ref === ref) pac.atendimentos.forEach(function (a) { mapa[a.ref] = a; });
+    return Object.keys(mapa).map(function (k) { return mapa[k]; }).sort(function (a, b) { return String(b.data + b.hora).localeCompare(String(a.data + a.hora)); });
+  }
+
+  function atualizarAgendamentos(preAg) {
     var ref = el("exPaciente").value;
     var sel = limpar(el("exAgendamento"));
     sel.appendChild(h("option", { value: "" }, ref ? "Escolha o agendamento" : "Escolha a paciente antes"));
-    exec.agendamentos.filter(function (a) { return a.pacienteRef === ref; }).forEach(function (a) {
-      sel.appendChild(h("option", { value: a.ref, disabled: a.status.categoria === "cancelado" || a.status.categoria === "falta" ? true : null }, rotuloAgendamento(a) + (a.execucoes.length ? " · " + a.execucoes.length + " procedimento(s)" : "")));
+    agendamentosDaPaciente(ref).forEach(function (a) {
+      sel.appendChild(h("option", { value: a.ref, disabled: a.status.categoria === "cancelado" || a.status.categoria === "falta" ? true : null },
+        rotuloAgendamento(a) + (a.execucoes && a.execucoes.length ? " · " + a.execucoes.length + " procedimento(s)" : "")));
     });
+    if (preAg) sel.value = preAg;
     var it = limpar(el("exItem"));
-    it.appendChild(h("option", { value: "" }, "Decidir pelo código / sem orçamento"));
+    it.appendChild(h("option", { value: "" }, "Decidir pelo código (só quando não há dúvida)"));
     itensDaPaciente(ref).forEach(function (x) { it.appendChild(h("option", { value: x.ref }, x.nome)); });
+    var tr = limpar(el("exTroca"));
+    tr.appendChild(h("option", { value: "" }, "Escolha a troca"));
+    if (pac && pac.paciente.ref === ref) {
+      pac.planos.forEach(function (p) { p.trocas.forEach(function (t) {
+        if (t.ativa && Number(t.restante) > 0) tr.appendChild(h("option", { value: t.id }, t.procedimentoSubstituto + " (faltam " + qtdTxt(t.restante) + ") · troca de " + t.procedimentoOrigem));
+      }); });
+    }
+  }
+
+  function atualizarNatureza() {
+    var n = el("exNatureza").value;
+    el("exRefCampo").hidden = n !== "gratuito";
+    el("exTrocaCampo").hidden = n !== "troca";
+    el("exItem").disabled = n === "gratuito" || n === "avulso" || n === "troca";
   }
 
   async function abrirRegistrar(pre) {
     if (!exec) await carregarExecucao();
     var p = pre || {};
-    preencherPacientes(el("exPaciente"), p.pacienteRef || "");
-    atualizarAgendamentos();
-    el("exProcedimento").value = ""; el("exQtd").value = "1"; el("exEstado").value = "realizado"; el("exNotas").value = ""; el("exErro").textContent = "";
+    preencherPacientes(el("exPaciente"), p.pacienteRef || pacRef || "");
+    atualizarAgendamentos(p.agendamentoRef || "");
+    el("exNatureza").value = p.natureza || ""; el("exValorRef").value = "";
+    atualizarNatureza();
+    el("exProcedimento").value = p.procedimento || ""; el("exQtd").value = "1"; el("exEstado").value = "realizado"; el("exNotas").value = ""; el("exErro").textContent = "";
     el("dlgExecucao").showModal();
   }
 
   function abrirAssociar(e) {
     exAssociar = e;
-    el("assocResumo").textContent = e.pacienteNome + " · " + e.procedimento + " × " + qtdTxt(e.quantidade) + " em " + dataBR(e.agendamentoData) + ". " + (NOMES_ASSOC[e.associacao] ? "Hoje: " + NOMES_ASSOC[e.associacao] + "." : "");
+    var pendente = !e.natureza;
+    el("assocResumo").textContent = (e.pacienteNome || "") + " · " + e.procedimento + " × " + qtdTxt(e.quantidade) + " em " + dataBR(e.agendamentoData) + ". " +
+      (pendente ? "Hoje: a decidir (" + (NOMES_ASSOC[e.associacao] || "sem plano") + ")." : "Hoje: " + ({ contratado: "conforme o plano", substituicao: "em substituição", gratuito: "bônus", avulso: "avulso" }[e.natureza] || "") + ".");
     var sel = limpar(el("assocItem"));
-    sel.appendChild(h("option", { value: "" }, "Sem orçamento"));
-    itensDaPaciente(e.pacienteRef).forEach(function (x) { sel.appendChild(h("option", { value: x.ref }, x.nome)); });
-    sel.value = e.itemRef || "";
+    var cands = (e.candidatos || []);
+    var vistos = {};
+    if (cands.length) {
+      var g = h("optgroup", { label: "Planos com este procedimento" });
+      cands.forEach(function (x) {
+        vistos[x.itemRef] = true;
+        g.appendChild(h("option", { value: "item:" + x.itemRef }, x.procedimento + " · plano de " + dataBR(x.planoData) + " · disponível " + qtdTxt(x.disponivel) + " de " + qtdTxt(x.contratado) +
+          (e.sugestao === x.itemRef ? " · escolhido antes para este procedimento" : "")));
+      });
+      sel.appendChild(g);
+    }
+    var outros = itensDaPaciente(e.pacienteRef).filter(function (x) { return !vistos[x.ref]; });
+    if (outros.length) {
+      var g2 = h("optgroup", { label: "Outros itens dos planos" });
+      outros.forEach(function (x) { g2.appendChild(h("option", { value: "item:" + x.ref }, x.nome)); });
+      sel.appendChild(g2);
+    }
+    var g3 = h("optgroup", { label: "Fora de plano" });
+    g3.appendChild(h("option", { value: "avulso" }, "Avulso confirmado (não pertence a plano)"));
+    g3.appendChild(h("option", { value: "gratuito" }, "Bônus: adicional gratuito"));
+    g3.appendChild(h("option", { value: "pendente" }, "Ainda a decidir"));
+    sel.appendChild(g3);
+    sel.value = e.itemRef ? "item:" + e.itemRef : e.natureza === "avulso" ? "avulso" : e.natureza === "gratuito" ? "gratuito" : (e.sugestao && vistos[e.sugestao] ? "item:" + e.sugestao : "pendente");
+    el("assocMotivo").value = "";
     el("assocErro").textContent = "";
     el("dlgAssociar").showModal();
+  }
+
+  /* ---------- troca ---------- */
+
+  function abrirTroca(ctx) {
+    if (!pac) return;
+    var planos = pac.planos.filter(function (p) { return p.tipo.tipo === "plano" && p.resumo.situacao !== "cancelado"; });
+    var p = ctx.planoRef ? planos.filter(function (x) { return x.ref === ctx.planoRef; })[0] : null;
+    var a = ctx.atendimento || null;
+    /* origem: linhas com saldo livre (de um plano, ou de todos os da paciente) */
+    var linhas = [];
+    (p ? [p] : planos).forEach(function (pl) {
+      pl.linhas.forEach(function (l) {
+        var origemExe = a ? a.execucoes.filter(function (e) { return e.estado === "realizado" && e.itemRef && l.refs.indexOf(e.itemRef) >= 0; })[0] : null;
+        if (Number(l.disponivel) > 0 || origemExe) linhas.push({ plano: pl, linha: l, execucao: origemExe });
+      });
+    });
+    if (!linhas.length) { erroExecucao(new Error("Não há unidade livre em plano em andamento para trocar.")); return; }
+    trocaCtx = { atendimento: a, linhas: linhas };
+    el("trTitulo").textContent = "Registrar troca";
+    el("trContexto").textContent = a ? "Atendimento de " + dataBR(a.data) + (a.observacao ? " · observação original: “" + a.observacao + "”" : "") +
+      ". A troca é registrada uma vez; cada entrega fica no atendimento em que aconteceu." : "A troca é registrada uma vez; as entregas são registradas nos atendimentos em que acontecerem.";
+    var sel = limpar(el("trLinha"));
+    linhas.forEach(function (x, k) {
+      sel.appendChild(h("option", { value: String(k) }, x.linha.procedimento + " · plano " + x.plano.id + " (livre " + qtdTxt(x.linha.disponivel) + ")" +
+        (x.execucao ? " · registrado neste atendimento" : "")));
+    });
+    if (ctx.linhaChave) linhas.forEach(function (x, k) { if (x.linha.chave === ctx.linhaChave && (!p || x.plano.ref === p.ref)) sel.value = String(k); });
+    var fs = limpar(el("trFicha"));
+    fs.appendChild(h("option", { value: "" }, "sem ficha"));
+    estado.dados.fichas.filter(function (f) { return !f.arquivada && f.tipo !== "produto"; }).forEach(function (f) { fs.appendChild(h("option", { value: f.id }, f.nome)); });
+    el("trQtdOrigem").value = "1"; el("trQtdPrometida").value = "1"; el("trSubstituto").value = ""; el("trCobrado").value = ""; el("trPrecoSubst").value = "";
+    el("trData").value = a ? a.data : hoje(); el("trMotivo").value = ""; el("trEntrega").value = "1";
+    el("trEntregaCampo").hidden = !a;
+    el("trErro").textContent = "";
+    atualizarLinhaTroca();
+    el("dlgTroca").showModal();
+  }
+
+  function atualizarLinhaTroca() {
+    var x = trocaCtx.linhas[Number(el("trLinha").value) || 0];
+    el("trPrecoOrigem").value = x && x.linha.precoRef !== null && x.linha.precoRef !== undefined ? numBR(x.linha.precoRef) : "";
+    el("trPrecoOrigem").placeholder = x && x.linha.precoRef === null ? "sem referência (a conferir)" : "";
+    el("trSubstituirCampo").hidden = !(x && x.execucao);
+    el("trSubstituir").checked = !!(x && x.execucao);
+    if (x && x.execucao) el("trSubstituirNome").textContent = x.execucao.procedimento;
+    previaTroca();
+  }
+
+  function previaTroca() {
+    var alvo = limpar(el("trPrevia"));
+    var qo = numeroDigitado(el("trQtdOrigem").value), qs = numeroDigitado(el("trQtdPrometida").value);
+    var po = centavosDe(el("trPrecoOrigem").value), ps = centavosDe(el("trPrecoSubst").value);
+    var cob = centavosDe(el("trCobrado").value) || 0;
+    var dl = h("dl");
+    if (po === null || ps === null || isNaN(po) || isNaN(ps)) linhaDl(dl, "Bônus / crédito", "a conferir (o servidor completa com a referência, se houver)");
+    else {
+      var dif = Math.round(ps * qs) - Math.round(po * qo);
+      if (dif > 0) linhaDl(dl, "Bônus (prévia)", brl(Math.max(0, dif - cob)) + (cob ? " (diferença " + brl(dif) + " − cobrado " + brl(cob) + ")" : ""));
+      else if (dif < 0) linhaDl(dl, "Crédito para a paciente (prévia)", brl(-dif));
+      else linhaDl(dl, "Diferença", "nenhuma");
+    }
+    alvo.appendChild(dl);
+  }
+
+  /* ---------- atendimento: observação e complemento ---------- */
+
+  function abrirAtendimento(a) {
+    atendCtx = a;
+    el("atTitulo").textContent = "Atendimento de " + dataBR(a.data) + (a.hora ? " · " + a.hora : "");
+    var ob = limpar(el("atObservacao"));
+    ob.appendChild(h("p", null, h("b", null, "Observação original: "), a.observacao ? "“" + a.observacao + "”" : "nenhuma",
+      a.observacaoFonte ? h("span", { class: "sub" }, " (" + ({ clinicorp: "do Clinicorp", relatorio: "do relatório", alveare: "escrita no Alveare" }[a.observacaoFonte] || a.observacaoFonte) + ")") : null));
+    if (a.observacaoComplemento) ob.appendChild(h("p", { class: "sub" }, "Relatório/complemento diz: “" + a.observacaoComplemento + "”"));
+    if (a.interpretacao && a.observacaoInterpretada && a.observacaoInterpretada !== a.observacao) ob.appendChild(h("p", { class: "sub desatualizado" }, "A observação mudou depois da última leitura (era “" + a.observacaoInterpretada + "”)."));
+    document.querySelectorAll('input[name="atInterp"]').forEach(function (r) { r.checked = r.value === a.interpretacao; r.disabled = !a.observacao; });
+    el("atPrevistos").value = a.previstosFonte === "clinicorp" ? "" : a.previstos.map(function (p) { return p.descricao; }).join(", ");
+    el("atPrevistos").placeholder = a.previstosFonte === "clinicorp" ? "a origem já traz: " + a.previstos.map(function (p) { return p.descricao; }).join(", ") : "";
+    el("atMarcador").value = a.marcador || ""; el("atProfissional").value = a.previstosFonte === "clinicorp" ? "" : (a.profissional || "");
+    el("atLiberar").checked = !!a.observacaoLiberada; el("atNotas").value = a.notas || "";
+    el("atErro").textContent = "";
+    el("dlgAtendimento").showModal();
+  }
+
+  /* ---------- crédito ---------- */
+
+  function abrirCredito(p, t) {
+    credCtx = t;
+    el("crResumo").textContent = "Crédito da troca " + t.procedimentoOrigem + " → " + t.procedimentoSubstituto + " (" + dataBR(t.data) + "): gerado " + brl(t.valores.credito) +
+      ", usado " + brl(t.creditoUsado) + ", saldo " + brl(t.creditoSaldo) + ".";
+    el("crValor").value = ""; el("crData").value = hoje(); el("crDescricao").value = ""; el("crMotivo").value = "";
+    var s = limpar(el("crDestino"));
+    s.appendChild(h("option", { value: "" }, "Nenhum plano (descreva abaixo)"));
+    pac.planos.filter(function (x) { return x.tipo.tipo === "plano"; }).forEach(function (x) { s.appendChild(h("option", { value: x.ref }, "Plano " + x.id + " de " + dataBR(x.data) + (x.ref === p.ref ? " (este)" : ""))); });
+    el("crErro").textContent = "";
+    el("dlgCredito").showModal();
+  }
+
+  /* ---------- versão para a paciente ---------- */
+
+  async function abrirImpressao() {
+    var r = await ler("financeiro.pacientePlanos", { pacienteRef: pacRef, versao: "paciente" });
+    if (!r.ok) { erroExecucao(new Error("Não foi possível montar a versão para a paciente. " + FloreSerAuth.recado(r))); return; }
+    var d = r.dados;
+    var alvo = limpar(el("impConteudo"));
+    var tot = { at: 0, proc: 0 };
+    d.planos.forEach(function (p) { tot.at += p.atendimentos; tot.proc += Number(p.procedimentos) || 0; });
+    alvo.appendChild(h("header", { class: "rel-capa" }, h("p", { class: "rel-marca" }, "FloreSer · Corpo e Alma"), h("h2", null, "Histórico de Tratamentos"),
+      h("p", { class: "rel-nome" }, d.paciente.nome), h("p", { class: "rel-emitido" }, "Emitido em " + dataBR(d.emitidoEm))));
+    if (!d.planos.length) alvo.appendChild(h("p", null, "Nenhum plano de tratamento."));
+    d.planos.forEach(function (p) {
+      var s = h("section", { class: "rel-plano" });
+      s.appendChild(h("h3", null, "Plano iniciado em " + dataBR(p.inicio) + (p.situacao === "concluido" ? " · concluído" : "")));
+      s.appendChild(h("div", { class: "rel-numeros" },
+        h("div", null, h("b", null, String(p.atendimentos)), h("span", null, "atendimentos")),
+        h("div", null, h("b", null, qtdTxt(p.procedimentos)), h("span", null, "procedimentos realizados")),
+        h("div", null, h("b", null, qtdTxt(p.cumpridas) + "/" + qtdTxt(p.contratadas)), h("span", null, "sessões do plano")),
+        h("div", null, h("b", null, p.progresso + "%"), h("span", null, "do plano concluído"))));
+      s.appendChild(barra(p.progresso));
+      if (p.disponiveis.length) s.appendChild(h("div", { class: "rel-caixa" }, h("h4", null, "Ainda disponíveis para você"),
+        h("ul", null, p.disponiveis.map(function (x) { return h("li", null, h("b", null, qtdTxt(x.quantidade) + "× "), x.procedimento); }))));
+      s.appendChild(h("h4", null, "Atendimentos"));
+      s.appendChild(h("table", { class: "rel-tabela" }, h("thead", null, h("tr", null, h("th", null, "#"), h("th", null, "Data"), h("th", null, "Procedimento"), h("th", null, "Observação"))),
+        h("tbody", null, p.historico.map(function (a, k) {
+          return h("tr", null, h("td", null, String(k + 1)), h("td", null, dataBR(a.data)), h("td", null, a.procedimentos.map(function (x) { return h("div", null, x.texto); })), h("td", null, a.observacao || "—"));
+        }))));
+      s.appendChild(h("h4", null, "Plano contratado × sessões realizadas"));
+      s.appendChild(h("table", { class: "rel-tabela" }, h("thead", null, h("tr", null, h("th", null, "Procedimento"), h("th", null, "Contratadas"), h("th", null, "Realizadas"), h("th", null, "Situação"))),
+        h("tbody", null, p.linhas.map(function (l) {
+          var sit = Number(l.disponivel) > 0 ? qtdTxt(l.disponivel) + " a realizar" : "Concluído";
+          if (Number(l.substituida)) sit += " · " + qtdTxt(l.substituida) + " substituído";
+          if (Number(l.comprometida)) sit += " · " + qtdTxt(l.comprometida) + " em troca";
+          if (Number(l.excedente)) sit += " · +" + qtdTxt(l.excedente) + " além";
+          return h("tr", null, h("td", null, l.procedimento), h("td", null, qtdTxt(l.contratado)), h("td", null, qtdTxt(l.realizada)), h("td", null, sit));
+        }))));
+      if (p.trocas.length) s.appendChild(h("div", { class: "rel-caixa" }, h("h4", null, "Sessões substituídas"), h("ul", null, p.trocas.map(function (t) { return h("li", null, t.texto); }))));
+      if (p.bonus.length) s.appendChild(h("div", { class: "rel-caixa" }, h("h4", null, "Sessões bônus"), h("ul", null, p.bonus.map(function (b) { return h("li", null, qtdTxt(b.quantidade) + " " + b.procedimento); }))));
+      alvo.appendChild(s);
+    });
+    if (d.creditoDisponivel > 0) alvo.appendChild(h("p", { class: "rel-caixa" }, "Crédito disponível para você: " + brl(d.creditoDisponivel)));
+    alvo.appendChild(h("p", { class: "rel-rodape" }, "Seguimos juntas, florescendo a cada sessão."));
+    el("dlgImpressao").showModal();
+  }
+
+  function imprimir() {
+    var dest = limpar(el("impressao"));
+    dest.appendChild(el("impConteudo").cloneNode(true));
+    dest.hidden = false;
+    document.body.classList.add("imprimindo");
+    var fim = function () { document.body.classList.remove("imprimindo"); dest.hidden = true; limpar(dest); window.removeEventListener("afterprint", fim); };
+    window.addEventListener("afterprint", fim);
+    window.print();
   }
 
   function linhaOrcLocal(x) {
     var proc = h("input", { class: "input", placeholder: "procedimento", "aria-label": "Procedimento", value: x.procedimento || "", list: "listaProcedimentos", maxlength: "160" });
     var cod = h("input", { class: "input", placeholder: "código", "aria-label": "Código do procedimento", value: x.procedimentoRef || "", maxlength: "60" });
-    var q = h("input", { class: "input", inputmode: "decimal", placeholder: "qtd", "aria-label": "Quantidade orçada", value: x.quantidade ? qtdBR(x.quantidade) : "1" });
-    var vu = h("input", { class: "input", inputmode: "decimal", placeholder: "valor unitário", "aria-label": "Valor unitário acordado", value: x.valorTabela !== null && x.valorTabela !== undefined ? numBR(x.valorTabela) : "" });
+    var q = h("input", { class: "input", inputmode: "decimal", placeholder: "qtd", "aria-label": "Quantidade orçada", value: x.contratado ? qtdBR(x.contratado) : x.quantidade ? qtdBR(x.quantidade) : "1" });
+    var vu = h("input", { class: "input", inputmode: "decimal", placeholder: "valor unitário", "aria-label": "Valor unitário acordado", value: x.precoRef !== null && x.precoRef !== undefined ? numBR(x.precoRef) : x.valorTabela !== null && x.valorTabela !== undefined ? numBR(x.valorTabela) : "" });
     var ficha = h("select", { class: "input", "aria-label": "Ficha de custo" });
     ficha.appendChild(h("option", { value: "" }, "sem ficha"));
-    estado.dados.fichas.filter(function (f) { return !f.arquivada && f.tipo === "procedimento"; }).forEach(function (f) { ficha.appendChild(h("option", { value: f.id }, f.nome)); });
+    estado.dados.fichas.filter(function (f) { return !f.arquivada && f.tipo !== "pacote"; }).forEach(function (f) { ficha.appendChild(h("option", { value: f.id }, f.nome)); });
     ficha.value = x.fichaId || "";
-    var li = h("li", null, proc, cod, q, vu, ficha, h("button", { type: "button", class: "icone-btn", "aria-label": "Tirar", onclick: function () { li.remove(); } }, "×"));
-    li._ler = function () { return { id: x.id || undefined, procedimento: proc.value.trim(), procedimentoRef: cod.value.trim(), quantidade: q.value.trim(), valorUnitario: centavosDe(vu.value), fichaId: ficha.value }; };
+    var classe = h("select", { class: "input", "aria-label": "Classe" });
+    [["tratamento", "Tratamento"], ["produto", "Produto"], ["avulso", "Avulso"]].forEach(function (c) { classe.appendChild(h("option", { value: c[0] }, c[1])); });
+    classe.value = x.classe || "tratamento";
+    var li = h("li", null, proc, cod, q, vu, ficha, classe, h("button", { type: "button", class: "icone-btn", "aria-label": "Tirar", onclick: function () { li.remove(); } }, "×"));
+    li._ler = function () { return { id: x.id || undefined, procedimento: proc.value.trim(), procedimentoRef: cod.value.trim(), quantidade: q.value.trim(), valorUnitario: centavosDe(vu.value), fichaId: ficha.value, classe: classe.value }; };
     return li;
   }
 
@@ -1727,12 +2247,12 @@
     if (!exec) await carregarExecucao();
     olAberto = o || null;
     el("olTitulo").textContent = o ? "Orçamento " + o.id : "Orçamento do Alveare";
-    preencherPacientes(el("olPaciente"), o ? o.pacienteRef : "");
+    preencherPacientes(el("olPaciente"), o ? o.pacienteRef : pacRef);
     el("olData").value = o ? o.data : hoje();
-    el("olSituacao").value = o ? o.situacao || "aberto" : "aprovado";
+    el("olSituacao").value = o ? (o.situacaoOrigem || o.situacao || "aberto") : "aprovado";
     el("olNotas").value = o ? o.notas || "" : "";
     var ul = limpar(el("olItens"));
-    (o ? o.itens : [{}]).forEach(function (x) { ul.appendChild(linhaOrcLocal(x)); });
+    (o ? (o.linhas || []).concat(o.outrosItens || []) : [{}]).forEach(function (x) { ul.appendChild(linhaOrcLocal(x)); });
     el("olErro").textContent = "";
     el("dlgOrcLocal").showModal();
   }
@@ -1741,41 +2261,142 @@
     var reler = function () { carregarExecucao(); };
     el("fxBusca").addEventListener("change", reler);
     ["fxSituacao", "fxBase", "fxDe", "fxAte"].forEach(function (id) { el(id).addEventListener("change", reler); });
+    el("fxPaciente").addEventListener("change", function () { selecionarPaciente(el("fxPaciente").value); });
+    el("btnFpVoltar").addEventListener("click", function () { selecionarPaciente(""); });
+    el("btnFpRegistrar").addEventListener("click", function () { abrirRegistrar({ pacienteRef: pacRef }); });
+    el("btnFpImprimir").addEventListener("click", abrirImpressao);
+    el("impImprimir").addEventListener("click", imprimir);
     el("btnNovaExecucao").addEventListener("click", function () { abrirRegistrar(null); });
     el("btnNovoOrcamento").addEventListener("click", function () { abrirOrcLocal(null); });
-    el("orcRegistrar").addEventListener("click", function () { var o = orcAberto; el("dlgOrcamento").close(); abrirRegistrar({ pacienteRef: o ? o.pacienteRef : "" }); });
-    el("orcEditar").addEventListener("click", function () { var o = orcAberto; el("dlgOrcamento").close(); abrirOrcLocal(o); });
-    el("exPaciente").addEventListener("change", atualizarAgendamentos);
+    el("orcRegistrar").addEventListener("click", function () { var p = planoAberto; el("dlgOrcamento").close(); abrirRegistrar({ pacienteRef: p ? p.pacienteRef : pacRef }); });
+    el("orcTroca").addEventListener("click", function () { if (planoAberto) abrirTroca({ planoRef: planoAberto.ref }); });
+    el("orcEditar").addEventListener("click", function () { var p = planoAberto; el("dlgOrcamento").close(); abrirOrcLocal(p); });
+    el("exPaciente").addEventListener("change", function () { atualizarAgendamentos(""); });
+    el("exNatureza").addEventListener("change", atualizarNatureza);
     el("exItem").addEventListener("change", function () {
       var x = itensDaPaciente(el("exPaciente").value).filter(function (i) { return i.ref === el("exItem").value; })[0];
       if (x && !el("exProcedimento").value) el("exProcedimento").value = x.it.procedimento;
+    });
+    el("exTroca").addEventListener("change", function () {
+      if (!pac) return;
+      pac.planos.forEach(function (p) { p.trocas.forEach(function (t) { if (t.id === el("exTroca").value) el("exProcedimento").value = t.procedimentoSubstituto; }); });
     });
     el("formExecucao").addEventListener("submit", async function (ev) {
       ev.preventDefault();
       var ag = el("exAgendamento").value;
       if (!ag) { el("exErro").textContent = "Escolha o agendamento: o procedimento sempre fica ligado a um."; return; }
       var partes = ag.split(":");
-      var item = itensDaPaciente(el("exPaciente").value).filter(function (i) { return i.ref === el("exItem").value; })[0];
+      var nat = el("exNatureza").value;
+      var item = nat ? null : itensDaPaciente(el("exPaciente").value).filter(function (i) { return i.ref === el("exItem").value; })[0];
+      var troca = null;
+      if (nat === "troca") {
+        if (!el("exTroca").value) { el("exErro").textContent = "Escolha a troca que esta entrega atende."; return; }
+        pac.planos.forEach(function (p) { p.trocas.forEach(function (t) { if (t.id === el("exTroca").value) troca = t; }); });
+      }
+      var dados = { agendamentoTipo: partes[0], agendamentoId: partes.slice(1).join(":"), procedimento: el("exProcedimento").value.trim(),
+        procedimentoRef: item ? item.it.procedimentoRef : troca ? troca.procedimentoSubstitutoRef : "", fichaId: item ? item.it.fichaId || "" : troca ? troca.fichaSubstitutoId : "",
+        quantidade: el("exQtd").value.trim(), estado: el("exEstado").value, itemRef: item ? item.ref : "", notas: el("exNotas").value.trim() };
+      if (nat === "gratuito" || nat === "avulso") dados.natureza = nat;
+      if (nat === "gratuito") {
+        var vr = centavosDe(el("exValorRef").value);
+        if (vr !== null && !isNaN(vr)) dados.valorReferencia = vr;
+        if (planoAberto && planoAberto.pacienteRef === el("exPaciente").value) dados.orcamentoRef = planoAberto.ref;
+      }
+      if (troca) dados.trocaId = troca.id;
       try {
-        var r = await aplicar({ tipo: "exe.registrar", id: novoId("ex"), dados: { agendamentoTipo: partes[0], agendamentoId: partes.slice(1).join(":"),
-          procedimento: el("exProcedimento").value.trim(), procedimentoRef: item ? item.it.procedimentoRef : "", fichaId: item ? item.it.fichaId || "" : "",
-          quantidade: el("exQtd").value.trim(), estado: el("exEstado").value, itemRef: el("exItem").value, notas: el("exNotas").value.trim() } });
+        var r = await aplicar({ tipo: "exe.registrar", id: novoId("ex"), dados: dados });
         el("dlgExecucao").close();
-        toast(r.associacao === "ambigua" || r.associacao === "sugerida" ? "Registrado. Falta escolher o orçamento (aparece em \"Para decidir\")." :
-          r.associacao === "sem_orcamento" ? "Registrado, sem orçamento." : "Registrado.");
-        await carregarExecucao();
+        toast(r.associacao === "ambigua" || r.associacao === "sugerida" ? "Registrado. Falta escolher o plano (aparece nas pendências da paciente)." :
+          r.associacao === "sem_orcamento" ? "Registrado, ainda sem plano." : "Registrado.");
+        await recarregarExecucao();
       } catch (e) { el("exErro").textContent = e.message; }
     });
     el("formAssociar").addEventListener("submit", async function (ev) {
       ev.preventDefault();
       if (!exAssociar) return;
+      var v = el("assocItem").value, campos = { motivo: el("assocMotivo").value.trim() };
+      if (v.indexOf("item:") === 0) { campos.itemRef = v.slice(5); campos.natureza = "contratado"; }
+      else if (v === "avulso") campos.natureza = "avulso";
+      else if (v === "gratuito") {
+        campos.natureza = "gratuito";
+        var ref = window.prompt("Valor de referência do bônus (vazio = preço da ficha, se houver):", "");
+        if (ref === null) return;
+        var c = centavosDe(ref);
+        if (c !== null && !isNaN(c)) campos.valorReferencia = c;
+        if (planoAberto && planoAberto.pacienteRef === exAssociar.pacienteRef) campos.orcamentoRef = planoAberto.ref;
+      } else campos.natureza = "";
       try {
-        await aplicar({ tipo: "exe.alterar", id: exAssociar.id, revBase: exAssociar._rev, campos: { itemRef: el("assocItem").value } });
+        await aplicar({ tipo: "exe.alterar", id: exAssociar.id, revBase: exAssociar._rev, campos: campos });
         el("dlgAssociar").close();
-        toast("Orçamento escolhido.");
-        await carregarExecucao();
-        if (orcAberto && el("dlgOrcamento").open) abrirOrcamento(orcAberto.ref);
+        toast("Salvo.");
+        await recarregarExecucao();
       } catch (e) { el("assocErro").textContent = e.message; }
+    });
+    el("trLinha").addEventListener("change", atualizarLinhaTroca);
+    el("formTroca").addEventListener("input", previaTroca);
+    el("trFicha").addEventListener("change", function () {
+      var f = porId(estado.dados.fichas)[el("trFicha").value];
+      if (f && f.precoAtual !== null && f.precoAtual !== undefined && f.precoAtual !== "") el("trPrecoSubst").value = numBR(f.precoAtual);
+      if (f && !el("trSubstituto").value) el("trSubstituto").value = f.nome;
+      previaTroca();
+    });
+    el("formTroca").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      var x = trocaCtx && trocaCtx.linhas[Number(el("trLinha").value) || 0];
+      if (!x) return;
+      var a = trocaCtx.atendimento;
+      var f = porId(estado.dados.fichas)[el("trFicha").value];
+      var num = function (id) { var c = centavosDe(el(id).value); return c === null || isNaN(c) ? null : c; };
+      var dados = { orcamentoRef: x.plano.ref, linhaChave: x.linha.chave, quantidadeOrigem: el("trQtdOrigem").value.trim(), procedimentoSubstituto: el("trSubstituto").value.trim(),
+        procedimentoSubstitutoRef: f && f.clinicorpProcedimentoId ? f.clinicorpProcedimentoId : "", fichaSubstitutoId: el("trFicha").value, quantidadePrometida: el("trQtdPrometida").value.trim(),
+        precoOrigem: num("trPrecoOrigem"), precoSubstituto: num("trPrecoSubst"), diferencaCobrada: num("trCobrado") || 0, data: el("trData").value, motivo: el("trMotivo").value.trim(),
+        observacaoOrigem: a ? a.observacao || "" : "" };
+      if (x.linha.precoRef !== null && dados.precoOrigem === x.linha.precoRef) dados.precoOrigem = null;   // a referência do item: o servidor grava com a base
+      if (a) { dados.agendamentoTipo = a.tipo; dados.agendamentoId = a.id; dados.entregaQuantidade = el("trEntrega").value.trim(); }
+      if (x.execucao && el("trSubstituir").checked) dados.substituirExecucaoId = x.execucao.id;
+      try {
+        await aplicar({ tipo: "exe.troca.registrar", id: novoId("tr"), dados: dados });
+        if (a && a.observacao && !a.interpretacao) await aplicar({ tipo: "exe.atendimento.salvar", id: a.ref, revBase: a._revAtendimento || 0, dados: { interpretacao: "substituicao" } });
+        el("dlgTroca").close();
+        toast("Troca registrada.");
+        await recarregarExecucao();
+      } catch (e) { el("trErro").textContent = e.message; }
+    });
+    el("formAtendimento").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      var a = atendCtx;
+      if (!a) return;
+      var marcado = document.querySelector('input[name="atInterp"]:checked');
+      var interp = marcado ? marcado.value : (a.interpretacao || "");
+      var dados = { marcador: el("atMarcador").value.trim(), observacaoLiberada: el("atLiberar").checked, notas: el("atNotas").value.trim() };
+      if (a.observacao) dados.interpretacao = interp;
+      if (a.previstosFonte !== "clinicorp") {
+        dados.previstos = el("atPrevistos").value.split(",").map(function (s) { return { descricao: s.trim() }; }).filter(function (p) { return p.descricao; });
+        dados.profissional = el("atProfissional").value.trim();
+      }
+      try {
+        await aplicar({ tipo: "exe.atendimento.salvar", id: a.ref, revBase: a._revAtendimento || 0, dados: dados });
+        el("dlgAtendimento").close();
+        toast("Atendimento salvo.");
+        await recarregarExecucao();
+        var atual = pac && pac.atendimentos.filter(function (x) { return x.ref === a.ref; })[0] || a;
+        if (interp === "substituicao" && interp !== a.interpretacao) abrirTroca({ atendimento: atual });
+        if (interp === "complemento" && interp !== a.interpretacao) abrirRegistrar({ pacienteRef: a.pacienteRef, agendamentoRef: a.ref });
+        if (interp === "bonus" && interp !== a.interpretacao) abrirRegistrar({ pacienteRef: a.pacienteRef, agendamentoRef: a.ref, natureza: "gratuito" });
+      } catch (e) { el("atErro").textContent = e.message; }
+    });
+    el("formCredito").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      if (!credCtx) return;
+      var v = centavosDe(el("crValor").value);
+      if (v === null || isNaN(v) || v <= 0) { el("crErro").textContent = "Informe o valor."; return; }
+      try {
+        await aplicar({ tipo: "exe.credito.usar", id: novoId("cr"), dados: { trocaId: credCtx.id, valor: v, destinoRef: el("crDestino").value, destinoDescricao: el("crDescricao").value.trim(),
+          data: el("crData").value, motivo: el("crMotivo").value.trim() } });
+        el("dlgCredito").close();
+        toast("Crédito usado.");
+        await recarregarExecucao();
+      } catch (e) { el("crErro").textContent = e.message; }
     });
     el("olAddItem").addEventListener("click", function () { el("olItens").appendChild(linhaOrcLocal({})); });
     el("formOrcLocal").addEventListener("submit", async function (ev) {
@@ -1788,19 +2409,35 @@
           dados: { pacienteRef: el("olPaciente").value, data: el("olData").value, situacao: el("olSituacao").value, notas: el("olNotas").value, itens: itens } });
         el("dlgOrcLocal").close();
         toast("Orçamento salvo.");
-        await carregarExecucao();
+        await recarregarExecucao();
       } catch (e) { el("olErro").textContent = e.message; }
     });
     el("btnImportarExecucoes").addEventListener("click", function () {
       FloreSerImportacao.abrir({ modulo: MOD, tipo: "execucoes", titulo: "Importar procedimentos realizados", token: token,
-        aviso: "Cada linha é um procedimento realizado num agendamento. A coluna do agendamento precisa ter o identificador dele (do Clinicorp ou da Agenda): sem agendamento conhecido, a linha é recusada. Agendamento futuro, cancelado ou com falta também é recusado. Importar de novo não duplica.",
+        aviso: "Cada linha é um procedimento realizado num agendamento identificado (id do Clinicorp ou da Agenda). Linhas repetidas do mesmo atendimento e procedimento são somadas; o que já foi registrado por outra via não é criado de novo. Agendamento futuro, cancelado ou com falta é recusado.",
         campos: [
           { id: "agendamento", nome: "Identificador do agendamento", obrigatorio: true, tipo: "texto", apelidos: ["agendamento", "id do agendamento", "atendimento", "id agendamento"] },
           { id: "procedimento", nome: "Procedimento", obrigatorio: true, tipo: "texto", apelidos: ["procedimento", "descricao", "descrição", "servico", "serviço"] },
           { id: "codigo", nome: "Código do procedimento", tipo: "texto", apelidos: ["codigo", "código", "cod"] },
           { id: "quantidade", nome: "Quantidade (vazio = 1)", tipo: "decimal", apelidos: ["quantidade", "qtd", "qtde"] }
         ],
-        aoConcluir: function () { carregarExecucao(); } });
+        aoConcluir: function () { recarregarExecucao(); } });
+    });
+    el("btnFpImportar").addEventListener("click", function () {
+      if (!pacRef) return;
+      FloreSerImportacao.abrir({ modulo: MOD, tipo: "atendimentos", titulo: "Importar agendamentos de " + (pac ? pac.paciente.nome : "paciente"), token: token,
+        contexto: { pacienteRef: pacRef },
+        aviso: "Use o relatório de agendamentos DESTA paciente (a aba Agendamentos do Clinicorp exporta data, horário, procedimentos, observação e marcador). Cada linha é casada com um agendamento já sincronizado pela data e horário. Os procedimentos entram como PREVISTOS: nada vira realizado sem a confirmação no atendimento. Importar de novo não duplica.",
+        campos: [
+          { id: "agendamento", nome: "Identificador do agendamento (se houver)", tipo: "texto", apelidos: ["id", "agendamento", "id do agendamento"] },
+          { id: "data", nome: "Data", tipo: "data", apelidos: ["data", "dia"] },
+          { id: "horario", nome: "Horário", tipo: "texto", apelidos: ["horario", "horário", "hora", "inicio", "início"] },
+          { id: "procedimentos", nome: "Procedimentos", tipo: "texto", apelidos: ["procedimentos", "procedimento", "servicos", "serviços"] },
+          { id: "observacao", nome: "Observação", tipo: "texto", apelidos: ["observacao", "observação", "obs", "notas"] },
+          { id: "marcador", nome: "Marcador / categoria", tipo: "texto", apelidos: ["marcador", "categoria", "marcador / categoria"] },
+          { id: "profissional", nome: "Profissional", tipo: "texto", apelidos: ["profissional", "dentista", "responsavel", "responsável"] }
+        ],
+        aoConcluir: function () { recarregarExecucao(); } });
     });
   }
 

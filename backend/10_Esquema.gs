@@ -1,5 +1,5 @@
 /* =====================================================================
-   10_Esquema — o desenho do banco (schema 5)
+   10_Esquema — o desenho do banco (schema 6)
    ---------------------------------------------------------------------
    A fonte única das tabelas: nome da aba, chave, campos e tipos. A camada
    de tabelas (02) valida o cabeçalho real contra isto; a migração (40)
@@ -160,12 +160,34 @@ var ESQUEMA = {
   exe_orcamentos: { chave: ["id"], desde: 5, campos: ["id:texto", "pacienteRef:texto", "pacienteNome:texto", "data:data",
     "situacao:texto", "descontoGeral:dinheiro", "notas:texto", "criadoEm:instante"], raiz: true },
   exe_orcamento_itens: { chave: ["id"], desde: 5, campos: ["id:texto", "orcamentoId:texto", "procedimento:texto",
-    "procedimentoRef:texto", "fichaId:texto", "quantidade:texto", "valorUnitario:dinheiro", "desconto:dinheiro", "ordem:inteiro"] },
+    "procedimentoRef:texto", "fichaId:texto", "quantidade:texto", "valorUnitario:dinheiro", "desconto:dinheiro", "ordem:inteiro",
+    "classe:texto"] },
   exe_execucoes: { chave: ["id"], desde: 5, campos: ["id:texto", "agendamentoTipo:texto", "agendamentoId:texto",
     "agendamentoData:data", "pacienteRef:texto", "pacienteNome:texto", "procedimento:texto", "procedimentoRef:texto",
     "fichaId:texto", "quantidade:texto", "estado:texto", "orcamentoRef:texto", "itemRef:texto", "associacao:texto",
     "custoUnitario:dinheiro", "custoFonte:texto", "valorUnitario:dinheiro", "origem:texto", "loteId:texto",
-    "criadoEm:instante", "autorNome:texto", "notas:texto"], raiz: true },
+    "criadoEm:instante", "autorNome:texto", "notas:texto",
+    "natureza:texto", "trocaId:texto", "valorReferencia:dinheiro", "baseReferencia:texto", "baseCusto:texto"], raiz: true },
+
+  /* PLANOS (schema 6). Conferência: classe de um item (definida uma vez,
+     reaproveitada pelo id do procedimento) e quantidade conferida de uma
+     linha do plano. Troca: um compromisso registrado uma vez, com origem,
+     substituto, quantidades e preços/custos de referência gravados.
+     Crédito: só as UTILIZAÇÕES — a geração sai da troca (uma troca, uma
+     geração). Atendimento: o que a API não traz (previstos, observação de
+     relatório, marcador) e a interpretação confirmada da observação. */
+  exe_conferencias: { chave: ["id"], desde: 6, campos: ["id:texto", "tipo:texto", "alvo:texto", "valor:texto",
+    "motivo:texto", "autorNome:texto", "criadoEm:instante"], raiz: true },
+  exe_trocas: { chave: ["id"], desde: 6, campos: ["id:texto", "pacienteRef:texto", "orcamentoRef:texto", "linhaChave:texto",
+    "procedimentoOrigem:texto", "quantidadeOrigem:texto", "procedimentoSubstituto:texto", "procedimentoSubstitutoRef:texto",
+    "fichaSubstitutoId:texto", "quantidadePrometida:texto", "precoOrigem:dinheiro", "precoSubstituto:dinheiro", "basePreco:texto",
+    "diferencaCobrada:dinheiro", "custoOrigem:dinheiro", "custoSubstituto:dinheiro", "baseCusto:texto", "data:data",
+    "agendamentoRef:texto", "estado:texto", "motivo:texto", "observacaoOrigem:texto", "autorNome:texto", "criadoEm:instante"], raiz: true },
+  exe_creditos: { chave: ["id"], desde: 6, campos: ["id:texto", "pacienteRef:texto", "trocaId:texto", "valor:dinheiro",
+    "destinoRef:texto", "destinoDescricao:texto", "data:data", "estado:texto", "motivo:texto", "autorNome:texto", "criadoEm:instante"], raiz: true },
+  exe_atendimentos: { chave: ["id"], desde: 6, campos: ["id:texto", "agendamentoTipo:texto", "agendamentoId:texto", "pacienteRef:texto",
+    "previstos:json", "observacao:texto", "marcador:texto", "profissional:texto", "interpretacao:texto", "observacaoInterpretada:texto",
+    "observacaoLiberada:booleano", "notas:texto", "origem:texto", "loteId:texto", "autorNome:texto", "criadoEm:instante"], raiz: true },
 
   int_passos: { chave: ["id"], desde: 3, campos: ["id:texto", "operacaoId:texto", "tipo:texto", "estado:texto",
     "tentativas:inteiro", "pedido:json", "resposta:json", "localTipo:texto", "localId:texto", "externoId:texto",
@@ -181,7 +203,9 @@ var COLUNAS_DESDE = {
   fin_fichas: { revisar: 4 },
   int_externos: { aplicado: 4, aplicadoEm: 4, aplicacao: 4 },
   est_itens: { modoSaldo: 5, corteEm: 5, fichaId: 5 },
-  est_movimentos: { origemTipo: 5, origemId: 5, custoUnitario: 5, estornaId: 5 }
+  est_movimentos: { origemTipo: 5, origemId: 5, custoUnitario: 5, estornaId: 5 },
+  exe_orcamento_itens: { classe: 6 },
+  exe_execucoes: { natureza: 6, trocaId: 6, valorReferencia: 6, baseReferencia: 6, baseCusto: 6 }
 };
 
 /* Relações, conferidas pela migração e por conferirIntegridade().

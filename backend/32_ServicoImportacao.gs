@@ -26,7 +26,7 @@ function conferirModuloDeImportacao(ctx) {
   var m = String(ctx.dados.modulo || "");
   if (MODULOS_IMPORTACAO.indexOf(m) < 0) falhar("dados_invalidos", "Este módulo não importa planilhas.");
   if (m === "entradas" && !eAdministrador(ctx.auth)) falhar("sem_permissao", "Só administradores importam entradas em lote.");
-  if (m === "financeiro" && ["estoque", "vendas", "execucoes"].indexOf(ctx.dados.tipo) >= 0) return ctx.dados.tipo;
+  if (m === "financeiro" && ["estoque", "vendas", "execucoes", "atendimentos"].indexOf(ctx.dados.tipo) >= 0) return ctx.dados.tipo;
   return m;
 }
 
@@ -213,59 +213,131 @@ function conferirLinhaVenda(bruta, cx) {
 }
 
 /* ---- Procedimentos realizados por agendamento (relatório) ----
-   Cada linha precisa de um agendamento IDENTIFICADO (id do Clinicorp ou da
-   Agenda): sem ele a linha é recusada — execução nunca nasce de data,
-   sessão ou pagamento. */
-function contextoExecucoes() {
+   Cada linha precisa de um agendamento IDENTIFICADO: o id (Clinicorp ou
+   Agenda) ou — num relatório de UMA paciente, escolhida explicitamente na
+   tela — data e horário que batam com um único agendamento dela. Execução
+   nunca nasce de data sozinha, sessão ou pagamento.
+   · linhas repetidas (mesmo atendimento e procedimento) no mesmo arquivo:
+     as quantidades são somadas numa execução só;
+   · procedimento já registrado nesse atendimento por qualquer via (tela,
+     confirmação, outro relatório): a linha não cria outro; quantidade
+     diferente fica como aviso para conferir no atendimento. */
+function contextoExecucoes(contexto) {
   var c = configClinicorp();
   var pac = mapaDePacientes(c);
-  return { ags: agendamentosConhecidos(c, pac), exes: mapaPorId(lerTudo("exe_execucoes")) };
+  var existentes = {};
+  lerTudo("exe_execucoes").forEach(function (x) {
+    if (x.estado === "desfeito") return;
+    existentes[x.agendamentoTipo + ":" + x.agendamentoId + "|" + chaveDoProcedimento(x)] = x;
+  });
+  return { ags: agendamentosConhecidos(c, pac), existentes: existentes,
+    pacienteRef: contexto && /^(loc|clc):/.test(String(contexto.pacienteRef || "")) ? String(contexto.pacienteRef) : "" };
+}
+
+function horaCurta(h) { var m = String(h || "").match(/(\d{1,2}):(\d{2})/); return m ? ("0" + m[1]).slice(-2) + ":" + m[2] : ""; }
+
+/* o agendamento de uma linha: pelo id, ou paciente (do contexto) + data + hora */
+function agendamentoDaLinha(l, cx) {
+  var idAg = String(l.agendamento || "").trim();
+  if (idAg) return { ag: cx.ags["clinicorp:" + idAg] || cx.ags["agenda:" + idAg] || cx.ags["agenda-hist:" + idAg] || null, por: "id", id: idAg };
+  var dia = String(l.data || "");
+  if (!cx.pacienteRef || !dataValida(dia)) return { ag: null, por: "", id: "" };
+  var hora = horaCurta(l.horario);
+  var cands = Object.keys(cx.ags).map(function (k) { return cx.ags[k]; }).filter(function (a) {
+    return a.pacienteRef === cx.pacienteRef && a.data === dia && (!hora || horaCurta(a.hora) === hora);
+  });
+  return { ag: cands.length === 1 ? cands[0] : null, por: "data", ambiguo: cands.length > 1, id: dia + (hora ? " " + hora : "") };
 }
 
 function conferirLinhaExecucao(bruta, cx) {
   var l = bruta || {}, erros = [], avisos = [];
-  var idAg = String(l.agendamento || "").trim();
-  var ag = idAg ? (cx.ags["clinicorp:" + idAg] || cx.ags["agenda:" + idAg] || cx.ags["agenda-hist:" + idAg]) : null;
-  if (!idAg) erros.push("sem o identificador do agendamento");
-  else if (!ag) erros.push("agendamento " + idAg.slice(0, 30) + " não encontrado (sincronize os agendamentos ou confira o código)");
+  var a = agendamentoDaLinha(l, cx);
+  var ag = a.ag;
+  if (!a.id) erros.push(cx.pacienteRef ? "sem o agendamento (id, ou data e horário)" : "sem o identificador do agendamento");
+  else if (a.ambiguo) erros.push("mais de um agendamento da paciente em " + a.id + ": informe o horário ou o id");
+  else if (!ag) erros.push("agendamento " + a.id.slice(0, 30) + " não encontrado (sincronize os agendamentos ou confira o código)");
   if (!String(l.procedimento || l.codigo || "").trim()) erros.push("sem procedimento");
   var q = l.quantidade === undefined || l.quantidade === null || l.quantidade === "" ? 1000 : qtdMil(l.quantidade);
   if (!q || isNaN(q) || q < 0) erros.push("quantidade inválida");
   if (ag && ag.data > hojeNaClinica()) erros.push("o agendamento ainda não aconteceu");
   if (ag && (ag.status.categoria === "cancelado" || ag.status.categoria === "falta")) erros.push("o agendamento está como " + EXE_STATUS_AGENDA[ag.status.categoria].toLowerCase());
   if (ag && !ag.pacienteRef) erros.push("o agendamento não tem paciente identificada (vincule a paciente)");
-  var registro = { agendamentoTipo: ag ? ag.tipo : "", agendamentoId: ag ? ag.id : idAg, procedimento: String(l.procedimento || l.codigo || "").slice(0, 160),
+  var registro = { agendamentoTipo: ag ? ag.tipo : "", agendamentoId: ag ? ag.id : a.id, procedimento: String(l.procedimento || l.codigo || "").slice(0, 160),
     procedimentoRef: String(l.codigo || "").slice(0, 60), quantidade: q ? qtdTexto(q) : "", data: ag ? ag.data : "", paciente: ag ? ag.pacienteNome : "" };
-  var chave = registro.agendamentoTipo + ":" + registro.agendamentoId + "|" + (registro.procedimentoRef || chaveDeNome(registro.procedimento));
-  var id = "ix-" + sha256Hex(chave).slice(0, 24);
-  return { registro: registro, erros: erros, avisos: avisos, chave: chave, repetidaDe: cx.exes[id] ? id : "" };
+  var chave = registro.agendamentoTipo + ":" + registro.agendamentoId + "|" + chaveDoProcedimento(registro);
+  return { registro: registro, erros: erros, avisos: avisos, chave: chave, repetidaDe: "" };
 }
 
-function analisarLinhas(modulo, linhas) {
+/* ---- Atendimentos (relatório de agendamentos) ----
+   Completa o que a API não traz: procedimentos previstos, observação,
+   marcador ("Plano") e profissional. Não cria execução — previsto não é
+   realização; a equipe confirma no atendimento. */
+function conferirLinhaAtendimento(bruta, cx) {
+  var l = bruta || {}, erros = [], avisos = [];
+  var a = agendamentoDaLinha(l, cx);
+  var ag = a.ag;
+  if (!a.id) erros.push(cx.pacienteRef ? "sem o agendamento (id, ou data e horário)" : "sem o identificador do agendamento (ou importe pela ficha da paciente, com data e horário)");
+  else if (a.ambiguo) erros.push("mais de um agendamento da paciente em " + a.id + ": informe o horário ou o id");
+  else if (!ag) erros.push("agendamento " + a.id.slice(0, 30) + " não encontrado (sincronize os agendamentos ou confira o código)");
+  var previstos = String(l.procedimentos || "").split(/\s*[,;]\s*/).filter(Boolean).slice(0, 20).map(function (d) { return { descricao: d.slice(0, 160), ref: "" }; });
+  var registro = { agendamentoRef: ag ? ag.ref : "", data: ag ? ag.data : String(l.data || ""), paciente: ag ? ag.pacienteNome : "", previstos: previstos,
+    observacao: String(l.observacao || "").slice(0, 1000), marcador: String(l.marcador || "").slice(0, 120), profissional: String(l.profissional || "").slice(0, 120) };
+  if (ag && !previstos.length && !registro.observacao && !registro.marcador) avisos.push("linha sem procedimentos, observação ou marcador: nada a completar");
+  var atual = ag ? acharPorChave("exe_atendimentos", ag.ref) : null;
+  var igual = !!(atual && canonico(atual.previstos || []) === canonico(previstos) && (atual.observacao || "") === registro.observacao && (atual.marcador || "") === registro.marcador);
+  if (atual && atual.origem === "manual") avisos.push("este atendimento já foi completado na tela: o relatório só preenche o que estiver vazio");
+  return { registro: registro, erros: erros, avisos: avisos, chave: registro.agendamentoRef, repetidaDe: igual ? ag.ref : "" };
+}
+
+function analisarLinhas(modulo, linhas, contexto) {
   var cx = modulo === "financeiro" ? contextoDespesas() : modulo === "estoque" ? contextoEstoque() : modulo === "vendas" ? contextoVendas() :
-    modulo === "execucoes" ? contextoExecucoes() : contextoEntradas();
+    modulo === "execucoes" || modulo === "atendimentos" ? contextoExecucoes(contexto) : contextoEntradas();
   var conferir = modulo === "financeiro" ? conferirLinhaDespesa : modulo === "estoque" ? conferirLinhaEstoque : modulo === "vendas" ? conferirLinhaVenda :
-    modulo === "execucoes" ? conferirLinhaExecucao : conferirLinhaEntrada;
-  var vistas = {};
-  return linhas.map(function (l, i) {
+    modulo === "execucoes" ? conferirLinhaExecucao : modulo === "atendimentos" ? conferirLinhaAtendimento : conferirLinhaEntrada;
+  var vistas = {}, res = [];
+  linhas.forEach(function (l, i) {
     var r = conferir(l, cx);
     r.indice = i;
-    if (!r.erros.length) {
-      if (r.repetidaDe) r.repetida = modulo === "estoque" ? "este retrato já foi importado (mesmo item, local, lote e dia)" :
-        modulo === "execucoes" ? "este procedimento já foi registrado neste agendamento" : "já existe um registro igual (mesma data, valor e nome)";
-      else if (modulo === "vendas") { /* várias linhas da mesma venda são normais */ }
-      else if (vistas[r.chave] !== undefined) r.repetida = "igual à linha " + (vistas[r.chave] + 1) + " deste arquivo";
-      else vistas[r.chave] = i;
+    res.push(r);
+    if (r.erros.length) return;
+    if (modulo === "execucoes") {
+      if (vistas[r.chave] !== undefined) {
+        var p = res[vistas[r.chave]];
+        p.registro.quantidade = qtdTexto((qtdMil(p.registro.quantidade) || 0) + (qtdMil(r.registro.quantidade) || 0));
+        p.avisos.push("somada à linha " + (i + 1) + " (mesmo atendimento e procedimento)");
+        r.somadaA = vistas[r.chave];
+        r.repetida = "somada à linha " + (vistas[r.chave] + 1) + " (mesmo atendimento e procedimento)";
+      } else vistas[r.chave] = i;
+      return;
     }
-    return r;
+    if (r.repetidaDe) r.repetida = modulo === "estoque" ? "este retrato já foi importado (mesmo item, local, lote e dia)" :
+      modulo === "atendimentos" ? "este atendimento já tem estes dados" : "já existe um registro igual (mesma data, valor e nome)";
+    else if (modulo === "vendas") { /* várias linhas da mesma venda são normais */ }
+    else if (vistas[r.chave] !== undefined) r.repetida = "igual à linha " + (vistas[r.chave] + 1) + " deste arquivo";
+    else vistas[r.chave] = i;
   });
+  /* execuções: compara o total do arquivo com o que já existe */
+  if (modulo === "execucoes") {
+    res.forEach(function (r) {
+      if (r.erros.length || r.somadaA !== undefined) return;
+      var ex = cx.existentes[r.chave];
+      if (!ex) return;
+      r.repetidaDe = ex.id;
+      if (ex.quantidade === r.registro.quantidade) r.repetida = "já registrado neste atendimento" + (ex.origem && ex.origem !== "importacao" ? " (por outra via: " + ex.origem + ")" : "");
+      else {
+        r.repetida = "já registrado neste atendimento com quantidade " + String(ex.quantidade).replace(".", ",") + ": confira e corrija no atendimento";
+        r.divergente = true;
+      }
+    });
+  }
+  return res;
 }
 
 function importacaoPrevia(ctx) {
   var modulo = conferirModuloDeImportacao(ctx);
   var linhas = linhasDoPedido(ctx.dados);
   return lerComConsistencia(function () {
-    var r = analisarLinhas(modulo, linhas);
+    var r = analisarLinhas(modulo, linhas, ctx.dados.contexto);
     return {
       linhas: r.map(function (x) { return { indice: x.indice, ok: !x.erros.length, erros: x.erros, avisos: x.avisos, repetida: x.repetida || "", registro: x.registro }; }),
       contagem: { total: r.length, validas: r.filter(function (x) { return !x.erros.length && !x.repetida; }).length,
@@ -280,12 +352,14 @@ function importacaoConfirmar(ctx) {
   linhasDoPedido(d);
   var op = { operacaoId: d.operacaoId, tipo: "importacao." + modulo, arquivo: String(d.arquivo || "").slice(0, 200),
     planilha: String(d.planilha || "").slice(0, 100), mapeamento: d.mapeamento || {}, linhas: d.linhas,
-    incluirRepetidas: Array.isArray(d.incluirRepetidas) ? d.incluirRepetidas.map(Number) : [] };
+    incluirRepetidas: Array.isArray(d.incluirRepetidas) ? d.incluirRepetidas.map(Number) : [],
+    contexto: d.contexto && typeof d.contexto === "object" ? { pacienteRef: String(d.contexto.pacienteRef || "") } : null };
   return executarOperacao(ctx, op, function (o) { return planejarImportacao(ctx, modulo, o); });
 }
 
 function planejarImportacao(ctx, modulo, op) {
-  var analise = analisarLinhas(modulo, op.linhas);
+  var analise = analisarLinhas(modulo, op.linhas, op.contexto);
+  var Mexe = modulo === "execucoes" ? apurarModelo(configClinicorp()) : null;
   var lote = "lote-" + String(op.operacaoId).slice(-24);
   var incluir = {};
   op.incluirRepetidas.forEach(function (i) { incluir[i] = true; });
@@ -294,7 +368,8 @@ function planejarImportacao(ctx, modulo, op) {
   var gruposVenda = {}, ordemVenda = [];
   analise.forEach(function (x) {
     if (x.erros.length) { comErro++; detalhes.push({ linha: x.indice + 1, erros: x.erros }); return; }
-    if (x.repetida && !incluir[x.indice]) { repetidas++; detalhes.push({ linha: x.indice + 1, repetida: x.repetida }); return; }
+    /* soma de linhas repetidas e registro já existente nunca viram outra execução */
+    if (x.repetida && (!incluir[x.indice] || x.somadaA !== undefined || (modulo === "execucoes" && x.repetidaDe))) { repetidas++; detalhes.push({ linha: x.indice + 1, repetida: x.repetida }); return; }
     var id = lote + "-" + (x.indice + 1);
     var r = x.registro;
     if (modulo === "vendas") {
@@ -303,8 +378,16 @@ function planejarImportacao(ctx, modulo, op) {
     } else if (modulo === "execucoes") {
       var px = planejarExecucao(ctx, { operacaoId: op.operacaoId, id: "ix-" + sha256Hex(x.chave).slice(0, 24), origem: "importacao", loteId: lote,
         dados: { agendamentoTipo: r.agendamentoTipo, agendamentoId: r.agendamentoId, procedimento: r.procedimento, procedimentoRef: r.procedimentoRef,
-          quantidade: r.quantidade, estado: "realizado" } });
+          quantidade: r.quantidade, estado: "realizado" } }, Mexe);
       escritas = escritas.concat(px.escritas || []);
+    } else if (modulo === "atendimentos") {
+      var atual = acharPorChave("exe_atendimentos", r.agendamentoRef);
+      var dados = {};
+      var vazio = function (k) { return !atual || atual.origem !== "manual" || !atual[k] || (Array.isArray(atual[k]) && !atual[k].length); };
+      if (r.previstos.length && vazio("previstos")) dados.previstos = r.previstos;
+      ["observacao", "marcador", "profissional"].forEach(function (k) { if (r[k] && vazio(k)) dados[k] = r[k]; });
+      var pa = planejarAtendimento(ctx, { operacaoId: op.operacaoId, id: r.agendamentoRef, revBase: atual ? atual.rev : 0, origem: "importacao", loteId: lote, dados: dados });
+      escritas = escritas.concat(pa.escritas || []);
     } else if (modulo === "estoque") {
       escritas = escritas.concat(escritasDeLinhaDeEstoque(ctx, op, r, lote));
     } else if (modulo === "financeiro") {

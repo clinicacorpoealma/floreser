@@ -1,4 +1,4 @@
-# Integração com o Clinicorp (4.3.0)
+# Integração com o Clinicorp (4.4.0)
 
 A integração é **central**: mora no backend (`backend/35`–`38`) e é
 administrada no painel → **Integrações**. CRM, Agenda e Entradas só mostram
@@ -380,3 +380,26 @@ as importações estão cobertos por testes com dados sintéticos e no servidor
 local. Nada disso foi exercitado numa conta real do Clinicorp: a leitura dos
 procedimentos completos do orçamento e da lista de status usa campos da
 especificação, ainda não vistos numa resposta real (§8).
+
+## 13. Planos de tratamento (4.4.0)
+
+Conferido de novo na especificação oficial (a mesma de §12) em 25/11/2026:
+
+| Dado | Como chega ao Alveare | Situação |
+|---|---|---|
+| orçamento, linhas (id, id do procedimento, descrição, valor de tabela, valor final, aprovado/excluído) | automático (`/estimates/list`) | documentado; já usado desde a 4.3.0 |
+| agendamento: data, horário, profissional (id), situação, desmarcado/excluído | automático (`/appointment/list`) | documentado |
+| **observação do agendamento** (`Notes`) | automático, guardada inteira (`observacao`) | documentado; **novo na 4.4.0** |
+| nome do profissional | automático (`/professional/list_all_professionals`, uma vez por execução) | documentado; novo na 4.4.0 |
+| procedimentos previstos de cada agendamento | **não documentado** em `/appointment/list`; lido só se vier (`Procedures`). Senão: relatório de agendamentos da paciente ou a tela | depende de relatório/tela |
+| marcador do agendamento ("Plano") | `/appointment/list_categories` lista as categorias, mas o agendamento não traz a categoria na especificação → relatório ou tela | depende de relatório/tela |
+| quantidade por linha do orçamento | não existe → linhas de uma unidade; texto "4 sessões" fica a conferir | conferência na tela |
+| procedimento realizado em cada atendimento, vínculo atendimento ↔ item | não existe → confirmação no atendimento ("confirmar como previsto", registro, troca) ou relatório de execuções | confirmação no atendimento |
+| Controle de Sessões, `Session`, `Executed`, `StepsList`, pagamentos | existem, mas **não são evidência de execução**; ficam fora da apuração | excluídos de propósito |
+
+**Suporte no código × disponibilidade confirmada.** O código lê `Notes`, a
+lista de profissionais e — se aparecerem — os `Procedures` do agendamento.
+Nenhum desses campos foi visto ainda numa resposta real da conta da clínica
+(§8): a disponibilidade só fica confirmada no teste com as credenciais
+reais. Planos, trocas, bônus, créditos, conferências e as duas importações
+foram validados apenas com dados simulados (testes e servidor local).

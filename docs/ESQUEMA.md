@@ -1,4 +1,4 @@
-# Esquema de dados (schema 5)
+# Esquema de dados (schema 6)
 
 A fonte é `backend/10_Esquema.gs`. Cada tabela é uma aba com o mesmo nome; a
 linha 1 é o cabeçalho, e **o cabeçalho manda** — a posição de cada campo sai
@@ -117,6 +117,26 @@ fichaId; `est_movimentos` origemTipo, origemId, custoUnitario, estornaId.
 `pacienteRef` é `loc:<id da Agenda>` ou `clc:<id do Clinicorp>` (o vínculo
 de paciente junta os dois). Quantidades em texto decimal, dinheiro em
 centavos, como no resto.
+
+### Planos (schema 6)
+
+| Aba | Chave | Campos |
+|---|---|---|
+| `exe_conferencias` (raiz) | id (`classe:item:<ref>`, `classe:ref:<id do procedimento>`, `qtd:<plano>\|<procedimento>`) | tipo (classe/quantidade), alvo, valor, motivo, autorNome, criadoEm |
+| `exe_trocas` (raiz) | id | pacienteRef, orcamentoRef, linhaChave, procedimentoOrigem, quantidadeOrigem, procedimentoSubstituto, procedimentoSubstitutoRef, fichaSubstitutoId, quantidadePrometida, precoOrigem, precoSubstituto, basePreco, diferencaCobrada, custoOrigem, custoSubstituto, baseCusto, data, agendamentoRef, estado (ativa/desfeita), motivo, observacaoOrigem, autorNome, criadoEm |
+| `exe_creditos` (raiz) | id | pacienteRef, trocaId, valor, destinoRef, destinoDescricao, data, estado (ativo/estornado), motivo, autorNome, criadoEm |
+| `exe_atendimentos` (raiz) | id (= referência do agendamento) | agendamentoTipo, agendamentoId, pacienteRef, previstos (json), observacao, marcador, profissional, interpretacao, observacaoInterpretada, observacaoLiberada, notas, origem (manual/importacao), loteId, autorNome, criadoEm |
+
+Colunas novas no fim (`COLUNAS_DESDE`, 6): `exe_orcamento_itens.classe`;
+`exe_execucoes` natureza, trocaId, valorReferencia, baseReferencia,
+baseCusto. A geração de crédito não tem linha própria: sai da troca.
+
+## Do schema 5 para o schema 6 (`backend/45_MigracaoV6.gs`)
+
+Cria as quatro abas e as colunas; itens dos orçamentos do Alveare ganham
+classe "tratamento"; execuções ganham a natureza que já tinham (com item →
+`contratado`; sem item → vazio, "a decidir"). Confere linhas, dinheiro e o
+realizado de cada item antes e depois. Retorno: `migracaoV6Retornar()`.
 
 ## Do schema 4 para o schema 5 (`backend/44_MigracaoV5.gs`)
 

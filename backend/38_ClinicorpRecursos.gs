@@ -26,6 +26,13 @@ function atualizarStatusDeAgenda() {
     (Array.isArray(r) ? r : []).forEach(function (x) { var n = normalizarSimples("status", x); if (n && n.externoId) mapa[n.externoId] = { nome: n.nome, chave: n.chave }; });
     if (Object.keys(mapa).length) alterarConfigClinicorp(function (c) { c.statusAgenda = mapa; });
   } catch (e) { if (!(e instanceof ErroClinicorp) || e.tipo === "autenticacao") throw e; }
+  /* nomes dos profissionais (o agendamento traz só o id) */
+  try {
+    var p = chamarClinicorp("profissionais.listar", {});
+    var nomes = {};
+    (Array.isArray(p) ? p : []).forEach(function (x) { var n = normalizarSimples("profissional", x); if (n && n.externoId && n.nome) nomes[n.externoId] = n.nome; });
+    if (Object.keys(nomes).length) alterarConfigClinicorp(function (c) { c.profissionais = nomes; });
+  } catch (e2) { if (!(e2 instanceof ErroClinicorp) || e2.tipo === "autenticacao") throw e2; }
 }
 
 /* Agendamentos de UMA paciente vinculada na janela: os itens voltam com

@@ -289,7 +289,7 @@ dialog::backdrop{background:rgba(20,32,30,.45)}
 
 /* ---------- vendas, preço praticado, orçamentos e execução (4.3.0) ---------- */
 .lista-edicao.venda li{grid-template-columns:2.4fr .8fr 1fr 1fr auto}
-.lista-edicao.orcamento li{grid-template-columns:2fr 1fr .7fr 1fr 1.4fr auto}
+.lista-edicao.orcamento li{grid-template-columns:2fr 1fr .7fr 1fr 1.4fr 1fr auto}
 .tabela-compacta th,.tabela-compacta td{padding:6px 8px;font-size:12.5px}
 .tabela td .selo + .sub{display:block}
 .aviso-bloco{border-left:3px solid var(--alerta)}
@@ -311,4 +311,85 @@ dialog::backdrop{background:rgba(20,32,30,.45)}
   #tabelaOrcamentos th:nth-child(2),#tabelaOrcamentos td:nth-child(2),
   #tabelaOrcamentos th:nth-child(6),#tabelaOrcamentos td:nth-child(6),
   #tabelaVendas th:nth-child(3),#tabelaVendas td:nth-child(3){display:none}
+}
+
+/* ---------- planos de tratamento (4.4.0) ---------- */
+.seletor-paciente{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.seletor-paciente .input{min-width:260px}
+.campo-inline span{font-size:11px;color:var(--text-3);letter-spacing:.06em;text-transform:uppercase}
+.ficha-paciente-topo{flex-wrap:wrap;gap:8px}
+.lista-planos .item-plano{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;cursor:pointer;padding:12px 4px}
+.lista-planos .item-plano:hover{background:var(--surface-2)}
+.lista-planos .item-plano .nome{grid-column:1}
+.lista-planos .item-plano .det{grid-column:1}
+.lista-planos .item-plano .progresso-plano{grid-column:1;display:flex;align-items:center;gap:10px}
+.lista-planos .item-plano .selo{grid-column:2;grid-row:1}
+.barra-plano{display:inline-block;width:160px;height:8px;border-radius:99px;background:var(--surface-3);overflow:hidden;vertical-align:middle}
+.barra-plano i{display:block;height:100%;background:var(--accent)}
+.cartao-resumo .barra-plano{width:100%;margin-top:8px}
+.plano-parte{margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.plano-parte:first-of-type{border-top:0;margin-top:6px;padding-top:0}
+.destaque-disponivel{background:var(--accent-soft);border:0;border-radius:var(--r-md);padding:12px 16px}
+.lista-disponiveis{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 22px;font-size:15px}
+.lista-disponiveis b{color:var(--accent)}
+.lista-pendencias li{border-left:3px solid var(--alerta);padding-left:10px}
+.historico-atendimentos{list-style:none;margin:0;padding:0}
+.historico-atendimentos > li,.lista > li.atendimento{display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:12px 0;border-bottom:1px solid var(--border)}
+li.atendimento .acoes{margin-left:0}
+.lista-execucoes{list-style:none;margin:4px 0 0;padding:0 0 0 14px;border-left:2px solid var(--sage, #C9D3CA)}
+.lista-execucoes li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:4px 0;border:0}
+.lista-execucoes .acoes{margin-left:auto}
+.observacao-linha{font-size:13px;color:var(--text-2)}
+.observacao-linha .selo{margin-left:6px}
+.observacao-original{background:var(--surface-2);border-radius:var(--r-md);padding:10px 14px;margin-bottom:12px}
+.selo-nat-contratado{background:var(--accent-soft);color:var(--accent)}
+.selo-nat-substituicao{background:#EFE8D8;color:#6E5A2E}
+.selo-nat-gratuito{background:var(--alerta-bg);color:var(--alerta)}
+.selo-nat-avulso{background:transparent;border:1px solid var(--border);color:var(--text-3)}
+.selo-nat-pendente{background:var(--danger-soft);color:var(--danger)}
+:root[data-tema="escuro"] .selo-nat-substituicao{background:#3A3322;color:#E3CC92}
+li.desfeita{opacity:.6}
+li.desfeita .nome{text-decoration:line-through}
+li.realce{background:var(--accent-soft);transition:background .3s}
+.input-mini{width:auto;min-width:140px;padding:4px 8px;font-size:12px;margin-top:4px}
+.cartoes-plano{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+
+/* versão para a paciente */
+.relatorio-paciente{font-size:14px;color:var(--text)}
+.rel-capa{background:#3B6E6A;color:#F5F0EB;border-radius:var(--r-md);padding:22px 24px;margin-bottom:16px}
+.rel-capa h2{font-family:var(--serif);font-size:34px;font-weight:500;margin:4px 0}
+.rel-marca,.rel-emitido{font-size:11px;letter-spacing:.18em;text-transform:uppercase;margin:0;opacity:.85}
+.rel-nome{font-family:var(--serif);font-style:italic;font-size:22px;margin:0 0 6px}
+.rel-plano{margin-bottom:22px}
+.rel-plano h3{font-family:var(--serif);font-size:24px;color:#3B6E6A;margin:6px 0 10px}
+.rel-plano h4{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#3B6E6A;margin:14px 0 6px}
+.rel-numeros{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:10px}
+.rel-numeros div{background:#F5F0EB;border-radius:10px;padding:12px}
+.rel-numeros b{display:block;font-family:var(--serif);font-size:28px;color:#3B6E6A}
+.rel-numeros span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#5F5348}
+.rel-plano .barra-plano{width:100%}
+.rel-caixa{border:1px solid #C9D3CA;border-radius:10px;padding:10px 14px;margin:10px 0}
+.rel-caixa ul{margin:0;padding-left:18px}
+.rel-tabela{width:100%;border-collapse:collapse;font-size:13px}
+.rel-tabela th{background:#3B6E6A;color:#F5F0EB;text-align:left;padding:6px 8px;font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.rel-tabela td{padding:6px 8px;border-bottom:1px solid #E7E1DA;vertical-align:top}
+.rel-rodape{font-family:var(--serif);font-style:italic;font-size:20px;text-align:center;color:#3B6E6A;margin-top:18px}
+@media (max-width:560px){
+  .seletor-paciente .input{min-width:0;width:100%}
+  .cartoes-plano{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cartoes-plano .cartao-resumo .val{font-size:21px}
+  .lista-planos .item-plano{grid-template-columns:1fr}
+  .lista-planos .item-plano .selo{grid-column:1;grid-row:auto}
+  .barra-plano{width:100%}
+  #orcItens th:nth-child(4),#orcItens td:nth-child(4),#orcItens th:nth-child(5),#orcItens td:nth-child(5){display:none}
+}
+.impressao{display:none}
+@media print{
+  body.imprimindo > *:not(#impressao){display:none !important}
+  body.imprimindo #impressao{display:block !important}
+  body.imprimindo{background:#fff}
+  body.imprimindo::before{display:none}
+  .rel-capa,.rel-tabela th,.rel-numeros div{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .rel-plano{break-inside:avoid-page}
 }

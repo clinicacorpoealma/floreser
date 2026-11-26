@@ -220,7 +220,35 @@ Retorno: `ligarManutencao()` → `migracaoV5Retornar()` → reimplante a 4.2.0 e
 o site 4.2.0 → `desligarManutencao()`. Vendas, orçamentos do Alveare e
 execuções ficam nas abas novas, que a 4.2.0 ignora.
 
-## Publicações seguintes (4.3.x em diante)
+## 4.4.0 — Planos de tratamento, trocas, bônus e créditos (schema 5 → 6)
+
+Parte da 4.3.0 publicada (schema 5 ativo). Janela curta de manutenção:
+
+1. No computador: os testes (`backend`, `migracao`, `frontend`, `financeiro`,
+   `integracao`, `automacao`, `estoque`, `vendas`, `execucao`, `planos`) e
+   `node ferramentas/conferir-publicacao.js` ("Tudo confere").
+2. **Código** (todos antes da Nova versão): atualize `00_Config`, `01_Http`,
+   `10_Esquema`, `31_ServicoFinanceiro`, `32_ServicoImportacao`,
+   `34_ServicoExecucao`, `35_ClinicorpContrato`, `36_ClinicorpCliente`,
+   `38_ClinicorpRecursos`; crie `45_MigracaoV6`.
+3. `ligarManutencao()` → **Nova versão** na mesma implantação.
+4. `migracaoV6Diagnosticar()` ("pronta") → `migracaoV6Backup()` →
+   `migracaoV6Executar()` (**CONFERÊNCIA: OK**) → `migracaoV6Ativar()`.
+5. Publique o site (alterados: `version.js`, `financeiro/index.html`,
+   `financeiro/financeiro.js`, `financeiro/financeiro.css`,
+   `compartilhado/importacao.js`) → `desligarManutencao()`.
+6. Na próxima sincronização, os agendamentos do Clinicorp passam a trazer a
+   observação e os nomes dos profissionais (a assinatura deles muda uma vez;
+   a aplicação na Agenda é repetível e não duplica).
+7. Depois de publicar: em cada orçamento misto do Clinicorp, classifique uma
+   vez os procedimentos que são produto (a regra vale para os próximos), e
+   confira as quantidades marcadas "a conferir".
+
+Retorno: `ligarManutencao()` → `migracaoV6Retornar()` → reimplante a 4.3.0 e
+o site 4.3.0 → `desligarManutencao()`. Trocas, créditos, conferências e
+complementos ficam nas abas novas.
+
+## Publicações seguintes (4.4.x em diante)
 
 1. Mudou o servidor? Cole os `.gs` alterados e **Nova versão** na mesma
    implantação — sempre antes do site, ou junto.

@@ -131,6 +131,22 @@ Painel (sessão da senha `dev`): `painel.dados`, `painel.limpar`,
 
 Todas só com a permissão Financeiro (ou admin), pelo `financeiro.aplicar`.
 
+### Planos 4.4.0
+
+| Ação / operação | Dados |
+|---|---|
+| `financeiro.pacientePlanos` | `{ pacienteRef, versao: "" \| "paciente" }` → documentos, planos (resumo, linhas, disponíveis, histórico, trocas, gratuitos, benefícios, pendências), atendimentos, pendentes com candidatos e saldos, benefícios da paciente. `versao: "paciente"` devolve só o que pode ser mostrado a ela |
+| op `exe.registrar` | também `natureza: gratuito\|avulso`, `valorReferencia`, `orcamentoRef` (bônus) e `trocaId` (entrega de troca) |
+| op `exe.alterar` | também `natureza`, `orcamentoRef`, `valorReferencia`; `motivo` obrigatório ao corrigir o que já estava confirmado |
+| op `exe.atendimento.confirmar` | `{ agendamentoTipo, agendamentoId, procedimentos? }` |
+| op `exe.atendimento.salvar` | `{ id: "<tipo>:<id>", revBase, dados: { previstos, observacao, marcador, profissional, interpretacao, observacaoLiberada, notas } }` |
+| op `exe.troca.registrar` | `{ id, dados: { orcamentoRef, linhaChave, quantidadeOrigem, procedimentoSubstituto, procedimentoSubstitutoRef, fichaSubstitutoId, quantidadePrometida, precoOrigem?, precoSubstituto?, diferencaCobrada, data, agendamentoTipo?, agendamentoId?, entregaQuantidade?, substituirExecucaoId?, observacaoOrigem, motivo } }` |
+| op `exe.troca.desfazer` | `{ id, revBase, motivo }` |
+| op `exe.credito.usar` | `{ id, dados: { trocaId, valor, destinoRef \| destinoDescricao, data, motivo } }` |
+| op `exe.credito.estornar` | `{ id, revBase, motivo }` |
+| op `exe.conferencia` | `{ dados: { tipo: classe\|quantidade, alvo, valor, motivo } }` |
+| `importacao.previa/confirmar` | `tipo: atendimentos`, com `contexto: { pacienteRef }` para casar por data e horário |
+
 ## Idempotência
 
 Cada intenção de gravação tem um `operacaoId` (8 a 80 caracteres

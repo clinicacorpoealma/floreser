@@ -303,6 +303,9 @@
 
   function chamar(acao, corpo) {
     if (o.tipo && !corpo.tipo) corpo.tipo = o.tipo;
+    /* contexto explícito da tela (ex.: a paciente escolhida), para o
+       servidor casar linhas por data e horário dentro dela */
+    if (o.contexto && !corpo.contexto) corpo.contexto = o.contexto;
     return global.FloreSerRede.chamar(acao, corpo, { token: typeof o.token === "function" ? o.token() : o.token, leitura: acao === "importacao.previa" });
   }
 

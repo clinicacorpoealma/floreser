@@ -137,7 +137,8 @@ teste("cancelamento, falta e correção: cancelado/falta recusam realizado; desf
   a.gs.reiniciarExecucao();
   a.gs.alterarConfigClinicorp((c) => { c.categoriaStatus = {}; });
   /* correção de quantidade e desfazer */
-  um(a, { tipo: "exe.alterar", id: r.id, revBase: 1, campos: { quantidade: "1" } });
+  v.falso(aplicar(a, { tipo: "exe.alterar", id: r.id, revBase: 1, campos: { quantidade: "1" } }).ok, "corrigir o que já foi confirmado pede motivo");
+  um(a, { tipo: "exe.alterar", id: r.id, revBase: 1, campos: { quantidade: "1", motivo: "lançado em dobro" } });
   v.igual(orc(a, "clinicorp:T1").totais.realizada, "1");
   um(a, { tipo: "exe.alterar", id: r.id, revBase: 2, campos: { estado: "desfeito", motivo: "lançado no agendamento errado" } });
   o = orc(a, "clinicorp:T1");
@@ -151,11 +152,10 @@ teste("execução sem orçamento e excedente: aparecem à parte, sem preço inve
   orcamentoLaser(a, "2");
   registrar(a, "agenda-hist:h1", "Laser facial", { procedimentoRef: "LAS" });
   registrar(a, "agenda-hist:h2", "Laser facial", { procedimentoRef: "LAS" });
-  /* o item já está completo: a terceira não tem item com saldo → sem orçamento */
+  /* o item já está completo, mas o plano (ainda com Peeling) é o único em
+     andamento com Laser: a terceira entra nele como excedente visível */
   const r3 = registrar(a, "agenda-hist:h3", "Laser facial", { procedimentoRef: "LAS" });
-  v.igual(r3.associacao, "sem_orcamento");
-  /* a pessoa decide ligar ao item mesmo assim → excedente */
-  um(a, { tipo: "exe.alterar", id: r3.id, revBase: 1, campos: { itemRef: "local:orc-laser:it-laser" } });
+  v.igual(r3.associacao, "automatica");
   const o = orc(a, "local:orc-laser");
   const laser = o.itens.find((i) => i.id === "it-laser");
   v.igual(laser.realizada, "3");
@@ -169,7 +169,7 @@ teste("execução sem orçamento e excedente: aparecem à parte, sem preço inve
   v.igual(painel(a, { situacao: "excedente" }).orcamentos.length, 1);
 });
 
-teste("associação: dois orçamentos possíveis → a pessoa escolhe; a escolha é reaproveitada; nome igual sozinho nunca decide", () => {
+teste("associação: dois orçamentos possíveis → a pessoa escolhe; um atendimento novo não herda a escolha (só sugestão); nome igual sozinho nunca decide", () => {
   const a = ambiente();
   comClinicorp(a);
   um(a, { tipo: "exe.orcamento.salvar", id: "orc-dup", revBase: 0, dados: { pacienteRef: "loc:pac1", data: "2026-11-05",
@@ -180,7 +180,9 @@ teste("associação: dois orçamentos possíveis → a pessoa escolhe; a escolha
   um(a, { tipo: "exe.alterar", id: r.id, revBase: 1, campos: { itemRef: "local:orc-dup:i1" } });
   v.igual(a.linhas("exe_execucoes").find((x) => x.id === r.id).associacao, "confirmada");
   const r2 = registrar(a, "clinicorp:A4", "Laser facial", { procedimentoRef: "77" });
-  v.igual(r2.associacao, "reaproveitada", "associação confiável anterior");
+  v.igual(r2.associacao, "ambigua", "outro atendimento: a escolha anterior não é copiada");
+  v.igual(painel(a).pendentes.find((x) => x.id === r2.id).sugestao, "local:orc-dup:i1", "aparece como sugestão");
+  um(a, { tipo: "exe.alterar", id: r2.id, revBase: 1, campos: { itemRef: "local:orc-dup:i1" } });
   v.igual(orc(a, "local:orc-dup").totais.realizada, "2");
   v.igual(orc(a, "clinicorp:T1").totais.realizada, "0");
   /* só o nome igual, sem código: sugere, não decide */

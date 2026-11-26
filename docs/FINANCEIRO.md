@@ -1,4 +1,4 @@
-# Financeiro (4.3.0)
+# Financeiro (4.4.0)
 
 Módulo em `financeiro/` (estrutura, aparência e comportamento separados),
 regras puras em `backend/30_RegrasFinanceiro.gs`, serviço em
@@ -184,17 +184,105 @@ orçado; excedente sem preço inventado). O recebido fica nas Entradas.
 - **Orçamentos**: do Clinicorp (cada linha de procedimento = 1 unidade, a API
   não traz quantidade; linhas iguais do mesmo orçamento formam um conjunto) e
   do Alveare (`exe_orcamentos`, com quantidade e valor unitário).
-- **Associação**: item informado → `automatica` (código do procedimento com
-  saldo em um só orçamento) → `reaproveitada` (escolha anterior confirmada da
-  mesma paciente e procedimento) → senão `ambigua` / `sugerida` (só nome) /
-  `sem_orcamento`. Nunca se escolhe entre dois orçamentos pelo nome.
-  Pendências aparecem em "Para decidir".
+- **Associação**: ver "Planos de tratamento" abaixo (desde a 4.4.0 a escolha
+  feita num atendimento não é mais copiada para um atendimento novo).
 - O filtro de período diz a base: data do orçamento ou data de execução.
 - Custo e valor acordado ficam **gravados** na execução (custo da ficha:
   estimativa).
 - **Relatório de execuções** (importação `tipo: execucoes`): exige o
   identificador do agendamento; recusa agendamento desconhecido, futuro,
   cancelado, com falta ou sem paciente identificada.
+
+## Planos de tratamento, trocas, bônus e créditos (4.4.0)
+
+Em **Orçamentos e execução**, escolher a paciente abre a ficha dela: planos
+em andamento primeiro, depois compras de produtos, avulsos e itens a
+classificar, e os planos finalizados (com datas e histórico). Cada plano
+responde três perguntas — o que ela contratou, o que recebeu em cada
+atendimento e o que ainda pode agendar ou usar como crédito.
+
+**Entidades** (`backend/34_ServicoExecucao.gs`): documento (orçamento de
+origem) · plano (os itens de **tratamento** do documento) · linha (um
+procedimento do plano) · atendimento (agendamento identificado + complemento
+em `exe_atendimentos`) · execução (`exe_execucoes`, com a natureza) · troca
+(`exe_trocas`) · utilização de crédito (`exe_creditos`). Tudo sai de **uma
+apuração** (`apurarModelo`): lista, ficha, plano e versão para a paciente.
+
+- **Classe dos itens**: tratamento, produto ou avulso. A escolha para aquele
+  item > a regra do procedimento (pelo id do cadastro, `classe:ref:<id>`,
+  definida uma vez) > o tipo da ficha ligada > a classe do orçamento do
+  Alveare. Sem classe: conta como tratamento, com pendência "classificar".
+  Só tratamento entra no progresso; documento misto mostra os outros itens à
+  parte.
+- **Quantidade contratada**, com a origem: quantidade explícita (Alveare);
+  linhas de uma unidade cada (Clinicorp); quantidade agregada no texto com
+  linhas desdobradas (4 linhas "4 sessões de…") = 4, nunca 16; quantidade só
+  no texto (1 linha "4 sessões de…") fica **a conferir** e vale 1 até alguém
+  confirmar (`exe_conferencias`, `qtd:<plano>|<procedimento>`).
+- **Natureza da execução**: conforme o plano · em substituição (de uma
+  troca) · bônus (adicional gratuito) · avulso confirmado · a decidir. A
+  decidir é pendência, diferente de avulso.
+- **Associação automática só quando inequívoca**: saldo em um só plano pelo
+  código do procedimento; ou, sem saldo em nenhum, um só plano em andamento
+  com ele (entra como excedente visível). Dois planos ou só nome parecido →
+  a pessoa escolhe no próprio atendimento, vendo os saldos. A escolha fica na
+  execução daquele atendimento (reimportar, reconfirmar ou sincronizar o
+  mesmo atendimento a preserva); **um atendimento novo não herda** — vira só
+  sugestão. Plano finalizado não recebe atendimento novo.
+- **Números de cada linha**: contratado C; realizado conforme previsto R;
+  atendido por substituição S (trocas completamente entregues); comprometido
+  em troca P (trocas com entrega pendente); disponível = C − R − S − P;
+  excedente = o que passa de C; cumprido = min(C, R + S). Progresso =
+  cumpridas ÷ contratadas. Bônus não consome unidade contratada.
+- **Resumo**: início (aprovação ou data do orçamento), primeiro atendimento,
+  situação (em andamento · concluído · cancelado na origem), atendimentos
+  distintos, procedimentos entregues, progresso, restante e pendências.
+  Pagamento, tempo ou orçamento novo não encerram um plano.
+- **Troca** (`exe.troca.registrar`): registrada uma vez, com linha e
+  quantidade de origem, substituto e quantidade prometida. A unidade
+  original sai do saldo livre na hora (não pode ser trocada de novo); cada
+  entrega é uma execução "em substituição" no atendimento em que aconteceu
+  (`trocaId`), até o prometido. A troca mostra prometido, entregue e
+  disponível; o disponível aparece em "Pode agendar".
+- **Bônus e crédito** (`valoresDaTroca`), pelos valores de venda de
+  referência das quantidades totais, gravados na troca com a base e a data:
+  substituto mais caro → bônus = diferença − cobrado; mais barato → crédito
+  = diferença. A referência da origem é o valor de tabela do próprio item
+  (antes de desconto); a do substituto, o preço da ficha na data (versão
+  aprovada em vigor) ou o informado. Sem referência → pendente de
+  conferência; nada é rateado por igual entre procedimentos diferentes.
+  Adicional gratuito confirmado = bônus pelo valor de referência.
+- **Custos**, separados do valor comercial: custo das entregas e custo
+  adicional da troca (custo prometido do substituto − custo da origem), pela
+  ficha aplicável à data — versão aprovada; senão a ficha atual, marcada
+  como estimativa. Custo desconhecido = "não informado", e o total é
+  sinalizado como parcial.
+- **Crédito**: a geração sai da troca (uma troca, uma geração); cada uso
+  (`exe.credito.usar`) exige destino explícito (plano ou descrição) e nunca
+  passa do saldo; estorno com motivo. Crédito não é recebimento nem
+  devolução em dinheiro. Desfazer a troca tira o crédito da apuração; usos
+  já feitos ficam rastreáveis (o saldo negativo aparece como alerta).
+- **Observação do atendimento**: a original fica guardada; a leitura
+  confirmada (manter como observação · substituição · complemento · bônus)
+  fica ao lado (`exe_atendimentos.interpretacao`). Texto nunca vira execução
+  ou dinheiro sozinho.
+- **Confirmar como previsto**: um clique cria uma execução por procedimento
+  previsto (id do atendimento + procedimento: repetir não duplica).
+- **Correção** de entrega já confirmada exige motivo (fica na auditoria).
+  Tirar uma entrega de "em substituição" desfaz a troca quando não sobra
+  outra entrega: a unidade volta ao plano e o bônus sai. Nada disso é
+  recriado por sincronização ou reimportação.
+- **Versão para a paciente** (`financeiro.pacientePlanos` com
+  `versao: "paciente"`): progresso, histórico das entregas do plano,
+  disponíveis, trocas e bônus em texto, crédito disponível. Custos, valores
+  internos, notas e observação não liberada (`observacaoLiberada`) ficam fora
+  dos **dados enviados**, não só da tela. Impressão pela própria página.
+- **Relatórios**: o de execuções soma linhas repetidas do mesmo atendimento
+  e procedimento e reconhece o que já foi registrado por outra via; o de
+  agendamentos da paciente (`tipo: atendimentos`, importado da ficha, com
+  `contexto.pacienteRef`) completa previstos, observação, marcador e
+  profissional, casando por data e horário com um único agendamento dela —
+  previsto não é realização.
 
 ## Precificação
 
@@ -253,6 +341,12 @@ desconto rateado, reprocessamento e parcelas sem baixa dupla, saída a
 confirmar, contagem com corte e histórico, retrato × livro, correção,
 devolução e cancelamento, custo desconhecido e custo que muda, preço
 praticado.
+`node testes/planos.js`: os critérios de aceite dos planos — plano e compra
+separados, quantidade explícita × linhas × texto, dois planos e escolha
+preservada, troca Peel/limpeza e observação mantida, troca parcial 1 → 3,
+bônus/custos com e sem cobrança, crédito e uso, adicional gratuito, plano de
+15 unidades (73%), correção de substituição, falta/cancelamento e versão
+para a paciente.
 `node testes/execucao.js`: nada vira realizado sozinho, parcial em vários
 agendamentos, vários procedimentos num agendamento e dois no mesmo dia,
 cancelamento/falta/correção, sem orçamento e excedente, associação ambígua e

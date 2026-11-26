@@ -33,6 +33,36 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "4.4.0",
+      codinome: "PÓLEN",
+      data: "25/11/2026",
+      mudancas: {
+        "Adicionado": [
+          "Ficha da paciente em Orçamentos e execução: escolha a paciente e veja primeiro os planos em andamento, depois compras de produtos, avulsos e os planos finalizados, cada um com datas, progresso e pendências.",
+          "O plano aberto mostra, nesta ordem: resumo (início, primeiro atendimento, situação, atendimentos, procedimentos entregues, progresso), o que ainda pode ser agendado, contratado × realizado por procedimento, o histórico agrupado por atendimento e os bônus e créditos.",
+          "Trocas registradas uma vez: o procedimento que sai fica comprometido, o que entra vira direito da paciente (prometido, entregue e disponível), e cada entrega fica no atendimento em que aconteceu.",
+          "Bônus e crédito calculados pelos valores de referência das quantidades trocadas: substituto mais caro gera bônus (descontado o que foi cobrado), mais barato gera crédito. Custo da entrega e custo adicional aparecem à parte, pela ficha da data, com estimativa marcada e “não informado” quando falta.",
+          "Crédito com origem, cada utilização (sempre com destino explícito) e saldo; nunca passa do disponível e não vira recebimento nem devolução em dinheiro.",
+          "Adicional gratuito confirmado como bônus, pelo valor de referência, sem consumir as unidades contratadas.",
+          "Leitura da observação do atendimento: manter como observação, substituição, complemento ou bônus — a observação original fica guardada ao lado da leitura.",
+          "“Confirmar como previsto” num clique para o atendimento que aconteceu conforme o agendado, e importação do relatório de agendamentos da paciente (procedimentos, observação, marcador), casado pela data e horário.",
+          "Versão para a paciente, para apresentar ou imprimir: progresso, histórico liberado e o que ainda está disponível — sem custos, valores internos ou observações não liberadas."
+        ],
+        "Alterado": [
+          "Cada orçamento é um documento com os itens classificados em tratamento, produto ou avulso; só as unidades de tratamento entram no progresso. A classe é definida uma vez e reaproveitada para o mesmo procedimento.",
+          "A quantidade contratada mostra de onde vem: quantidade do orçamento, linhas que valem uma unidade cada, ou conferida pela equipe. Quantidade lida no texto (“4 sessões de…”) fica a conferir e nunca soma com as linhas desdobradas.",
+          "A associação automática só acontece quando não há dúvida. Um atendimento novo não herda mais a escolha feita em outro atendimento: ela aparece apenas como sugestão, ao lado dos saldos de cada plano.",
+          "Corrigir uma entrega já confirmada pede o motivo, que fica no histórico; desfazer uma substituição devolve a unidade ao plano e tira o bônus correspondente.",
+          "O relatório de procedimentos soma linhas repetidas do mesmo atendimento e não cria de novo o que já foi registrado por outra via."
+        ],
+        "Técnico": [
+          "Schema 6: conferências, trocas, utilizações de crédito e complemento do atendimento; colunas novas de classe nos itens e de natureza nas execuções. A migração parte do schema 5 e não muda o realizado de nenhum item.",
+          "A observação (Notes) e os nomes dos profissionais passam a vir da API do Clinicorp; procedimentos por agendamento só são lidos se vierem (não constam da especificação).",
+          "Uma única apuração no servidor alimenta a lista, a ficha da paciente, o plano e a versão para a paciente. Testes novos com os critérios de aceite dos planos."
+        ]
+      }
+    },
+    {
       versao: "4.3.0",
       codinome: "NÉCTAR",
       data: "20/11/2026",
@@ -930,14 +960,14 @@
   /* Carimbo do conteúdo da casca (hash curto dos arquivos que o Service
      Worker guarda). Atualizado por ferramentas/preparar-publicacao.js; se
      ninguém rodar a ferramenta, a versão sozinha já troca o cache. */
-  var CARIMBO_CASCA = "22757a562f";
+  var CARIMBO_CASCA = "f642ddb996";
 
   global.FLORESER = {
     changelog: CHANGELOG,
     categorias: CATEGORIAS,
     atual: atual,
     rotulo: "v" + atual.versao + " — " + atual.codinome,
-    compat: { api: 2, schema: 5 },
+    compat: { api: 2, schema: 6 },
     casca: atual.versao + (CARIMBO_CASCA ? "-" + CARIMBO_CASCA : "")
   };
 

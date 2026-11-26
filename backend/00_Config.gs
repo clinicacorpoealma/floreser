@@ -38,7 +38,8 @@
      33_ServicoEstoque · 36_ClinicorpCliente · 37_ServicoIntegracao ·
      38_ClinicorpRecursos · 39_ClinicorpAplicacao · 40_Migracoes ·
      41_Manutencao · 42_MigracaoV3 · 43_MigracaoV4 · 34_ServicoExecucao ·
-     44_MigracaoV5 (vendas ficam em 33_ServicoEstoque: são o livro do estoque)
+     44_MigracaoV5 · 45_MigracaoV6 (vendas ficam em 33_ServicoEstoque: são o livro do
+     estoque; planos, trocas e créditos, em 34_ServicoExecucao)
    Nenhum deles executa código no carregamento além de declarar constantes
    literais e funções: a ordem dos arquivos no editor não importa.
    ===================================================================== */
@@ -51,16 +52,16 @@
      o identificador da casca da PWA, que sai do version.js no navegador.
    ferramentas/conferir-publicacao.js confere que VERSAO_PRODUTO bate com
    o topo do changelog e que VERSAO_API bate com o que o site espera. */
-var VERSAO_PRODUTO = "4.3.0";
+var VERSAO_PRODUTO = "4.4.0";
 var VERSAO_API = 2;
-var VERSAO_SCHEMA = 5;
+var VERSAO_SCHEMA = 6;
 
 /* Capacidades que o site pode perguntar antes de usar. Uma ação nova
    entra aqui junto com a rota. */
 var CAPACIDADES = [
   "operacoes-por-entidade", "operacao-idempotente", "sessao-unificada",
   "conflito-localizado", "lixeira", "auditoria", "busca-global", "crm-agenda",
-  "financeiro", "importacao-planilha", "integracao-clinicorp", "integracao-automatica", "estoque", "vendas", "orcamentos-execucao"
+  "financeiro", "importacao-planilha", "integracao-clinicorp", "integracao-automatica", "estoque", "vendas", "orcamentos-execucao", "planos-tratamento"
 ];
 
 var FUSO_PADRAO = "America/Cuiaba";

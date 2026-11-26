@@ -228,6 +228,46 @@
 
   <!-- ===================== Orçamentos e execução ===================== -->
   <section class="painel" id="painel-execucao" role="tabpanel" aria-labelledby="aba-execucao" hidden>
+    <div class="seletor-paciente">
+      <label class="campo-inline" for="fxPaciente"><span>Paciente</span><select id="fxPaciente" class="input"></select></label>
+      <span class="nota" id="fxPacienteNota">Escolha uma paciente para ver os planos, o que ela já recebeu e o que ainda pode agendar.</span>
+    </div>
+
+    <section id="fichaPaciente" hidden>
+      <div class="bloco-topo ficha-paciente-topo">
+        <h3 class="bloco-titulo" id="fpNome">Paciente</h3>
+        <span class="espaco"></span>
+        <button type="button" class="btn btn-primary" id="btnFpRegistrar">Registrar procedimento</button>
+        <button type="button" class="btn btn-ghost" id="btnFpImportar">Importar relatório de agendamentos</button>
+        <button type="button" class="btn btn-ghost" id="btnFpImprimir">Versão para a paciente</button>
+        <button type="button" class="btn btn-quiet" id="btnFpVoltar">Todas as pacientes</button>
+      </div>
+      <div class="cartoes" id="fpCartoes"></div>
+      <section class="bloco aviso-bloco" id="fpBlocoConferir" hidden>
+        <h3 class="bloco-titulo">Atendimentos a conferir</h3>
+        <p class="nota">Atendimentos que já aconteceram e ainda não têm o que foi feito registrado. Presença não confirma procedimento: confirme o previsto, registre o que mudou ou leia a observação.</p>
+        <ul class="lista" id="fpConferir"></ul>
+      </section>
+      <section class="bloco aviso-bloco" id="fpBlocoDecidir" hidden>
+        <h3 class="bloco-titulo">Procedimentos sem plano definido</h3>
+        <p class="nota">Entregas com mais de um plano possível, só com o nome parecido, ou fora de qualquer plano. Ficam aqui até alguém decidir — diferente de um avulso já confirmado.</p>
+        <ul class="lista" id="fpDecidir"></ul>
+      </section>
+      <section class="bloco">
+        <h3 class="bloco-titulo">Planos em andamento</h3>
+        <ul class="lista lista-planos" id="fpAndamento"></ul>
+      </section>
+      <section class="bloco" id="fpBlocoOutros" hidden>
+        <h3 class="bloco-titulo">Compras de produtos, avulsos e a classificar</h3>
+        <ul class="lista lista-planos" id="fpOutros"></ul>
+      </section>
+      <details class="bloco" id="fpBlocoFinalizados" hidden>
+        <summary class="bloco-titulo">Planos finalizados</summary>
+        <ul class="lista lista-planos" id="fpFinalizados"></ul>
+      </details>
+    </section>
+
+    <div id="visaoGeralExec">
     <div class="fonte-estoque" id="fonteExecucao"></div>
     <div class="filtros">
       <label class="busca">
@@ -268,6 +308,7 @@
       <p class="nota">Procedimentos registrados em agendamentos que não pertencem a nenhum orçamento (ou cujo orçamento já estava completo).</p>
       <ul class="lista" id="listaSemOrcamento"></ul>
     </section>
+    </div>
   </section>
 
   <!-- ===================== Planejamento ===================== -->
@@ -672,31 +713,60 @@
 </dialog>
 
 <!-- ============ Diálogo: orçamento (detalhe) ============ -->
-<dialog id="dlgOrcamento" class="dlg-largo" aria-labelledby="orcTitulo">
+<dialog id="dlgOrcamento" class="dlg-largo dlg-plano" aria-labelledby="orcTitulo">
   <div class="folha folha-larga">
     <div class="folha-topo">
-      <h2 class="folha-titulo" id="orcTitulo">Orçamento</h2>
+      <h2 class="folha-titulo" id="orcTitulo">Plano</h2>
       <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
     </div>
     <div class="folha-corpo">
-      <dl class="ficha-dados" id="orcDados"></dl>
-      <div class="cartoes" id="orcCartoes"></div>
-      <h3 class="sub-titulo">Procedimentos do orçamento</h3>
-      <div class="tabela-rolagem">
-        <table class="tabela tabela-compacta" id="orcItens">
-          <thead><tr><th>Procedimento</th><th class="dir">Orçado</th><th class="dir">Agendado</th><th class="dir">Realizado</th><th class="dir">Restante</th><th class="dir">Valor acordado</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <h3 class="sub-titulo">Agendamentos ligados</h3>
-      <ul class="lista" id="orcExecucoes"></ul>
-      <p class="nota" id="orcNota"></p>
+      <p class="nota" id="orcOrigem"></p>
+
+      <section class="plano-parte" aria-labelledby="orcT1">
+        <h3 class="sub-titulo" id="orcT1">Resumo</h3>
+        <div class="cartoes cartoes-plano" id="orcCartoes"></div>
+        <ul class="lista lista-compacta lista-pendencias" id="orcPendencias"></ul>
+      </section>
+
+      <section class="plano-parte destaque-disponivel" aria-labelledby="orcT2a">
+        <h3 class="sub-titulo" id="orcT2a">Pode agendar</h3>
+        <ul class="lista-disponiveis" id="orcDisponiveis"></ul>
+      </section>
+
+      <section class="plano-parte" aria-labelledby="orcT2">
+        <h3 class="sub-titulo" id="orcT2">Contratado × realizado</h3>
+        <div class="tabela-rolagem">
+          <table class="tabela tabela-compacta" id="orcItens">
+            <thead><tr><th>Procedimento</th><th class="dir">Contratado</th><th class="dir">Realizado</th><th class="dir">Por substituição</th><th class="dir">Em troca, a entregar</th><th class="dir">Disponível</th><th class="dir">Excedente</th><th><span class="sr">Ações</span></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="orcDireitos"></div>
+        <div id="orcOutros"></div>
+      </section>
+
+      <section class="plano-parte" aria-labelledby="orcT3">
+        <div class="bloco-topo">
+          <h3 class="sub-titulo" id="orcT3">Histórico por atendimento</h3>
+          <div class="seg" id="orcAreas" role="group" aria-label="Filtrar por área"></div>
+        </div>
+        <ol class="historico-atendimentos" id="orcHistorico"></ol>
+      </section>
+
+      <section class="plano-parte" aria-labelledby="orcT4">
+        <h3 class="sub-titulo" id="orcT4">Bônus e créditos</h3>
+        <p class="nota">Valores de venda de referência (o que seria cobrado) e custos internos ficam separados. Custo estimado vem marcado; o que falta aparece como “não informado”.</p>
+        <div class="cartoes cartoes-plano" id="orcBenefCartoes"></div>
+        <div id="orcTrocas"></div>
+        <div id="orcGratuitos"></div>
+      </section>
       <p class="erro-form" id="orcErro" role="alert"></p>
     </div>
     <div class="folha-pe">
       <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
       <span class="espaco"></span>
       <button type="button" class="btn btn-ghost" id="orcEditar" hidden>Editar orçamento</button>
+      <button type="button" class="btn btn-ghost" id="orcTroca">Registrar troca</button>
       <button type="button" class="btn btn-primary" id="orcRegistrar">Registrar procedimento</button>
     </div>
   </div>
@@ -719,7 +789,16 @@
       </div>
       <div class="linha-2">
         <div class="campo"><label for="exEstado">Situação</label><select class="input" id="exEstado"><option value="realizado">Realizado</option><option value="previsto">Previsto neste agendamento</option></select></div>
-        <div class="campo"><label for="exItem">Item do orçamento</label><select class="input" id="exItem"></select></div>
+        <div class="campo"><label for="exItem">Item do plano</label><select class="input" id="exItem"></select></div>
+      </div>
+      <div class="linha-2">
+        <div class="campo"><label for="exNatureza">Como entra</label><select class="input" id="exNatureza">
+          <option value="">Pelo plano (automático só quando não há dúvida)</option>
+          <option value="gratuito">Bônus: adicional gratuito</option>
+          <option value="avulso">Avulso: fora de qualquer plano</option>
+          <option value="troca">Entrega de uma troca já registrada</option></select></div>
+        <div class="campo" id="exRefCampo" hidden><label for="exValorRef">Valor de referência do bônus</label><div class="dinheiro"><span>R$</span><input class="input" id="exValorRef" inputmode="decimal" placeholder="preço da ficha"></div></div>
+        <div class="campo" id="exTrocaCampo" hidden><label for="exTroca">Troca</label><select class="input" id="exTroca"></select></div>
       </div>
       <div class="campo"><label for="exNotas">Notas</label><input class="input" id="exNotas" maxlength="1000"></div>
       <p class="erro-form" id="exErro" role="alert"></p>
@@ -742,8 +821,9 @@
     </div>
     <div class="folha-corpo">
       <p class="nota" id="assocResumo"></p>
-      <div class="campo"><label for="assocItem">Item do orçamento</label><select class="input" id="assocItem"></select></div>
-      <p class="nota">A escolha fica registrada e é reaproveitada nos próximos registros do mesmo procedimento desta paciente, enquanto o item tiver saldo.</p>
+      <div class="campo"><label for="assocItem">Plano e procedimento</label><select class="input" id="assocItem"></select></div>
+      <div class="campo"><label for="assocMotivo">Motivo (obrigatório ao corrigir o que já estava confirmado)</label><input class="input" id="assocMotivo" maxlength="300"></div>
+      <p class="nota">A escolha vale para este atendimento: reimportar ou sincronizar de novo a preserva. Num atendimento novo ela aparece só como sugestão.</p>
       <p class="erro-form" id="assocErro" role="alert"></p>
     </div>
     <div class="folha-pe">
@@ -783,9 +863,133 @@
   </form>
 </dialog>
 
+<!-- ============ Diálogo: troca ============ -->
+<dialog id="dlgTroca" class="dlg-largo" aria-labelledby="trTitulo">
+  <form class="folha folha-larga" id="formTroca" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="trTitulo">Registrar troca</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <p class="nota" id="trContexto"></p>
+      <div class="linha-2">
+        <div class="campo"><label for="trLinha">Procedimento do plano que sai</label><select class="input" id="trLinha" required></select></div>
+        <div class="campo"><label for="trQtdOrigem">Quantas unidades saem</label><input class="input" id="trQtdOrigem" inputmode="decimal" value="1"></div>
+      </div>
+      <div class="linha-3">
+        <div class="campo"><label for="trSubstituto">Procedimento que entra</label><input class="input" id="trSubstituto" maxlength="160" list="listaProcedimentos" required></div>
+        <div class="campo"><label for="trFicha">Ficha de custo do que entra</label><select class="input" id="trFicha"></select></div>
+        <div class="campo"><label for="trQtdPrometida">Quantas unidades a paciente recebe</label><input class="input" id="trQtdPrometida" inputmode="decimal" value="1"></div>
+      </div>
+      <div class="linha-3">
+        <div class="campo"><label for="trPrecoOrigem">Valor de referência de cada unidade que sai</label><div class="dinheiro"><span>R$</span><input class="input" id="trPrecoOrigem" inputmode="decimal"></div></div>
+        <div class="campo"><label for="trPrecoSubst">Valor de referência de cada unidade que entra</label><div class="dinheiro"><span>R$</span><input class="input" id="trPrecoSubst" inputmode="decimal"></div></div>
+        <div class="campo"><label for="trCobrado">Diferença cobrada da paciente</label><div class="dinheiro"><span>R$</span><input class="input" id="trCobrado" inputmode="decimal" placeholder="0,00"></div></div>
+      </div>
+      <p class="nota" id="trBaseNota">Valores em branco são completados pelo servidor com a referência identificável (o valor de tabela do item no orçamento e o preço da ficha); sem ela, o bônus ou crédito fica pendente de conferência. Nada é dividido por igual entre procedimentos diferentes.</p>
+      <div class="linha-3">
+        <div class="campo"><label for="trData">Data da troca</label><input class="input" type="date" id="trData"></div>
+        <div class="campo" id="trEntregaCampo"><label for="trEntrega">Entregue neste atendimento</label><input class="input" id="trEntrega" inputmode="decimal" value="1"></div>
+        <div class="campo"><label for="trMotivo">Motivo</label><input class="input" id="trMotivo" maxlength="300"></div>
+      </div>
+      <label class="marca" id="trSubstituirCampo" hidden><input type="checkbox" id="trSubstituir"> O procedimento registrado neste atendimento (<span id="trSubstituirNome"></span>) não foi feito: desfazer o registro</label>
+      <div id="trPrevia" class="resultado resultado-sim" aria-live="polite"></div>
+      <p class="erro-form" id="trErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="submit" class="btn btn-primary">Registrar troca</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Diálogo: atendimento (observação e complemento) ============ -->
+<dialog id="dlgAtendimento" aria-labelledby="atTitulo">
+  <form class="folha" id="formAtendimento" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="atTitulo">Atendimento</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <div class="observacao-original" id="atObservacao"></div>
+      <fieldset class="modo-despesa" id="atInterpretacao">
+        <legend>Como ler esta observação</legend>
+        <label><input type="radio" name="atInterp" value="observacao"> Só uma observação (não muda nada)</label>
+        <label><input type="radio" name="atInterp" value="substituicao"> Substituição de um procedimento do plano</label>
+        <label><input type="radio" name="atInterp" value="complemento"> Complemento: um procedimento a mais foi feito</label>
+        <label><input type="radio" name="atInterp" value="bonus"> Bônus: um adicional gratuito</label>
+      </fieldset>
+      <p class="nota">A observação original fica guardada ao lado da leitura. Uma anotação, um complemento ou um excedente, sozinhos, não comprovam gratuidade.</p>
+      <div class="campo"><label for="atPrevistos">Procedimentos previstos (quando a origem não traz), separados por vírgula</label><input class="input" id="atPrevistos" maxlength="600"></div>
+      <div class="linha-2">
+        <div class="campo"><label for="atMarcador">Marcador</label><input class="input" id="atMarcador" maxlength="120" placeholder="ex.: Plano"></div>
+        <div class="campo"><label for="atProfissional">Profissional</label><input class="input" id="atProfissional" maxlength="120"></div>
+      </div>
+      <label class="marca"><input type="checkbox" id="atLiberar"> Mostrar a observação na versão para a paciente</label>
+      <div class="campo"><label for="atNotas">Notas internas</label><input class="input" id="atNotas" maxlength="1000"></div>
+      <p class="erro-form" id="atErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="submit" class="btn btn-primary">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Diálogo: usar crédito ============ -->
+<dialog id="dlgCredito" aria-labelledby="crTitulo">
+  <form class="folha" id="formCredito" method="dialog" novalidate>
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="crTitulo">Usar crédito</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <p class="nota" id="crResumo"></p>
+      <div class="linha-2">
+        <div class="campo"><label for="crValor">Valor</label><div class="dinheiro"><span>R$</span><input class="input" id="crValor" inputmode="decimal"></div></div>
+        <div class="campo"><label for="crData">Data</label><input class="input" type="date" id="crData"></div>
+      </div>
+      <div class="campo"><label for="crDestino">Para qual plano</label><select class="input" id="crDestino"></select></div>
+      <div class="campo"><label for="crDescricao">Ou descreva o uso</label><input class="input" id="crDescricao" maxlength="200"></div>
+      <div class="campo"><label for="crMotivo">Observação</label><input class="input" id="crMotivo" maxlength="300"></div>
+      <p class="nota">Crédito não é dinheiro: usar não lança recebimento nem devolução. O uso nunca passa do saldo.</p>
+      <p class="erro-form" id="crErro" role="alert"></p>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="submit" class="btn btn-primary">Usar crédito</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Diálogo: versão para a paciente ============ -->
+<dialog id="dlgImpressao" class="dlg-largo" aria-labelledby="impTitulo">
+  <div class="folha folha-larga">
+    <div class="folha-topo">
+      <h2 class="folha-titulo" id="impTitulo">Versão para a paciente</h2>
+      <button type="button" class="icone-btn" data-fechar aria-label="Fechar">&times;</button>
+    </div>
+    <div class="folha-corpo">
+      <p class="nota">Só progresso, histórico liberado e o que ainda está disponível. Custos, valores internos, notas e observações não liberadas não saem do servidor para esta versão.</p>
+      <div id="impConteudo" class="relatorio-paciente"></div>
+    </div>
+    <div class="folha-pe">
+      <button type="button" class="btn btn-ghost" data-fechar>Fechar</button>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-primary" id="impImprimir">Imprimir</button>
+    </div>
+  </div>
+</dialog>
+
 <datalist id="listaCatalogo"></datalist>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- cópia do relatório só para a impressão (fica escondida na tela) -->
+<section id="impressao" class="impressao" hidden></section>
 
 <script src="financeiro.js"></script>
 </body>

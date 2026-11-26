@@ -140,6 +140,17 @@ function semear() {
     { tipo: "exe.registrar", id: "ex-semente-3", dados: { agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s3", procedimento: "Drenagem", procedimentoRef: "DREN" } },
     { tipo: "exe.registrar", id: "ex-semente-4", dados: { agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s2", procedimento: "Peeling químico" } }
   ].concat(agFuturo ? [{ tipo: "exe.registrar", id: "ex-semente-5", dados: { agendamentoTipo: "agenda", agendamentoId: agFuturo.id, procedimento: "Limpeza de pele", procedimentoRef: "LIMP", estado: "previsto" } }] : [])), tf);
+  /* Planos (4.4.0): uma observação a ler, uma troca com entrega parcial e um bônus */
+  amb.pedir("financeiro.aplicar", ops([
+    { tipo: "exe.atendimento.salvar", id: "agenda-hist:hist-semente-s2", revBase: 0, dados: { observacao: "pele sensível, ácido mandélico 5 min" } },
+    { tipo: "exe.troca.registrar", id: "tr-semente-1", dados: { orcamentoRef: "local:orc-semente-dora", linhaChave: "r:DREN", quantidadeOrigem: "1",
+      procedimentoSubstituto: "Massagem relaxante", quantidadePrometida: "2", precoSubstituto: 12000, agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s3",
+      entregaQuantidade: "1", substituirExecucaoId: "ex-semente-3", motivo: "pedido da paciente" } }
+  ]), tf);
+  amb.pedir("financeiro.aplicar", ops([
+    { tipo: "exe.registrar", id: "ex-semente-6", dados: { agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s1", procedimento: "Hidratação facial", natureza: "gratuito",
+      valorReferencia: 9000, orcamentoRef: "local:orc-semente-dora" } }
+  ]), tf);
   amb.pedir("sessao.sair", {}, tf);
 }
 

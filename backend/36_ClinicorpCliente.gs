@@ -41,7 +41,7 @@ var CONFIG_CLINICORP_PADRAO = {
   eventosOrcamento: {}, campanhaPadrao: "", valorSemTaxas: false,
   suspensa: null, verificacao: null, ultimas: {}, desconectadaEm: null,
   criarEntradas: true, areaPorProfissional: {}, frequenciaMin: 0, ativadaEm: null, fontePrincipal: false,
-  ultimaRotina: null, envioAgenda: false, recebimentosPor: "", statusAgenda: {}, categoriaStatus: {}
+  ultimaRotina: null, envioAgenda: false, recebimentosPor: "", statusAgenda: {}, categoriaStatus: {}, profissionais: {}
 };
 
 function configClinicorp() {
