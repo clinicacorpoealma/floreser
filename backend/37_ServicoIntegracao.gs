@@ -694,7 +694,7 @@ function liberarRecebimentosAnteriores(ctx) {
   comTrava(function () {
     lerTudo("int_externos").forEach(function (x) {
       if (x.tipo !== "recebimento" || !daContaAtual(x, c) || !(x.aplicacao && x.aplicacao.estado && x.aplicacao.estado.anterior)) return;
-      var reg = copiaLimpa(x); reg.aplicado = ""; reg.aplicacao = { estado: {} };
+      var reg = copiaLimpa(x); reg.aplicado = ""; reg.aplicacao = { estado: {}, reaberto: agoraISO() };
       gravarPorChave("int_externos", reg);
     });
   });
@@ -1429,7 +1429,9 @@ function reabrirAplicacao(tipo, externoId, c, campoPaciente) {
     var bate = campoPaciente ? (x.dados && x.dados[campoPaciente] === externoId) : x.externoId === externoId;
     if (!bate) return;
     var reg = copiaLimpa(x); reg.aplicado = "";
-    reg.aplicacao = { estado: x.aplicacao && x.aplicacao.estado && !x.aplicacao.estado.anterior ? {} : (x.aplicacao && x.aplicacao.estado) || {} };
+    /* reaberto: a nova tentativa ganha identidade própria no diário (sem ela,
+       reusaria o operacaoId da aplicação anterior) */
+    reg.aplicacao = { estado: x.aplicacao && x.aplicacao.estado && !x.aplicacao.estado.anterior ? {} : (x.aplicacao && x.aplicacao.estado) || {}, reaberto: agoraISO() };
     saida.push({ t: "gravar", tabela: "int_externos", registro: reg });
   });
   return saida;

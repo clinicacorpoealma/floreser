@@ -140,6 +140,13 @@ function semear() {
     { tipo: "exe.registrar", id: "ex-semente-3", dados: { agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s3", procedimento: "Drenagem", procedimentoRef: "DREN" } },
     { tipo: "exe.registrar", id: "ex-semente-4", dados: { agendamentoTipo: "agenda-hist", agendamentoId: "hist-semente-s2", procedimento: "Peeling químico" } }
   ].concat(agFuturo ? [{ tipo: "exe.registrar", id: "ex-semente-5", dados: { agendamentoTipo: "agenda", agendamentoId: agFuturo.id, procedimento: "Limpeza de pele", procedimentoRef: "LIMP", estado: "previsto" } }] : [])), tf);
+  /* Pacientes parecidas (4.4.1): orçamento do Clinicorp de uma paciente sem
+     vínculo com o mesmo nome de uma paciente da Agenda */
+  amb.gs.reiniciarExecucao();
+  amb.gs.inserir("int_externos", [{ id: "clinicorp::orcamento:SEM1", sistema: "clinicorp", assinante: "", tipo: "orcamento", externoId: "SEM1", assinatura: "semente",
+    aplicado: "semente", dados: { status: "APPROVED", pacienteExternoId: "9002", pacienteNome: "Eva Exemplo", criadoEm: dia(-8),
+      procedimentos: [{ id: "1", ref: "DREN", descricao: "Drenagem", valorTabela: 15000, valor: 15000 }] } }]);
+  amb.gs.reiniciarExecucao();
   /* Planos (4.4.0): uma observação a ler, uma troca com entrega parcial e um bônus */
   amb.pedir("financeiro.aplicar", ops([
     { tipo: "exe.atendimento.salvar", id: "agenda-hist:hist-semente-s2", revBase: 0, dados: { observacao: "pele sensível, ácido mandélico 5 min" } },

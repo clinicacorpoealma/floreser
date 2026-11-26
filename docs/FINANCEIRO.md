@@ -277,6 +277,14 @@ apuração** (`apurarModelo`): lista, ficha, plano e versão para a paciente.
   disponíveis, trocas e bônus em texto, crédito disponível. Custos, valores
   internos, notas e observação não liberada (`observacaoLiberada`) ficam fora
   dos **dados enviados**, não só da tela. Impressão pela própria página.
+- **Pacientes parecidas** (4.4.1): paciente do Clinicorp sem vínculo com o
+  mesmo nome (sem acento/maiúscula/espaço) de uma paciente da Agenda aparece
+  como sugestão, na lista e na ficha. Só uma pessoa vincula
+  (`exe.paciente.vincular`, que usa o mesmo `planejarVinculo` da integração e
+  devolve orçamentos e agendamentos à fila) ou recusa (`exe.paciente.recusar`,
+  guardado como vínculo "recusado"). Ficha da Agenda já ligada a outro
+  registro do Clinicorp não recebe um segundo — duplicata dentro do Clinicorp
+  se resolve unindo as fichas lá.
 - **Relatórios**: o de execuções soma linhas repetidas do mesmo atendimento
   e procedimento e reconhece o que já foi registrado por outra via; o de
   agendamentos da paciente (`tipo: atendimentos`, importado da ficha, com

@@ -275,6 +275,8 @@ function planejarFinanceiro(ctx, op) {
     case "exe.credito.usar": return planejarUsarCredito(ctx, op);
     case "exe.credito.estornar": return planejarEstornarCredito(ctx, op);
     case "exe.conferencia": return planejarConferencia(ctx, op);
+    case "exe.paciente.vincular": return planejarVinculoDePaciente(ctx, op, false);
+    case "exe.paciente.recusar": return planejarVinculoDePaciente(ctx, op, true);
   }
   falhar("dados_invalidos", "Operação desconhecida no Financeiro: " + op.tipo + ".");
 }

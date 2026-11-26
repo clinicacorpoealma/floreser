@@ -1570,6 +1570,11 @@
     f.appendChild(h("div", null, "O período considera " + (el("fxBase").value === "execucao" ? "a data em que o procedimento foi realizado." : "a data do orçamento.") +
       " Valor acordado e valor realizado vêm do orçamento; o recebido fica nas Entradas."));
 
+    var parecidas = exec.parecidas || [];
+    el("blocoParecidas").hidden = !parecidas.length;
+    var lpa = limpar(el("listaParecidas"));
+    parecidas.forEach(function (x) { lpa.appendChild(itemParecida(x)); });
+
     var pend = exec.pendentes || [];
     el("blocoPendentesExec").hidden = !pend.length;
     var lp = limpar(el("listaPendentesExec"));
@@ -1611,6 +1616,32 @@
     exec.orcamentos.forEach(function (o) { o.itens.forEach(function (it) { if (!vistos[it.procedimento]) { vistos[it.procedimento] = true; dl.appendChild(h("option", { value: it.procedimento })); } }); });
   }
 
+  /* ---------- pacientes parecidas (o nome sugere, uma pessoa confirma) ---------- */
+
+  function itemParecida(x) {
+    var origem = [x.orcamentos ? x.orcamentos + " orçamento(s)" : "", x.agendamentos ? x.agendamentos + " agendamento(s)" : ""].filter(Boolean).join(", ");
+    return h("li", { class: "parecida" },
+      h("span", { class: "nome" }, x.nome + " · Clinicorp" + (origem ? " (" + origem + ")" : "")),
+      h("ul", { class: "lista lista-compacta" }, x.candidatas.map(function (p) {
+        return h("li", null,
+          h("span", { class: "det" }, "Parece ser ", h("b", null, p.nome), " da Agenda" + (p.whatsapp ? " · " + p.whatsapp : "") +
+            (p.bloqueada ? " — já vinculada a outro registro do Clinicorp (" + p.ligadaA + "). Se for ficha repetida no Clinicorp, una as duas lá." : "")),
+          p.bloqueada ? null : h("span", { class: "acoes" },
+            h("button", { type: "button", class: "btn btn-primary", onclick: function () { decidirParecida(x, p, true); } }, "É a mesma pessoa"),
+            h("button", { type: "button", class: "btn btn-quiet", onclick: function () { decidirParecida(x, p, false); } }, "Não é")));
+      })));
+  }
+
+  async function decidirParecida(x, p, mesma) {
+    if (mesma && !window.confirm("Vincular " + x.nome + " do Clinicorp a " + p.nome + " da Agenda?\n\nOs orçamentos, agendamentos e planos passam a aparecer numa paciente só. O vínculo pode ser desfeito no painel de integrações.")) return;
+    try {
+      await aplicar({ tipo: mesma ? "exe.paciente.vincular" : "exe.paciente.recusar", dados: { externoId: x.externoId, localId: p.localId } });
+      toast(mesma ? "Vinculadas: agora é uma paciente só." : "Anotado: não é a mesma pessoa.");
+      if (mesma && pacRef === x.ref) pacRef = "loc:" + p.localId;
+      await recarregarExecucao();
+    } catch (e) { erroExecucao(e); }
+  }
+
   /* ---------- a paciente ---------- */
 
   async function selecionarPaciente(ref) {
@@ -1650,6 +1681,12 @@
     el("fxPacienteNota").textContent = mostrar ? "" : "Escolha uma paciente para ver os planos, o que ela já recebeu e o que ainda pode agendar.";
     if (!mostrar) return;
     el("fpNome").textContent = pac.paciente.nome || "Paciente";
+    var minhas = ((exec && exec.parecidas) || []).filter(function (x) {
+      return x.ref === pacRef || x.candidatas.some(function (p) { return "loc:" + p.localId === pacRef; });
+    });
+    el("fpBlocoParecida").hidden = !minhas.length;
+    var lpp = limpar(el("fpParecida"));
+    minhas.forEach(function (x) { lpp.appendChild(itemParecida(x)); });
     var planos = pac.documentos.filter(function (d) { return d.tipo === "plano"; });
     var andamento = planos.filter(function (d) { return d.situacao === "andamento"; });
     var finalizados = planos.filter(function (d) { return d.situacao !== "andamento"; });

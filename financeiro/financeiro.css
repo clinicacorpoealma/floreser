@@ -393,3 +393,5 @@ li.realce{background:var(--accent-soft);transition:background .3s}
   .rel-capa,.rel-tabela th,.rel-numeros div{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .rel-plano{break-inside:avoid-page}
 }
+.lista > li.parecida{flex-direction:column;align-items:stretch}
+.parecida .lista-compacta li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}

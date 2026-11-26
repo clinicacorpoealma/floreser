@@ -242,6 +242,10 @@
         <button type="button" class="btn btn-ghost" id="btnFpImprimir">Versão para a paciente</button>
         <button type="button" class="btn btn-quiet" id="btnFpVoltar">Todas as pacientes</button>
       </div>
+      <section class="bloco aviso-bloco" id="fpBlocoParecida" hidden>
+        <h3 class="bloco-titulo">Pode ser a mesma pessoa</h3>
+        <ul class="lista" id="fpParecida"></ul>
+      </section>
       <div class="cartoes" id="fpCartoes"></div>
       <section class="bloco aviso-bloco" id="fpBlocoConferir" hidden>
         <h3 class="bloco-titulo">Atendimentos a conferir</h3>
@@ -291,6 +295,11 @@
       <button type="button" class="btn btn-ghost" id="btnNovoOrcamento">Orçamento do Alveare</button>
       <button type="button" class="btn btn-quiet" id="btnImportarExecucoes">Importar relatório</button>
     </div>
+    <section class="bloco aviso-bloco" id="blocoParecidas" hidden>
+      <h3 class="bloco-titulo">Pacientes parecidas</h3>
+      <p class="nota">Pacientes do Clinicorp ainda sem vínculo que têm o mesmo nome de uma paciente da Agenda. O nome só sugere: confirme se é a mesma pessoa. Vinculadas, viram uma só, com os planos e atendimentos juntos. "Não é" fica guardado e a sugestão não volta.</p>
+      <ul class="lista" id="listaParecidas"></ul>
+    </section>
     <section class="bloco aviso-bloco" id="blocoPendentesExec" hidden>
       <h3 class="bloco-titulo">Para decidir: a que orçamento pertence</h3>
       <p class="nota">Procedimentos com mais de um orçamento possível (ou só com o nome parecido). O Alveare não escolhe sozinho.</p>

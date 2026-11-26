@@ -278,9 +278,19 @@ Alveare. Proveniência: `int_vinculos` (identidade local ↔ externa),
 ### Fila, retomada e identidade
 
 - **Fila persistente** = `int_externos` com `aplicado ≠ assinatura`. Cada
-  registro é uma operação no diário com `operacaoId` derivado de
-  (registro, assinatura): repetir não duplica. Falha → até 3 tentativas nas
-  rotinas seguintes; depois, pendência. Uma falha não segura os outros.
+  tentativa é uma operação no diário com `operacaoId` derivado de
+  (registro, assinatura, reabertura, quem roda) — `opIdDeAplicacao`: repetir
+  a mesma tentativa não duplica. Quando um registro já aplicado volta à fila
+  sem mudar no Clinicorp (vínculo de paciente, "tentar de novo", liberar
+  recebimentos anteriores), a reabertura grava `aplicacao.reaberto` e a nova
+  tentativa ganha identidade própria. Até a 4.4.0 ela reusava o id antigo:
+  com outro autor (rotina agendada × pessoa) dava "identificador já foi
+  usado para outra alteração"; com o mesmo, o registro ficava preso na fila.
+  Falha → até 3 tentativas **por identidade de tentativa** nas rotinas
+  seguintes; depois, pendência. Falhas gravadas sem `operacaoId` (versões
+  anteriores) não seguram o registro: ele volta a ser tentado sozinho, e
+  quando aplica a pendência "aplicação falhou" dele é resolvida pela
+  Integração. Uma falha não segura os outros.
 - **Cursor das pacientes**: os agendamentos por paciente vinculada são
   consultados para **todas**, com o índice gravado na execução; limite de
   chamadas ou de tempo interrompe e a próxima execução continua. A consulta

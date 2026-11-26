@@ -33,6 +33,17 @@
   /* Mais recente primeiro. Use apenas categorias com conteúdo real. */
   var CHANGELOG = [
     {
+      versao: "4.4.1",
+      codinome: "SEMENTE",
+      data: "25/11/2026",
+      mudancas: {
+        "Corrigido": [
+          "Registros do Clinicorp que voltavam para a fila — por exemplo, ao vincular uma paciente — falhavam com “identificador já foi usado” ou ficavam presos; agora são aplicados de novo, e as pendências antigas desse erro se resolvem sozinhas.",
+          "Pacientes que apareciam duas vezes em Orçamentos e execução (uma da Agenda e outra do Clinicorp, sem vínculo): o Alveare aponta as de mesmo nome em “Pacientes parecidas” e na ficha, e um clique em “É a mesma pessoa” junta as duas, com planos e atendimentos. O nome só sugere — nada é ligado sozinho — e “Não é” fica guardado."
+        ]
+      }
+    },
+    {
       versao: "4.4.0",
       codinome: "PÓLEN",
       data: "25/11/2026",
@@ -960,7 +971,7 @@
   /* Carimbo do conteúdo da casca (hash curto dos arquivos que o Service
      Worker guarda). Atualizado por ferramentas/preparar-publicacao.js; se
      ninguém rodar a ferramenta, a versão sozinha já troca o cache. */
-  var CARIMBO_CASCA = "f642ddb996";
+  var CARIMBO_CASCA = "6c8bb88d53";
 
   global.FLORESER = {
     changelog: CHANGELOG,

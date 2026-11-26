@@ -347,5 +347,32 @@ teste("cancelamento, falta e remarcação ficam rastreáveis sem contar; a vers�
   v.verdade(JSON.stringify(ficha(a, "loc:pa", "paciente")).indexOf("sigilosa") >= 0, "liberada, aparece");
 });
 
+teste("pacientes parecidas: o nome só sugere; 'não é' fica guardado; vincular junta a paciente do Clinicorp com a da Agenda; ficha já ligada não recebe outra", () => {
+  const a = ambiente();
+  inserir(a, "agenda_pacientes", [{ id: "pz", nome: "Paciente Zeta" }, { id: "pz2", nome: "paciente  zéta" }]);
+  inserir(a, "int_externos", [ext("orcamento", "TZ", { status: "APPROVED", pacienteExternoId: "PZ", pacienteNome: "Paciente Zeta", criadoEm: "2026-09-01",
+    procedimentos: [L("1", "LIMP", "Limpeza de pele", 20000)] })]);
+  const lista = () => v.ok(a.pedir("financeiro.orcamentosExecucao", { filtros: {} }, a.tk));
+  let r = lista();
+  const sug = r.parecidas.find((x) => x.ref === "clc:PZ");
+  v.igual(sug.candidatas.map((c) => c.localId).sort(), ["pz", "pz2"], "acento e espaço não atrapalham; os dois homônimos aparecem");
+  v.igual(a.linhas("int_vinculos").filter((x) => x.externoId === "PZ").length, 0, "nada é vinculado sozinho");
+  um(a, { tipo: "exe.paciente.recusar", dados: { externoId: "PZ", localId: "pz2" } });
+  r = lista();
+  v.igual(r.parecidas.find((x) => x.ref === "clc:PZ").candidatas.map((c) => c.localId), ["pz"], "'não é' não volta");
+  um(a, { tipo: "exe.paciente.vincular", dados: { externoId: "PZ", localId: "pz" } });
+  r = lista();
+  v.falso(r.parecidas.some((x) => x.ref === "clc:PZ"));
+  v.falso(r.pacientes.some((p) => p.ref === "clc:PZ"), "a duplicata some da lista");
+  v.igual(r.orcamentos.find((o) => o.ref === "clinicorp:TZ").pacienteRef, "loc:pz", "o orçamento passa para a paciente da Agenda");
+  v.igual(ficha(a, "loc:pz").documentos.length, 1);
+  /* outra ficha do Clinicorp com o mesmo nome: a da Agenda já está ligada */
+  inserir(a, "int_externos", [ext("orcamento", "TZ2", { status: "APPROVED", pacienteExternoId: "PZB", pacienteNome: "Paciente Zeta", criadoEm: "2026-10-01",
+    procedimentos: [L("1", "LIMP", "Limpeza de pele", 20000)] })]);
+  const s2 = lista().parecidas.find((x) => x.ref === "clc:PZB");
+  v.verdade(s2.candidatas.find((c) => c.localId === "pz").bloqueada);
+  v.falso(aplicar(a, { tipo: "exe.paciente.vincular", dados: { externoId: "PZB", localId: "pz" } }).ok, "um vínculo por ficha");
+});
+
 module.exports = () => executar("Planos");
 if (require.main === module) module.exports().then((r) => process.exit(r.falhas ? 1 : 0));

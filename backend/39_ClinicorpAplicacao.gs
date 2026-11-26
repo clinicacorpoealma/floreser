@@ -39,13 +39,25 @@ function tiposAutomaticos(c) {
   return t;
 }
 
-/* Registros na fila, os mais antigos primeiro. */
-function filaDeAplicacao(c, tipos) {
+/* Identidade de UMA tentativa de aplicação no diário: o registro, a
+   assinatura, a reabertura (cada volta à fila é uma tentativa nova) e quem
+   roda (rotina agendada ou pessoa). Sem a reabertura e o autor, um registro
+   reaberto reusava o operacaoId da aplicação anterior: com outro autor dava
+   "identificador já usado"; com o mesmo, o diário devolvia o resultado
+   antigo e o registro ficava preso na fila. */
+function opIdDeAplicacao(x, auth) {
+  return "int-apl-" + sha256Hex(x.id + "|" + x.assinatura + "|" + ((x.aplicacao && x.aplicacao.reaberto) || "") + "|" + autorDaOperacao(auth)).slice(0, 40);
+}
+
+/* Registros na fila, os mais antigos primeiro. O limite de tentativas vale
+   por identidade de tentativa: falhas antigas de outro operacaoId (ou sem
+   ele) não seguram o registro. */
+function filaDeAplicacao(c, tipos, auth) {
   return lerTudo("int_externos").filter(function (x) {
     if (tipos.indexOf(x.tipo) < 0 || (x.assinante || "") !== (c.assinante || "")) return false;
     if (x.aplicado === x.assinatura) return false;
     var a = x.aplicacao || {};
-    return !(a.assinatura === x.assinatura && (a.tentativas || 0) >= APL_MAX_TENTATIVAS);
+    return !(a.assinatura === x.assinatura && a.operacaoId && a.operacaoId === opIdDeAplicacao(x, auth) && (a.tentativas || 0) >= APL_MAX_TENTATIVAS);
   });
 }
 
@@ -57,14 +69,15 @@ function aplicarFilaClinicorp(auth, orcamentoMs, pedidoId) {
   var tipos = tiposAutomaticos(c);
   var saida = { aplicados: 0, semMudanca: 0, falhas: 0, pendencias: 0, restantes: 0 };
   if (!tipos.length || impedimentoClinicorp(c) === "nao_configurada") return saida;
-  var fila = filaDeAplicacao(c, tipos);
+  var fila = filaDeAplicacao(c, tipos, auth || AUTH_SISTEMA_CLINICORP);
   var cx = contextoDeAplicacao(c);
   for (var i = 0; i < fila.length; i++) {
     if (Date.now() - inicio > orcamentoMs || i >= APL_POR_EXECUCAO) { saida.restantes = fila.length - i; break; }
     var x = fila[i];
     var ctx = { pedidoId: pedidoId || "", acao: "integracao.aplicar", auth: auth || AUTH_SISTEMA_CLINICORP };
+    var opId = opIdDeAplicacao(x, ctx.auth);
     try {
-      var op = { operacaoId: "int-apl-" + sha256Hex(x.id + "|" + x.assinatura).slice(0, 40), tipo: "aplicar." + x.tipo, externo: x.id, assinatura: x.assinatura };
+      var op = { operacaoId: opId, tipo: "aplicar." + x.tipo, externo: x.id, assinatura: x.assinatura };
       var r = executarOperacao(ctx, op, function () { return planejarAplicacao(ctx, op, x.id, c, cx); });
       if (r.resultado === "sem_mudanca") saida.semMudanca++; else saida.aplicados++;
       if (r.pendencia) saida.pendencias++;
@@ -72,22 +85,23 @@ function aplicarFilaClinicorp(auth, orcamentoMs, pedidoId) {
       cx = contextoDeAplicacao(c);
     } catch (e) {
       saida.falhas++;
-      registrarFalhaDeAplicacao(x, e);
+      registrarFalhaDeAplicacao(x, e, opId);
     }
   }
   return saida;
 }
 
-function registrarFalhaDeAplicacao(x, e) {
+function registrarFalhaDeAplicacao(x, e, opId) {
   var msg = String((e && (e.mensagem || e.message)) || e).slice(0, 300);
   comTrava(function () {
     esquecerLinhas();
     var atual = acharPorChave("int_externos", x.id);
     if (!atual) return;
-    var a = atual.aplicacao && atual.aplicacao.assinatura === atual.assinatura ? atual.aplicacao : {};
+    var a = atual.aplicacao && atual.aplicacao.assinatura === atual.assinatura && atual.aplicacao.operacaoId === opId ? atual.aplicacao : {};
     var tent = (a.tentativas || 0) + 1;
     var reg = copiaLimpa(atual);
-    reg.aplicacao = { assinatura: atual.assinatura, tentativas: tent, erro: msg, em: agoraISO(), resultado: "falhou" };
+    reg.aplicacao = { assinatura: atual.assinatura, tentativas: tent, erro: msg, em: agoraISO(), resultado: "falhou", operacaoId: opId || "",
+      reaberto: (atual.aplicacao && atual.aplicacao.reaberto) || "", estado: atual.aplicacao && atual.aplicacao.estado ? atual.aplicacao.estado : undefined };
     gravarPorChave("int_externos", reg);
     if (tent >= APL_MAX_TENTATIVAS) {
       var pid = "pd-" + sha256Hex("apl:" + atual.id + ":" + atual.assinatura).slice(0, 20);
@@ -145,6 +159,14 @@ function planejarAplicacao(ctx, op, idExterno, c, cx) {
     estado: plano.estado || (x.aplicacao && x.aplicacao.estado) || null, em: agoraISO() };
   var escritas = (plano.escritas || []).concat(plano.pendencias || []);
   escritas.push({ t: "gravar", tabela: "int_externos", registro: reg });
+  /* aplicou: a pendência "aplicação falhou" deste registro deixa de valer */
+  lerTudo("int_pendencias").forEach(function (p) {
+    if (p.tipo !== "aplicacao_falhou" || p.estado !== "aberta" || String(p.chave || "").indexOf("apl:" + x.id + ":") !== 0) return;
+    var rp = copiaLimpa(p);
+    rp.estado = "resolvida"; rp.resolvidoEm = agoraISO(); rp.resolvidoPor = "Integração"; rp.resolucao = "aplicado numa nova tentativa";
+    carimbar(rp, (Number(p.rev) || 0) + 1, ctx, op.operacaoId);
+    escritas.push({ t: "gravar", tabela: "int_pendencias", registro: rp });
+  });
   return { escritas: escritas, resultado: { resultado: plano.resultado, pendencia: !!(plano.pendencias && plano.pendencias.length) } };
 }
 

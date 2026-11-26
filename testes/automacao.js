@@ -117,6 +117,55 @@ teste("ponta a ponta: configurar uma vez, mudar a fonte, a rotina agendada atual
 
 /* ============================== exceções ============================== */
 
+teste("registro reaberto é aplicado de novo: outro autor não dá 'identificador já usado', o mesmo autor não fica preso, e falha antiga volta à fila e fecha a pendência", () => {
+  const a = ambiente();
+  assistente(a);
+  const ID = "clinicorp:assinante-sintetico:orcamento:7701";
+  const externo = (extra) => Object.assign({ id: ID, sistema: "clinicorp", assinante: "assinante-sintetico", unidade: "111", tipo: "orcamento", externoId: "7701",
+    dados: { status: "APPROVED", pacienteExternoId: "9901", pacienteNome: "Paciente Sintética Dois", criadoEm: "2026-11-15", procedimentos: [] }, assinatura: "assin-7701" }, extra || {});
+  a.gs.reiniciarExecucao();
+  a.gs.inserir("int_externos", [externo()]);
+  const pessoa = { tipo: "usuario", usuarioId: "u-ana", usuarioNome: "Ana Sintética", modulo: "", admin: true };
+  const aplicar = (auth) => { a.gs.reiniciarExecucao(); return a.gs.aplicarFilaClinicorp(auth, 20000, "teste"); };
+  const linha = () => a.linhas("int_externos").find((x) => x.id === ID);
+  const reabrir = () => {
+    a.gs.reiniciarExecucao();
+    const c = a.gs.configClinicorp();
+    a.gs.reabrirAplicacao("orcamento", "7701", c, null).forEach((w) => a.gs.gravarPorChave("int_externos", w.registro));
+  };
+  /* 1. uma pessoa aplica (ex.: "sincronizar agora") */
+  let r = aplicar(pessoa);
+  v.igual(r.falhas, 0);
+  v.igual(linha().aplicado, "assin-7701");
+  /* 2. volta à fila (ex.: vínculo de paciente) e a rotina agendada aplica */
+  reabrir();
+  a.sim.agora += 60000;
+  r = aplicar(a.gs.AUTH_SISTEMA_CLINICORP);
+  v.igual(r.falhas, 0, "sem 'identificador já usado'");
+  v.igual(linha().aplicado, "assin-7701");
+  /* 3. reabre de novo e o MESMO autor aplica: não devolve o resultado velho e prende */
+  reabrir();
+  a.sim.agora += 60000;
+  r = aplicar(a.gs.AUTH_SISTEMA_CLINICORP);
+  v.igual(r.falhas, 0);
+  v.igual(linha().aplicado, "assin-7701", "não ficou preso na fila");
+  /* 4. registro travado pela versão anterior: 3 tentativas, erro antigo, sem operacaoId, com pendência aberta */
+  a.gs.reiniciarExecucao();
+  const travado = Object.assign(linha(), { aplicado: "", aplicacao: { assinatura: "assin-7701", tentativas: 3, resultado: "falhou",
+    erro: "Este identificador já foi usado para outra alteração.", em: "2026-11-20T22:30:13.000Z" } });
+  a.gs.gravarPorChave("int_externos", travado);
+  const pid = "pd-" + a.gs.sha256Hex("apl:" + ID + ":assin-7701").slice(0, 20);
+  a.gs.gravarPorChave("int_pendencias", { id: pid, recurso: "orcamento", tipo: "aplicacao_falhou", chave: "apl:" + ID + ":assin-7701", externoId: "7701",
+    localTipo: "", localId: "", resumo: "Não deu para aplicar um registro do Clinicorp (orcamento): Este identificador já foi usado para outra alteração.",
+    detalhes: { externo: ID }, estado: "aberta", criadoEm: "2026-11-20T22:30:13.000Z", resolvidoEm: null, resolvidoPor: "", resolucao: "", rev: 1 });
+  r = aplicar(a.gs.AUTH_SISTEMA_CLINICORP);
+  v.igual(r.falhas, 0);
+  v.igual(linha().aplicado, "assin-7701", "voltou à fila sozinho e foi aplicado");
+  const p = a.linhas("int_pendencias").find((x) => x.id === pid);
+  v.igual(p.estado, "resolvida", "a pendência antiga se resolve sozinha");
+  v.igual(p.resolvidoPor, "Integração");
+});
+
 teste("uma exceção não segura a fila: forma desconhecida vira pendência só daquele recebimento", () => {
   const a = ambiente();
   a.cc.pagamentos = [pagamento(1, "2026-11-12", 100, { PaymentForm: "Permuta" }), pagamento(2, "2026-11-13", 200)];

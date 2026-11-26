@@ -727,12 +727,75 @@ function listaDePacientes(r) {
   return pacientes.sort(function (a, b) { return String(a.nome).localeCompare(String(b.nome)); });
 }
 
+/* Pacientes parecidas: a mesma pessoa vinda do Clinicorp (sem vínculo) e
+   da Agenda. O nome só SUGERE — o vínculo é sempre confirmado por uma
+   pessoa (homônimos existem). "Não é" fica guardado e não volta a aparecer.
+   Paciente da Agenda já ligada a outro registro do Clinicorp aparece como
+   bloqueada: um vínculo por ficha (planejarVinculo). */
+function parecidasDoClinicorp(c, r) {
+  var vinc = lerTudo("int_vinculos").filter(function (v) { return v.tipo === "paciente" && v.localTipo === "paciente" && (v.assinante || "") === (c.assinante || ""); });
+  var recusados = {}, localLigado = {};
+  vinc.forEach(function (v) {
+    if (v.estado === "recusado") recusados[v.externoId + "|" + v.localId] = true;
+    if (v.estado === "ativo") localLigado[v.localId] = v.externoId;
+  });
+  var porNome = {};
+  lerTudo("agenda_pacientes").forEach(function (p) {
+    if (p.arquivada) return;
+    var k = chaveDeNome(p.nome);
+    if (k) (porNome[k] = porNome[k] || []).push(p);
+  });
+  var externos = {};
+  var conta = function (ref, nome, campo) {
+    if (!ref || ref.indexOf("clc:") !== 0 || ref === "clc:?") return;
+    var x = externos[ref] = externos[ref] || { ref: ref, externoId: ref.slice(4), nome: nome || "", orcamentos: 0, agendamentos: 0 };
+    if (!x.nome && nome) x.nome = nome;
+    x[campo]++;
+  };
+  r.orcamentos.forEach(function (o) { conta(o.pacienteRef, o.pacienteNome, "orcamentos"); });
+  r.agendamentos.forEach(function (a) { conta(a.pacienteRef, a.pacienteNome, "agendamentos"); });
+  var saida = [];
+  Object.keys(externos).forEach(function (k) {
+    var x = externos[k];
+    var cands = (porNome[chaveDeNome(x.nome)] || []).filter(function (p) { return !recusados[x.externoId + "|" + p.id]; }).map(function (p) {
+      return { localId: p.id, nome: p.nome || "", whatsapp: p.whatsapp || "", bloqueada: !!localLigado[p.id], ligadaA: localLigado[p.id] || "" };
+    });
+    if (cands.length) saida.push({ ref: x.ref, externoId: x.externoId, nome: x.nome, orcamentos: x.orcamentos, agendamentos: x.agendamentos, candidatas: cands });
+  });
+  return saida.sort(function (a, b) { return String(a.nome).localeCompare(String(b.nome)); });
+}
+
+/* Vincular (ou recusar) uma paciente do Clinicorp a uma da Agenda, pela
+   tela do Financeiro: sempre uma decisão explícita, auditada, que vale
+   para os próximos registros (orçamentos e agendamentos voltam à fila). */
+function planejarVinculoDePaciente(ctx, op, recusar) {
+  var d = op.dados || {};
+  var c = configClinicorp();
+  var ext = String(d.externoId || ""), local = String(d.localId || "");
+  if (!acharPorChave("agenda_pacientes", local)) falhar("nao_encontrado", "A paciente da Agenda não existe.");
+  var escritas;
+  if (recusar) {
+    var id = idDoVinculo("paciente", ext, "paciente", c.assinante) + ":" + local + ":recusado";
+    if (acharPorChave("int_vinculos", id)) return { escritas: [], resultado: { id: id, jaExistia: true } };
+    escritas = [{ t: "gravar", tabela: "int_vinculos", registro: carimbar(registroCompleto("int_vinculos", {
+      id: id, sistema: "clinicorp", assinante: c.assinante, unidade: c.unidade || "", tipo: "paciente", externoId: ext, localTipo: "paciente", localId: local,
+      estado: "recusado", assinatura: "", sincronizadoEm: null, criadoEm: agoraISO(), criadoPor: assinaturaDe(ctx.auth).nome }, null), 1, ctx, op.operacaoId) }]
+      .concat(escritasDeAuditoria(ctx, [evento("agenda", "paciente", local, "recusou", "Clinicorp", "", "não é o paciente " + ext)], op.operacaoId));
+    return { escritas: escritas, resultado: { id: id } };
+  }
+  var r = planejarVinculo(ctx, op, "paciente", ext, "paciente", local);
+  if (r.resultado && r.resultado.jaExistia) return r;
+  escritas = r.escritas.concat(reabrirAplicacao("orcamento", ext, c, "pacienteExternoId")).concat(reabrirAplicacao("agendamento", ext, c, "pacienteExternoId"));
+  return { escritas: escritas, resultado: r.resultado };
+}
+
 function financeiroOrcamentosExecucao(ctx) {
   return lerComConsistencia(function () {
     var c = configClinicorp();
     var r = apurar(c, (ctx.dados || {}).filtros || {});
     r.hoje = hojeNaClinica();
     r.pacientes = listaDePacientes(r);
+    r.parecidas = parecidasDoClinicorp(c, r);
     r.fonte = { clinicorp: situacaoClinicorp(c), execucaoAutomatica: false,
       falta: "A API do Clinicorp não informa quais procedimentos foram realizados em cada agendamento, nem o vínculo do agendamento com o orçamento. Por isso a execução é registrada aqui (ou por relatório importado)." };
     return r;

@@ -52,7 +52,7 @@
      o identificador da casca da PWA, que sai do version.js no navegador.
    ferramentas/conferir-publicacao.js confere que VERSAO_PRODUTO bate com
    o topo do changelog e que VERSAO_API bate com o que o site espera. */
-var VERSAO_PRODUTO = "4.4.0";
+var VERSAO_PRODUTO = "4.4.1";
 var VERSAO_API = 2;
 var VERSAO_SCHEMA = 6;
 
